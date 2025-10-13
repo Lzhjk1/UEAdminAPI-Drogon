@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\main.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.cc">
+      <Filter>controllers</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaChannels.cc">
+      <Filter>models</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaRecords.cc">
+      <Filter>models</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\ThirdpartyPlatforms.cc">
+      <Filter>models</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\User.cc">
+      <Filter>models</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserDeleted.cc">
+      <Filter>models</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserFlashtoken.cc">
+      <Filter>models</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserGitlabInfo.cc">
+      <Filter>models</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserThirdpartyInfo.cc">
+      <Filter>models</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\AuthRepository.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\DataFormatUtils.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.cc">
+      <Filter>utils</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="controllers">
+      <UniqueIdentifier>{AC1BFD21-B752-30CF-8E59-18A8851B6984}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="models">
+      <UniqueIdentifier>{565EA65C-5853-39CC-A5BD-D9BD9FE8A4A0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utils">
+      <UniqueIdentifier>{6C363036-B649-399B-955A-FD3CCEDF6AFA}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

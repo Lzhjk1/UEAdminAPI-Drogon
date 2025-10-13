@@ -1,0 +1,451 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{BCDE012C-7C91-3FC1-B79C-4612926BED1A}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <VcpkgEnabled>false</VcpkgEnabled>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>UEAdminAPI_drogon</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="do_not_import_user.props" Condition="exists('do_not_import_user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">UEAdminAPI_drogon.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">UEAdminAPI_drogon</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">UEAdminAPI_drogon.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">UEAdminAPI_drogon</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\MinSizeRel\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">UEAdminAPI_drogon.dir\MinSizeRel\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">UEAdminAPI_drogon</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\RelWithDebInfo\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">UEAdminAPI_drogon.dir\RelWithDebInfo\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">UEAdminAPI_drogon</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "D:/Software/vcpkg/installed/x64-windows/include" /utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4251;4275</DisableSpecificWarnings>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <ForceConformanceInForLoopScope></ForceConformanceInForLoopScope>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RemoveUnreferencedCodeData></RemoveUnreferencedCodeData>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <SupportJustMyCode></SupportJustMyCode>
+      <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PostBuildEvent>
+      <Message></Message>
+      <Command>setlocal
+"C:\Program Files\PowerShell\7\pwsh.exe" -noprofile -executionpolicy Bypass -file D:/Software/vcpkg/scripts/buildsystems/msbuild/applocal.ps1 -targetBinary D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/Debug/UEAdminAPI_drogon.exe -installedDir D:/Software/vcpkg/installed/x64-windows/debug/bin -OutVariable out
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\debug\lib\drogon.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\yaml-cppd.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <DataExecutionPrevention></DataExecutionPrevention>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
+      <ImportLibrary>D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/Debug/UEAdminAPI_drogon.lib</ImportLibrary>
+      <LinkErrorReporting></LinkErrorReporting>
+      <ProgramDataBaseFile>D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/Debug/UEAdminAPI_drogon.pdb</ProgramDataBaseFile>
+      <RandomizedBaseAddress></RandomizedBaseAddress>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "D:/Software/vcpkg/installed/x64-windows/include" /utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DisableSpecificWarnings>4251;4275</DisableSpecificWarnings>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <ForceConformanceInForLoopScope></ForceConformanceInForLoopScope>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RemoveUnreferencedCodeData></RemoveUnreferencedCodeData>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <SupportJustMyCode></SupportJustMyCode>
+      <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PostBuildEvent>
+      <Message></Message>
+      <Command>setlocal
+"C:\Program Files\PowerShell\7\pwsh.exe" -noprofile -executionpolicy Bypass -file D:/Software/vcpkg/scripts/buildsystems/msbuild/applocal.ps1 -targetBinary D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/Release/UEAdminAPI_drogon.exe -installedDir D:/Software/vcpkg/installed/x64-windows/bin -OutVariable out
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <DataExecutionPrevention></DataExecutionPrevention>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
+      <ImportLibrary>D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/Release/UEAdminAPI_drogon.lib</ImportLibrary>
+      <LinkErrorReporting></LinkErrorReporting>
+      <ProgramDataBaseFile>D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/Release/UEAdminAPI_drogon.pdb</ProgramDataBaseFile>
+      <RandomizedBaseAddress></RandomizedBaseAddress>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "D:/Software/vcpkg/installed/x64-windows/include" /utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DisableSpecificWarnings>4251;4275</DisableSpecificWarnings>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <ForceConformanceInForLoopScope></ForceConformanceInForLoopScope>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MinSpace</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RemoveUnreferencedCodeData></RemoveUnreferencedCodeData>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <SupportJustMyCode></SupportJustMyCode>
+      <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PostBuildEvent>
+      <Message></Message>
+      <Command>setlocal
+"C:\Program Files\PowerShell\7\pwsh.exe" -noprofile -executionpolicy Bypass -file D:/Software/vcpkg/scripts/buildsystems/msbuild/applocal.ps1 -targetBinary D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/MinSizeRel/UEAdminAPI_drogon.exe -installedDir D:/Software/vcpkg/installed/x64-windows/bin -OutVariable out
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <DataExecutionPrevention></DataExecutionPrevention>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
+      <ImportLibrary>D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/MinSizeRel/UEAdminAPI_drogon.lib</ImportLibrary>
+      <LinkErrorReporting></LinkErrorReporting>
+      <ProgramDataBaseFile>D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/MinSizeRel/UEAdminAPI_drogon.pdb</ProgramDataBaseFile>
+      <RandomizedBaseAddress></RandomizedBaseAddress>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "D:/Software/vcpkg/installed/x64-windows/include" /utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4251;4275</DisableSpecificWarnings>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <ForceConformanceInForLoopScope></ForceConformanceInForLoopScope>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RemoveUnreferencedCodeData></RemoveUnreferencedCodeData>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <SupportJustMyCode></SupportJustMyCode>
+      <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PostBuildEvent>
+      <Message></Message>
+      <Command>setlocal
+"C:\Program Files\PowerShell\7\pwsh.exe" -noprofile -executionpolicy Bypass -file D:/Software/vcpkg/scripts/buildsystems/msbuild/applocal.ps1 -targetBinary D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/RelWithDebInfo/UEAdminAPI_drogon.exe -installedDir D:/Software/vcpkg/installed/x64-windows/bin -OutVariable out
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <DataExecutionPrevention></DataExecutionPrevention>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
+      <ImportLibrary>D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/RelWithDebInfo/UEAdminAPI_drogon.lib</ImportLibrary>
+      <LinkErrorReporting></LinkErrorReporting>
+      <ProgramDataBaseFile>D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/RelWithDebInfo/UEAdminAPI_drogon.pdb</ProgramDataBaseFile>
+      <RandomizedBaseAddress></RandomizedBaseAddress>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon -BD:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build --check-stamp-file D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeCXXInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeDependentOption.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeFindDependencyMacro.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakePushCheckState.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckCXXSourceRuns.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindOpenSSL.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPostgreSQL.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindThreads.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindZLIB.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CheckSourceRuns.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Linker\MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\WindowsPaths.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\SelectLibraryConfigurations.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonConfig.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonConfigVersion.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonUtilities.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindBrotli.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindFilesystem.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindJsoncpp.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\ParseAndAddDrogonTests.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\openssl\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\installed\x64-windows\share\postgresql\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorConfig.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorConfigVersion.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\zlib\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\scripts\buildsystems\vcpkg.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeCXXCompiler.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeRCCompiler.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon -BD:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build --check-stamp-file D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeCXXInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeDependentOption.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeFindDependencyMacro.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakePushCheckState.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckCXXSourceRuns.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindOpenSSL.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPostgreSQL.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindThreads.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindZLIB.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CheckSourceRuns.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Linker\MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\WindowsPaths.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\SelectLibraryConfigurations.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonConfig.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonConfigVersion.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonUtilities.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindBrotli.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindFilesystem.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindJsoncpp.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\ParseAndAddDrogonTests.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\openssl\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\installed\x64-windows\share\postgresql\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorConfig.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorConfigVersion.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\zlib\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\scripts\buildsystems\vcpkg.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeCXXCompiler.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeRCCompiler.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon -BD:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build --check-stamp-file D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeCXXInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeDependentOption.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeFindDependencyMacro.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakePushCheckState.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckCXXSourceRuns.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindOpenSSL.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPostgreSQL.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindThreads.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindZLIB.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CheckSourceRuns.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Linker\MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\WindowsPaths.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\SelectLibraryConfigurations.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonConfig.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonConfigVersion.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonUtilities.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindBrotli.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindFilesystem.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindJsoncpp.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\ParseAndAddDrogonTests.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\openssl\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\installed\x64-windows\share\postgresql\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorConfig.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorConfigVersion.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\zlib\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\scripts\buildsystems\vcpkg.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeCXXCompiler.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeRCCompiler.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon -BD:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build --check-stamp-file D:/User/Documents/VSProject/DrogonLearn/UEAdminAPI_drogon/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeCXXInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeDependentOption.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeFindDependencyMacro.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakePushCheckState.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckCXXSourceRuns.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindOpenSSL.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindPostgreSQL.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindThreads.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\FindZLIB.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Internal\CheckSourceRuns.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Linker\MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\Platform\WindowsPaths.cmake;C:\Program Files\CMake\share\cmake-4.1\Modules\SelectLibraryConfigurations.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\c-ares\c-ares-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonConfig.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonConfigVersion.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonTargets.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\DrogonUtilities.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindBrotli.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindFilesystem.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\FindJsoncpp.cmake;D:\Software\vcpkg\installed\x64-windows\share\drogon\ParseAndAddDrogonTests.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\jwt-cpp\jwt-cpp-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\openssl\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\installed\x64-windows\share\postgresql\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorConfig.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorConfigVersion.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\trantor\TrantorTargets.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config-version.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-debug.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-release.cmake;D:\Software\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets.cmake;D:\Software\vcpkg\installed\x64-windows\share\zlib\vcpkg-cmake-wrapper.cmake;D:\Software\vcpkg\scripts\buildsystems\vcpkg.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeCXXCompiler.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeRCCompiler.cmake;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\4.1.1\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\main.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaChannels.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaRecords.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\ThirdpartyPlatforms.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\User.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserDeleted.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserFlashtoken.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserGitlabInfo.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserThirdpartyInfo.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\AuthRepository.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\DataFormatUtils.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.cc" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\build\ZERO_CHECK.vcxproj">
+      <Project>{9D5C4EA5-4AA3-3EB5-8D40-006C6345A3B4}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
