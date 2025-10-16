@@ -2,8 +2,20 @@
 <Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\main.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Login.cc">
+      <Filter>controllers</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Register.cc">
+      <Filter>controllers</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\SendVerifyCode.cc">
+      <Filter>controllers</Filter>
+    </ClCompile>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.cc">
       <Filter>controllers</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\plugins\SMTPMail.cc">
+      <Filter>plugins</Filter>
     </ClCompile>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaChannels.cc">
       <Filter>models</Filter>
@@ -35,12 +47,74 @@
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\DataFormatUtils.cpp">
       <Filter>utils</Filter>
     </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\EmailHelper.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.cpp">
       <Filter>utils</Filter>
     </ClCompile>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.cc">
       <Filter>utils</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Login.h">
+      <Filter>controllers</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Register.h">
+      <Filter>controllers</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\SendVerifyCode.h">
+      <Filter>controllers</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.h">
+      <Filter>controllers</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\plugins\SMTPMail.h">
+      <Filter>plugins</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaChannels.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaRecords.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\ThirdpartyPlatforms.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\User.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserDeleted.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserFlashtoken.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserGitlabInfo.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserThirdpartyInfo.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\AuthRepository.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\DataFormatUtils.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\EMailHelper.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\Singleton.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.h">
+      <Filter>utils</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\CMakeLists.txt" />
@@ -51,6 +125,9 @@
     </Filter>
     <Filter Include="models">
       <UniqueIdentifier>{565EA65C-5853-39CC-A5BD-D9BD9FE8A4A0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="plugins">
+      <UniqueIdentifier>{24B463AD-490D-398D-89BF-7D2B07CF147F}</UniqueIdentifier>
     </Filter>
     <Filter Include="utils">
       <UniqueIdentifier>{6C363036-B649-399B-955A-FD3CCEDF6AFA}</UniqueIdentifier>

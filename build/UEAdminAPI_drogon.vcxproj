@@ -422,7 +422,16 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\main.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Login.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Register.cc" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\SendVerifyCode.cc" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.cc" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Login.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Register.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\SendVerifyCode.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.h" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\plugins\SMTPMail.cc" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\plugins\SMTPMail.h" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaChannels.cc" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaRecords.cc" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\ThirdpartyPlatforms.cc" />
@@ -431,10 +440,25 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserFlashtoken.cc" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserGitlabInfo.cc" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserThirdpartyInfo.cc" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaChannels.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaRecords.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\ThirdpartyPlatforms.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\User.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserDeleted.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserFlashtoken.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserGitlabInfo.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\UserThirdpartyInfo.h" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\AuthRepository.cpp" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\DataFormatUtils.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\EmailHelper.cpp" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.cpp" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.cc" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\AuthRepository.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\DataFormatUtils.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\EMailHelper.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\Singleton.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.h" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

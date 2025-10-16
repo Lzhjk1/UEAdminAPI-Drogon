@@ -13,9 +13,8 @@ namespace UEAdminAPI {
         void CreatePasswordHash(const std::string& password, std::vector<unsigned char>& hash, std::vector<unsigned char>& salt);
         bool VerifyPasswordHash(const std::string& password, const std::vector<unsigned char>& hash, const std::vector<unsigned char>& salt);
         
-        // 相比邱建立的, 我的两个Token都有tokenType这个claim
+        // 鐩告瘮鍘熺増, 杩欎袱涓嚱鏁扮敓鎴愮殑Token閮芥湁tokenType瀛楁, 鑰屼笖閲囩敤HS512绠楁硶
         std::string CreateToken(const User& user, uint64_t durationSeconds);
-        // 相比邱建立的, 我的两个Token都有tokenType这个claim
         std::string CreateFlashToken(const User& user, uint64_t durationSeconds);
 
         class TokenManager{};

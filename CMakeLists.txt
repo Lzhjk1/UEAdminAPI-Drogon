@@ -24,19 +24,12 @@ endif()
 
 add_executable(${PROJECT_NAME} main.cc)
 
-# ##############################################################################
-# If you include the drogon source code locally in your project, use this method
-# to add drogon 
-# add_subdirectory(drogon) 
-# target_link_libraries(${PROJECT_NAME} PRIVATE drogon)
-#
-# and comment out the following lines
+# 查找依赖
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Drogon::Drogon jwt-cpp::jwt-cpp)
 
-# ##############################################################################
-
+# 检查C++标准
 if (CMAKE_CXX_STANDARD LESS 17)
     message(FATAL_ERROR "c++17 or higher is required")
 elseif (CMAKE_CXX_STANDARD LESS 20)
@@ -45,48 +38,52 @@ else ()
     message(STATUS "use c++20")
 endif ()
 
+# 收集源文件
 aux_source_directory(controllers CTL_SRC)
 aux_source_directory(filters FILTER_SRC)
 aux_source_directory(plugins PLUGIN_SRC)
 aux_source_directory(models MODEL_SRC)
 aux_source_directory(utils UTILS_SRC)
 
-# 为VS项目创建对应的文件夹分组
-source_group("controllers" FILES ${CTL_SRC})
-source_group("filters" FILES ${FILTER_SRC})
-source_group("plugins" FILES ${PLUGIN_SRC})
-source_group("models" FILES ${MODEL_SRC})
-source_group("utils" FILES ${UTILS_SRC})
-source_group("" FILES main.cc)  # 将主文件放在根目录
+# 收集对应目录下的头文件（只包含源文件目录下的.h和.hpp）
+file(GLOB CTL_HDRS "controllers/*.h" "controllers/*.hpp")
+file(GLOB FILTER_HDRS "filters/*.h" "filters/*.hpp")
+file(GLOB PLUGIN_HDRS "plugins/*.h" "plugins/*.hpp")
+file(GLOB MODEL_HDRS "models/*.h" "models/*.hpp")
+file(GLOB UTILS_HDRS "utils/*.h" "utils/*.hpp")
+file(GLOB ROOT_HDRS "*.h" "*.hpp")  # 根目录下的头文件（如main.h等）
+
+# 源文件分组（头文件会自动加入对应分组，与源文件放在一起）
+source_group("controllers" FILES ${CTL_SRC} ${CTL_HDRS})
+source_group("filters" FILES ${FILTER_SRC} ${FILTER_HDRS})
+source_group("plugins" FILES ${PLUGIN_SRC} ${PLUGIN_HDRS})
+source_group("models" FILES ${MODEL_SRC} ${MODEL_HDRS})
+source_group("utils" FILES ${UTILS_SRC} ${UTILS_HDRS})
+source_group("" FILES main.cc ${ROOT_HDRS})  # 根目录文件（主文件+根目录头文件）
 
 # 禁用picojson
 target_compile_definitions(${PROJECT_NAME} PRIVATE JWT_DISABLE_PICOJSON)
 
+# 创建视图
 drogon_create_views(${PROJECT_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/views
                     ${CMAKE_CURRENT_BINARY_DIR})
-# use the following line to create views with namespaces.
-# drogon_create_views(${PROJECT_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/views
-#                     ${CMAKE_CURRENT_BINARY_DIR} TRUE)
-# use the following line to create views with namespace CHANGE_ME prefixed
-# and path namespaces.
-# drogon_create_views(${PROJECT_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/views
-#                     ${CMAKE_CURRENT_BINARY_DIR} TRUE CHANGE_ME)
 
+# 包含目录
 target_include_directories(${PROJECT_NAME}
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
                                    ${CMAKE_CURRENT_SOURCE_DIR}/models)
+
+# 添加所有源文件和头文件到目标
 target_sources(${PROJECT_NAME}
                PRIVATE
-               ${SRC_DIR}
-               ${CTL_SRC}
-               ${FILTER_SRC}
-               ${PLUGIN_SRC}
-               ${MODEL_SRC}
-               ${UTILS_SRC})
-# ##############################################################################
-# uncomment the following line for dynamically loading views 
-# set_property(TARGET ${PROJECT_NAME} PROPERTY ENABLE_EXPORTS ON)
+               ${CTL_SRC} ${CTL_HDRS}
+               ${FILTER_SRC} ${FILTER_HDRS}
+               ${PLUGIN_SRC} ${PLUGIN_HDRS}
+               ${MODEL_SRC} ${MODEL_HDRS}
+               ${UTILS_SRC} ${UTILS_HDRS}
+               main.cc ${ROOT_HDRS})
 
-# ##############################################################################
+# 动态加载视图（按需启用）
+# set_property(TARGET ${PROJECT_NAME} PROPERTY ENABLE_EXPORTS ON)
 
 add_subdirectory(test)

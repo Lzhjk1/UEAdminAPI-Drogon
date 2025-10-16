@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace UEAdminAPI {
+namespace uehttp {
 
     class DataFormatUtil {
     public:

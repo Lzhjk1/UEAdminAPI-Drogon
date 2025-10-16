@@ -1,7 +1,7 @@
 #include "DataFormatUtils.h"
 #include <regex>
 
-namespace UEAdminAPI {
+namespace uehttp {
 
 
 bool DataFormatUtil::isPhoneNumber(const std::string& phoneNumber) {

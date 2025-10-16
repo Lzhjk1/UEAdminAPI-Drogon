@@ -4,6 +4,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include "utils/AuthRepository.h"
+#include "../plugins/SMTPMail.h"
 
 // 设置控制台为UTF-8编码
 void SetConsoleUTF8() {
@@ -31,44 +32,11 @@ int main() {
     app.addListener("0.0.0.0", 5555);
     //Load config file
     //drogon::app().loadConfigFile("../config.json");
-    app.loadConfigFile("../config.yaml");
+    app.loadConfigFile("../../../config.yaml");
+
+    LOG_DEBUG << "即将启动...";
+
     //Run HTTP framework,the method will block in the internal event loop
-    auto config = app.getCustomConfig();
-    
-    //// 1. 先判断是否为JSON对象
-    //if (config.isObject()) {
-    //    // 2. 获取所有键（返回std::vector<std::string>）
-    //    std::vector<std::string> keys = config.getMemberNames();
-
-    //    // 3. 遍历键，获取对应的值
-    //    for (const std::string& key : keys) {
-    //        // 通过键获取值
-    //        Json::Value value = config[key];
-
-    //        // 打印键和值（根据值的类型做不同处理）
-    //        std::cout << "键: " << key << "，值: ";
-
-    //        if (value.isString()) {
-    //            std::cout << value.asString();
-    //        }
-    //        else if (value.isInt()) {
-    //            std::cout << value.asInt();
-    //        }
-    //        else if (value.isBool()) {
-    //            std::cout << (value.asBool() ? "true" : "false");
-    //        }
-    //        // 其他类型（如double、数组等）可类似处理
-    //        std::cout << std::endl;
-    //    }
-    //}
-    std::string secert = config["secert"].asString();
-    if (secert.empty()) {
-        //std::cout << "secert为空, 请先前往配置文件设置" << std::endl;
-        LOG_FATAL << "secert为空, 请先前往配置文件设置";
-        return -1;
-    }
-    UEAdminAPI::AuthRepository::SECRET = secert;
-    
     app.run();
     return 0;
 }

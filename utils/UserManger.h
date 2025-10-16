@@ -6,7 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <shared_mutex>
-#include "SingletonT.h"
+#include "Singleton.h"
 
 namespace uehttp {
 
@@ -14,6 +14,8 @@ class UserData{
 public:
     typedef std::shared_ptr<UserData> ptr;
     typedef std::shared_mutex RWMutexType;
+    typedef std::unique_lock<std::shared_mutex> WriteLock;
+    typedef std::shared_lock<std::shared_mutex> ReadLock;
 
     UserData(uint64_t id);
     std::string CreateToken(uint64_t sec);
@@ -37,6 +39,8 @@ class UserDataManager {
 public:
     typedef std::shared_ptr<UserDataManager> ptr;
     typedef std::shared_mutex RWMutexType;
+    typedef std::unique_lock<std::shared_mutex> WriteLock;
+    typedef std::shared_lock<std::shared_mutex> ReadLock;
 
     UserData::ptr getUserDataByToken(const std::string& token);
     UserData::ptr getUserDataById(int64_t id);
@@ -64,7 +68,7 @@ private:
 
 };
 
-using UserDataMgr = SingletonT<UserDataManager>;
+using UserDataMgr = Singleton<UserDataManager>;
 
 
 
