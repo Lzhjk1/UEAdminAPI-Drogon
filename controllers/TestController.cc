@@ -10,37 +10,44 @@
 #include "User.h"
 #include "UserThirdpartyInfo.h"
 #include "ThirdpartyPlatforms.h"
-#include <plugins\SMTPMail.h>
+#include <plugins/SMTPMail.h>
+#include "utils/GetAnotherIoLoop.h"
+#include "services/ServiceDtos.h"
 
 using namespace drogon;
 using namespace drogon::orm;
 using namespace drogon_model::UEAdminAPI;
 using namespace UEAdminAPI::utils;
+using namespace ServiceDtos;
 
 TestController::TestController() {
 
 }
 
 Task<HttpResponsePtr> TestController::TestHandler(HttpRequestPtr req) {
+
 	auto resp = HttpResponse::newHttpResponse();
 
-
-
-	auto* smtpmailPtr = drogon::app().getPlugin<SMTPMail>();
-
-	std::string id = co_await smtpmailPtr->sendEmailCoro(
-		"smtp.qq.com",                  //The server IP/DNS
-		587,                          //The port
-		"3167832431@qq.com",       //Who send the email
-		"1207629597@qq.com",    //Send to whom
-		"Testing SMTPMail Function",  //Email Subject/Title
-		"Hello from drogon plugin",   //Content
-		"3167832431@qq.com",       //Login user
-		"pbastjzdtcbadeaa",                     //User password
-		false
-	);
-	resp->setBody(id);
+	auto loop = getAnotherIoLoop();
+	if (loop->isInLoopThread()) {
+        		resp->setBody("In loop thread");
+	}
 	co_return resp;
+	//auto* smtpmailPtr = drogon::app().getPlugin<SMTPMail>();
+
+	//std::string id = co_await smtpmailPtr->sendEmailCoro(
+	//	"smtp.qq.com",                  //The server IP/DNS
+	//	587,                          //The port
+	//	"3167832431@qq.com",       //Who send the email
+	//	"1207629597@qq.com",    //Send to whom
+	//	"Testing SMTPMail Function",  //Email Subject/Title
+	//	"Hello from drogon plugin",   //Content
+	//	"3167832431@qq.com",       //Login user
+	//	"pbastjzdtcbadeaa",                     //User password
+	//	false
+	//);
+	//resp->setBody(id);
+	//co_return resp;
 
 	//auto dbClientPtr = drogon::app().getDbClient();
 

@@ -2,7 +2,6 @@
 
 // Add definition of your processing function here
 
-Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string target, int channel, int type) {
-
-    throw std::exception("Not implemented yet");
+Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string target, int channel, int type, TencentSMSService* smsService) {
+    co_return nullptr;
 }

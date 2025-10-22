@@ -87,7 +87,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /external:I "D:/Software/vcpkg/installed/x64-windows/include" /utf-8</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -108,16 +108,16 @@
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;JWT_DISABLE_PICOJSON;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;HAS_YAML_CPP;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;JWT_DISABLE_PICOJSON;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;HAS_YAML_CPP;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -137,7 +137,7 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\debug\lib\drogon.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\yaml-cppd.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\debug\lib\drogon.lib;../TencentSDK/sms/lib/Debug/tencentcloud-sdk-cpp-core.lib.lib;../TencentSDK/sms/lib/Debug/tencentcloud-sdk-cpp-sms.lib.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\yaml-cppd.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
@@ -156,7 +156,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /external:I "D:/Software/vcpkg/installed/x64-windows/include" /utf-8</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -176,18 +176,18 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;HAS_YAML_CPP;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
       </DebugInformationFormat>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;HAS_YAML_CPP;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -207,7 +207,7 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;../TencentSDK/sms/lib/Debug/tencentcloud-sdk-cpp-core.lib.lib;../TencentSDK/sms/lib/Debug/tencentcloud-sdk-cpp-sms.lib.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
@@ -226,7 +226,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /external:I "D:/Software/vcpkg/installed/x64-windows/include" /utf-8</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -246,18 +246,18 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;HAS_YAML_CPP;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
       </DebugInformationFormat>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;HAS_YAML_CPP;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -277,7 +277,7 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;../TencentSDK/sms/lib/Debug/tencentcloud-sdk-cpp-core.lib.lib;../TencentSDK/sms/lib/Debug/tencentcloud-sdk-cpp-sms.lib.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
@@ -296,7 +296,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /external:I "D:/Software/vcpkg/installed/x64-windows/include" /utf-8</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -317,16 +317,16 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;HAS_YAML_CPP;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;HAS_YAML_CPP;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JWT_DISABLE_PICOJSON;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;HAS_YAML_CPP;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\sms\include;D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\..\TencentSDK\core\include;D:\Software\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -346,7 +346,7 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>D:\Software\vcpkg\installed\x64-windows\lib\drogon.lib;../TencentSDK/sms/lib/Debug/tencentcloud-sdk-cpp-core.lib.lib;../TencentSDK/sms/lib/Debug/tencentcloud-sdk-cpp-sms.lib.lib;rpcrt4.lib;crypt32.lib;D:\Software\vcpkg\installed\x64-windows\lib\trantor.lib;advapi32.lib;ws2_32.lib;D:\Software\vcpkg\installed\x64-windows\debug\lib\jsoncpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;D:\Software\vcpkg\installed\x64-windows\lib\libssl.lib;D:\Software\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
@@ -430,6 +430,13 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\Register.h" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\SendVerifyCode.h" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.h" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\MFAService.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\TencentSMSService.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\UserManageService.cpp" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\MFAService.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\ServiceDtos.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\TencentSMSService.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\UserManageService.h" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\plugins\SMTPMail.cc" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\plugins\SMTPMail.h" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\models\MfaChannels.cc" />
@@ -451,14 +458,25 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\AuthRepository.cpp" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\DataFormatUtils.cpp" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\EmailHelper.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\GetAnotherIoLoop.cpp" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.cpp" />
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.cc" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\AuthRepository.h" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\DataFormatUtils.h" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\EMailHelper.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\GetAnotherIoLoop.h" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\ServiceResponse.h" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\Singleton.h" />
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.h" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFACodePiar.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFA_Channels.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFA_Manager.cpp" />
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\eMFA_Type.cpp" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFACodePair.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFA_Channels.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFA_Manager.h" />
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\eMFA_Type.h" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

@@ -14,6 +14,15 @@
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.cc">
       <Filter>controllers</Filter>
     </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\MFAService.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\TencentSMSService.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\UserManageService.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\plugins\SMTPMail.cc">
       <Filter>plugins</Filter>
     </ClCompile>
@@ -50,11 +59,26 @@
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\EmailHelper.cpp">
       <Filter>utils</Filter>
     </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\GetAnotherIoLoop.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.cpp">
       <Filter>utils</Filter>
     </ClCompile>
     <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.cc">
       <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFACodePiar.cpp">
+      <Filter>utils\MFA</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFA_Channels.cpp">
+      <Filter>utils\MFA</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFA_Manager.cpp">
+      <Filter>utils\MFA</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\eMFA_Type.cpp">
+      <Filter>utils\MFA</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -69,6 +93,18 @@
     </ClInclude>
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\controllers\TestController.h">
       <Filter>controllers</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\MFAService.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\ServiceDtos.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\TencentSMSService.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\services\UserManageService.h">
+      <Filter>services</Filter>
     </ClInclude>
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\plugins\SMTPMail.h">
       <Filter>plugins</Filter>
@@ -106,7 +142,13 @@
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\EMailHelper.h">
       <Filter>utils</Filter>
     </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\GetAnotherIoLoop.h">
+      <Filter>utils</Filter>
+    </ClInclude>
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\HttpResult.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\ServiceResponse.h">
       <Filter>utils</Filter>
     </ClInclude>
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\Singleton.h">
@@ -114,6 +156,18 @@
     </ClInclude>
     <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\UserManger.h">
       <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFACodePair.h">
+      <Filter>utils\MFA</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFA_Channels.h">
+      <Filter>utils\MFA</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\MFA_Manager.h">
+      <Filter>utils\MFA</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\User\Documents\VSProject\DrogonLearn\UEAdminAPI_drogon\utils\MFA\eMFA_Type.h">
+      <Filter>utils\MFA</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -129,8 +183,14 @@
     <Filter Include="plugins">
       <UniqueIdentifier>{24B463AD-490D-398D-89BF-7D2B07CF147F}</UniqueIdentifier>
     </Filter>
+    <Filter Include="services">
+      <UniqueIdentifier>{F58E29FF-3023-3D6D-922F-AE69B7917023}</UniqueIdentifier>
+    </Filter>
     <Filter Include="utils">
       <UniqueIdentifier>{6C363036-B649-399B-955A-FD3CCEDF6AFA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utils\MFA">
+      <UniqueIdentifier>{5DF77A33-ABCD-35CD-82DB-070B4F7429F8}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

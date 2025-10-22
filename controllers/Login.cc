@@ -6,7 +6,9 @@ using namespace UEAdminAPI::utils;
 using namespace drogon_model::UEAdminAPI;
 // Add definition of your processing function here
 
-Task<HttpResponsePtr> Login::LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd) {
+Task<HttpResponsePtr> Login::LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd,
+    std::shared_ptr<UserManageService> _userManageService) 
+{
 	auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k400BadRequest);
 

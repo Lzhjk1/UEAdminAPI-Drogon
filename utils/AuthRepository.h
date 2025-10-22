@@ -2,7 +2,7 @@
 #include <vector>
 #include <string>
 
-#include "User.h"
+#include "models/User.h"
 using namespace drogon_model::UEAdminAPI;
 
 namespace UEAdminAPI {

@@ -2,6 +2,7 @@
 
 #include <drogon/HttpController.h>
 #include <drogon/utils/coroutine.h>
+#include "services/TencentSMSService.h"
 
 using namespace drogon;
 
@@ -19,5 +20,5 @@ class SendVerifyCode : public drogon::HttpController<SendVerifyCode>
     // void get(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback, int p1, std::string p2);
     // void your_method_name(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback, double p1, int p2) const;
 
-    Task<HttpResponsePtr> SendCode(HttpRequestPtr req, std::string target, int channel, int type);
+    Task<HttpResponsePtr> SendCode(HttpRequestPtr req, std::string target, int channel, int type, TencentSMSService* smsService = TencentSMSService::Instance());
 };

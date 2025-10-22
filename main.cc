@@ -4,7 +4,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #include "utils/AuthRepository.h"
-#include "../plugins/SMTPMail.h"
+#include "plugins/SMTPMail.h"
+#include "services/TencentSMSService.h"
 
 // 设置控制台为UTF-8编码
 void SetConsoleUTF8() {
@@ -33,6 +34,8 @@ int main() {
     //Load config file
     //drogon::app().loadConfigFile("../config.json");
     app.loadConfigFile("../../../config.yaml");
+
+    TencentSMSService::Init(app.getCustomConfig());
 
     LOG_DEBUG << "即将启动...";
 
