@@ -6,5 +6,6 @@
 
 class ISmsService {
 public:
+	virtual ~ISmsService() = default;
 	virtual drogon::Task<bool> SendSms(const std::string& phoneNumber, eMFAType type, const std::vector<std::string>& templateParams) = 0;
 };

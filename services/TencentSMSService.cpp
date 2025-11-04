@@ -19,10 +19,6 @@ using namespace TencentCloud::Sms::V20210111;
 using namespace TencentCloud::Sms::V20210111::Model;
 using namespace std;
 
-bool TencentSMSService::_sInitialized = false;
-TencentSMSService* TencentSMSService::_sInstance = nullptr;
-static std::mutex _sMutex;
-
 TencentSMSService::TencentSMSService(const Json::Value& config) {
     // 读取配置
     _secretId = config["SMS"]["Tencent"]["Secret"]["Id"].asString();
@@ -37,6 +33,32 @@ TencentSMSService::TencentSMSService(const Json::Value& config) {
         _templateIds[stringToMFAType(key)] = config["SMS"]["Tencent"]["TemplateIds"][key].asString();
     }
 
+    // 检查以上配置是否正确获取
+    if (_secretId.empty()){
+        LOG_ERROR << "TencentSMS: SecretId 未配置";
+        throw std::invalid_argument("TencentSMS: SecretId 未配置");
+    }
+    if (_secretKey.empty()){
+        LOG_ERROR << "TencentSMS: SecretKey 未配置";
+        throw std::invalid_argument("TencentSMS: SecretKey 未配置");
+    }
+    if (_region.empty()){
+        LOG_ERROR << "TencentSMS: Region 未配置";
+        throw std::invalid_argument("TencentSMS: Region 未配置");
+    }
+    if (_smsSdkAppId.empty()){
+        LOG_ERROR << "TencentSMS: SmsSdkAppId 未配置";
+        throw std::invalid_argument("TencentSMS: SmsSdkAppId 未配置");
+    }
+    if (_signName.empty()){
+        LOG_ERROR << "TencentSMS: SignName 未配置";
+        throw std::invalid_argument("TencentSMS: SignName 未配置");
+    }
+    if(_templateIds.empty()){
+        LOG_ERROR << "TencentSMS: TemplateIds 未配置";
+        throw std::invalid_argument("TencentSMS: TemplateIds 未配置");
+    }
+
     // 初始化SDK
     TencentCloud::InitAPI();
     Credential cred = Credential(_secretId, _secretKey);
@@ -45,15 +67,17 @@ TencentSMSService::TencentSMSService(const Json::Value& config) {
 }
 
 Task<bool> TencentSMSService::SendSms(const string &phoneNumber, eMFAType type, const vector<string> &templateParams) {
-    std::lock_guard<std::mutex> lock(_clientMutex);
-
     SendSmsRequest req;
-    req.SetSmsSdkAppId(_smsSdkAppId);
-    req.SetSignName(_signName);
-    req.SetTemplateId(_templateIds[type]);
-    req.SetPhoneNumberSet({phoneNumber});
-    req.SetTemplateParamSet(templateParams);
-  
+    {
+        std::lock_guard<std::mutex> lock(_clientMutex);
+        req.SetSmsSdkAppId(_smsSdkAppId);
+        req.SetSignName(_signName);
+        req.SetTemplateId(_templateIds[type]);
+        req.SetPhoneNumberSet({phoneNumber});
+        req.SetTemplateParamSet(templateParams);
+    }
+    
+    // 在锁外执行协程操作，避免跨线程解锁问题
     SmsClient::SendSmsOutcome outcome = co_await SendSmsCoro(req);
     if (!outcome.IsSuccess()) {
         LOG_ERROR << "短信发送失败: " + outcome.GetError().GetErrorMessage();
@@ -62,22 +86,6 @@ Task<bool> TencentSMSService::SendSms(const string &phoneNumber, eMFAType type, 
 
     LOG_INFO << format("已成功向手机号 {} 发送短信", req.GetPhoneNumberSet()[0]);
     co_return true;
-}
-
-void TencentSMSService::Init(const Json::Value& config) {
-    std::lock_guard<std::mutex> lock(_sMutex);
-    if(_sInitialized) {
-        return;
-    }
-    _sInitialized = true;
-    _sInstance = new TencentSMSService(config);
-}
-
-TencentSMSService *TencentSMSService::Instance() {
-    if (!_sInitialized) {
-        throw std::runtime_error("TencentSMSService not initialized. Call Init() first.");
-    }
-    return _sInstance;
 }
 
 drogon::Task<SmsClient::SendSmsOutcome> TencentSMSService::SendSmsCoro(const SendSmsRequest& req) {

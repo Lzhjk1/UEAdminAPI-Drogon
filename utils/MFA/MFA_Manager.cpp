@@ -7,47 +7,47 @@ MFA_Manager::MFA_Manager(IEmailService *emailService, ISmsService *smsService)
   _channels.push_back(std::make_shared<MFA_EmailChannel>(emailService));
 }
 
-std::shared_ptr<IMFAChannel> MFA_Manager::getChannel(eChannelType type) {
+std::shared_ptr<IMFAChannel> MFA_Manager::GetChannel(eChannelType type) {
   std::lock_guard lock(_mutex);
   for (const auto& ch : _channels) {
-      if (ch->channelType() == type)
+      if (ch->ChannelType() == type)
           return ch;
   }
   return nullptr;
 }
 
-bool MFA_Manager::verifyTheCode(const std::string& target, const std::string& code, eMFAType type, std::string& errorMsg) {
-  auto channelType = MFAChannelBase::determineChannelType(target);
+std::pair<bool, std::string> MFA_Manager::VerifyTheCode(const std::string& target, const std::string& code, eMFAType type) {
+  auto channelType = MFAChannelBase::DetermineChannelType(target);
   if (channelType == eChannelType::None) {
-      errorMsg = "无法判断渠道类型";
-      return false;
+      return {false, "无法判断渠道类型"};
   }
-  auto channel = getChannel(channelType);
+  auto channel = GetChannel(channelType);
   if (!channel) {
-      errorMsg = "无法找到对应的验证码发送渠道";
-      return false;
+      return {false, "无法找到对应的验证码发送渠道"};
   }
-  return channel->verifyTheCode(target, code, type, errorMsg);
+  std::string errorMsg;
+  bool result = channel->VerifyTheCode(target, code, type, errorMsg);
+  return {result, errorMsg};
 }
 
-drogon::Task<std::pair<bool, std::string>> MFA_Manager::sendTheCode(const std::string& target, const std::string& code, eMFAType type) {
-  auto channelType = MFAChannelBase::determineChannelType(target);
+drogon::Task<std::pair<bool, std::string>> MFA_Manager::SendTheCode(const std::string& target, const std::string& code, eMFAType type) {
+  auto channelType = MFAChannelBase::DetermineChannelType(target);
   if (channelType == eChannelType::None) {
       co_return {false, "无法判断渠道类型"};
   }
-  auto channel = getChannel(channelType);
+  auto channel = GetChannel(channelType);
   if (!channel) {
       co_return {false, "无法找到对应的验证码发送渠道"};
   }
   std::string innerErrorMsg;
-  auto codePair = CodePairBase::createCodePair(target, code, type, innerErrorMsg);
+  auto codePair = CodePairBase::CreateCodePair(target, code, type, innerErrorMsg);
   if (!codePair) {
-      _logger->error("验证码发送失败, 生成CodePair失败 : {}", innerErrorMsg);
+      LOG_ERROR << format("验证码发送失败, 生成CodePair失败 : {}", innerErrorMsg);
       co_return {false, innerErrorMsg};
   }
-  auto [result, errorMsg] = co_await channel->sendCode(codePair);
+  auto [result, errorMsg] = co_await channel->SendCode(codePair);
   if (!result) {
-      _logger->error("验证码发送失败");
+      LOG_ERROR << "验证码发送失败";
   }
   co_return {result, errorMsg};
 }

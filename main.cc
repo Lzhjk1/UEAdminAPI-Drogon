@@ -3,9 +3,16 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#include "utils/AuthRepository.h"
 #include "plugins/SMTPMail.h"
+
+// 需要初始化的单例服务
 #include "services/TencentSMSService.h"
+#include "services/MFAService.h"
+#include "services/EmailService.h"
+#include "services/AuthService.h"
+
+
+#include "utils/ServiceResponse.h"
 
 // 设置控制台为UTF-8编码
 void SetConsoleUTF8() {
@@ -24,9 +31,13 @@ void SetConsoleUTF8() {
 #endif
 
 int main() {
-     #ifdef _WIN32
-     SetConsoleUTF8();
-     #endif
+
+
+
+
+    #ifdef _WIN32
+    SetConsoleUTF8();
+    #endif
 
     HttpAppFramework &app = drogon::app();
     //Set HTTP listener address and port
@@ -35,7 +46,29 @@ int main() {
     //drogon::app().loadConfigFile("../config.json");
     app.loadConfigFile("../../../config.yaml");
 
-    TencentSMSService::Init(app.getCustomConfig());
+
+    
+    // 因为插件需要启动后才能获取, 所以启动后再初始化
+    auto loop = app.getLoop();
+    loop->runAfter(1 , [&app]{
+        if (!app.isRunning()) {
+            LOG_INFO << "未启动, 等待1秒后重试";
+            sleepCoro(app.getLoop(), 1);
+        }
+        LOG_INFO << "启动成功, 开始初始化插件与服务";
+        // 初始化单例服务
+        auto smtpPlugin = app.getPlugin<SMTPMail>();
+        AuthService::Init(app.getCustomConfig());
+        TencentSMSService::Init(app.getCustomConfig());
+        EmailService::Init(smtpPlugin, app.getCustomConfig());
+
+        MFAService::Init(
+            EmailService::Instance(), 
+            TencentSMSService::Instance()
+        );
+
+        LOG_INFO << "服务初始化完成";
+    });
 
     LOG_DEBUG << "即将启动...";
 

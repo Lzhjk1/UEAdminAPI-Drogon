@@ -30,8 +30,8 @@ add_executable(${PROJECT_NAME} main.cc)
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Drogon::Drogon jwt-cpp::jwt-cpp
-                                                   D:/User/Documents/VSProject/DrogonLearn/TencentSDK/lib/Debug/tencentcloud-sdk-cpp-core.lib
-                                                   D:/User/Documents/VSProject/DrogonLearn/TencentSDK/lib/Debug/tencentcloud-sdk-cpp-sms.lib)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../TencentSDK/lib/Debug/tencentcloud-sdk-cpp-core.lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/../TencentSDK/lib/Debug/tencentcloud-sdk-cpp-sms.lib)
 
 # 检查C++标准
 if (CMAKE_CXX_STANDARD LESS 17)
@@ -95,7 +95,7 @@ target_sources(${PROJECT_NAME}
                ${MODEL_SRC} ${MODEL_HDRS}
                ${UTILS_SRC} ${UTILS_HDRS}
                ${MFA_SRC} ${MFA_HDRS}
-               main.cc ${ROOT_HDRS})
+               main.cc ${ROOT_HDRS} )
 
 # 动态加载视图（按需启用）
 # set_property(TARGET ${PROJECT_NAME} PROPERTY ENABLE_EXPORTS ON)

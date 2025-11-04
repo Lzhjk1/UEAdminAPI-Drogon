@@ -13,6 +13,20 @@ eMFAType stringToMFAType(const std::string& str) {
     throw std::invalid_argument("Unknown MFA type: " + str);
 }
 
+std::string MFATypeToString(eMFAType type) {
+    switch (type) {
+        case eMFAType::Default: return "Default";
+        case eMFAType::Login: return "Login";
+        case eMFAType::Register: return "Register";
+        case eMFAType::ResetPassword: return "ResetPassword";
+        case eMFAType::EmailBind: return "EmailBind";
+        case eMFAType::PhoneChange: return "PhoneChange";
+        case eMFAType::DeleteUser: return "DeleteUser";
+        case eMFAType::LoginOrRegister: return "LoginOrRegister";
+        default: throw std::invalid_argument("Unknown MFA type");
+    }
+}
+
 eMFAType operator|(eMFAType a, eMFAType b) {
     return static_cast<eMFAType>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
 }

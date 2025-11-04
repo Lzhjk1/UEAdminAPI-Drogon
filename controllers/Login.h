@@ -19,7 +19,6 @@ class Login : public drogon::HttpController<Login>
     // your declaration of processing function maybe like this:
     // void get(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback, int p1, std::string p2);
     // void your_method_name(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback, double p1, int p2) const;
-    Task<HttpResponsePtr> LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd, 
-        std::shared_ptr<UserManageService> _userManageService = UserManageServiceSPtr::GetInstance());
+    Task<HttpResponsePtr> LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd);
 
 };

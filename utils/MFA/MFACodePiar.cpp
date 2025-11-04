@@ -2,6 +2,8 @@
 #include <random>
 #include <stdexcept>
 #include <ctime>
+#include <locale>
+#include <codecvt>
 
 // 工具函数：生成6位数字验证码
 static std::string generate6DigitCode() {
@@ -18,32 +20,36 @@ CodePairBase::CodePairBase() {
    _expireTime = std::chrono::system_clock::now() + std::chrono::minutes(5);
 }
 
-const std::string& CodePairBase::code() const {
+const std::string& CodePairBase::Code() const {
    if (_code.empty()) {
        const_cast<CodePairBase*>(this)->_code = generate6DigitCode();
    }
    return _code;
 }
-void CodePairBase::setCode(const std::string& value) {
-   if (value.empty()) throw std::runtime_error("传入的值为空!");
-   if (!std::regex_match(value, std::regex(R"(\d{6})")))
-       throw std::invalid_argument("验证码限定为6位纯数字!");
-   _code = value;
+
+void CodePairBase::SetCode(const std::string& value) {
+   if (value.empty()) {
+        _code = generate6DigitCode();
+        return;
+   }
+    if (!std::regex_match(value, std::regex(R"(\d{6})")))
+        throw std::invalid_argument("code must be 6 digits");
+    _code = value;
 }
-eMFAType CodePairBase::mfaType() const { return _mfaType; }
-void CodePairBase::setMfaType(eMFAType t) { _mfaType = t; }
-std::chrono::system_clock::time_point CodePairBase::expireTime() const { return _expireTime; }
-void CodePairBase::setExpireTime(std::chrono::system_clock::time_point t) { _expireTime = t; }
-bool CodePairBase::isExpired() const {
+eMFAType CodePairBase::MFAType() const { return _mfaType; }
+void CodePairBase::SetMfaType(eMFAType t) { _mfaType = t; }
+std::chrono::system_clock::time_point CodePairBase::ExpireTime() const { return _expireTime; }
+void CodePairBase::SetExpireTime(std::chrono::system_clock::time_point t) { _expireTime = t; }
+bool CodePairBase::IsExpired() const {
    return std::chrono::system_clock::now() > _expireTime;
 }
-bool CodePairBase::isEverythingAllSet() const {
-   return !code().empty() && _mfaType != eMFAType::Default && !isExpired();
+bool CodePairBase::IsEverythingAllSet() const {
+   return !Code().empty() && _mfaType != eMFAType::Default && !IsExpired();
 }
 
 // 工厂方法
-std::shared_ptr<ICodePair> CodePairBase::createCodePair(const std::string& target, const std::string& code, eMFAType type, std::string& errorMsg) {
-   auto channel = MFAChannelBase::determineChannelType(target);
+std::shared_ptr<ICodePair> CodePairBase::CreateCodePair(const std::string& target, const std::string& code, eMFAType type, std::string& errorMsg) {
+   auto channel = MFAChannelBase::DetermineChannelType(target);
    if (channel == eChannelType::None) {
        errorMsg = "无法识别目标类型";
        return nullptr;
@@ -61,43 +67,43 @@ std::shared_ptr<ICodePair> CodePairBase::createCodePair(const std::string& targe
 
 CodePairBase::SMSCodePair::SMSCodePair(const std::string& phoneNumber, const std::string& code, eMFAType mfaType, const std::string& countryCode, std::optional<std::chrono::system_clock::time_point> expireTime) {
    _phoneNumber = phoneNumber;
-   setCode(code);
-   setMfaType(mfaType);
+   SetCode(code);
+   SetMfaType(mfaType);
    _countryCode = countryCode;
    _expireTime = expireTime.value_or(std::chrono::system_clock::now() + std::chrono::minutes(5));
 }
 CodePairBase::SMSCodePair::SMSCodePair(const std::string& phoneNumber, eMFAType mfaType, const std::string& countryCode, std::optional<std::chrono::system_clock::time_point> expireTime) {
    _phoneNumber = phoneNumber;
-   setMfaType(mfaType);
+   SetMfaType(mfaType);
    _countryCode = countryCode;
    _expireTime = expireTime.value_or(std::chrono::system_clock::now() + std::chrono::minutes(5));
 }
-std::string CodePairBase::SMSCodePair::phoneNumber() const { return _countryCode + _phoneNumber; }
-void CodePairBase::SMSCodePair::setPhoneNumber(const std::string& v) { _phoneNumber = v; }
-std::string CodePairBase::SMSCodePair::countryCode() const { return _countryCode; }
-void CodePairBase::SMSCodePair::setCountryCode(const std::string& v) { _countryCode = v; }
-bool CodePairBase::SMSCodePair::isEverythingAllSet() const {
-   return CodePairBase::isEverythingAllSet() && !_countryCode.empty() && !_phoneNumber.empty();
+std::string CodePairBase::SMSCodePair::PhoneNumber() const { return _countryCode + _phoneNumber; }
+void CodePairBase::SMSCodePair::SetPhoneNumber(const std::string& v) { _phoneNumber = v; }
+std::string CodePairBase::SMSCodePair::CountryCode() const { return _countryCode; }
+void CodePairBase::SMSCodePair::SetCountryCode(const std::string& v) { _countryCode = v; }
+bool CodePairBase::SMSCodePair::IsEverythingAllSet() const {
+   return CodePairBase::IsEverythingAllSet() && !_countryCode.empty() && !_phoneNumber.empty();
 }
-std::string CodePairBase::SMSCodePair::baseInfo() const { return phoneNumber(); }
+std::string CodePairBase::SMSCodePair::BaseInfo() const { return PhoneNumber(); }
 
 // ========== EmailCodePair ==========
 
 CodePairBase::EmailCodePair::EmailCodePair(const std::string& email, const std::string& code, eMFAType mfaType, std::optional<std::chrono::system_clock::time_point> expireTime) {
-   setEmail(email);
-   setCode(code);
-   setMfaType(mfaType);
+   SetEmail(email);
+   SetCode(code);
+   SetMfaType(mfaType);
    _expireTime = expireTime.value_or(std::chrono::system_clock::now() + std::chrono::minutes(5));
 }
-std::string CodePairBase::EmailCodePair::email() const { return _email; }
-void CodePairBase::EmailCodePair::setEmail(const std::string& v) {
+std::string CodePairBase::EmailCodePair::Email() const { return _email; }
+void CodePairBase::EmailCodePair::SetEmail(const std::string& v) {
    if (v.empty()) throw std::runtime_error("传入的值为空!");
    static std::regex emailRegex(R"(^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$)");
    if (!std::regex_match(v, emailRegex))
        throw std::invalid_argument("邮箱格式不正确!");
    _email = v;
 }
-bool CodePairBase::EmailCodePair::isEverythingAllSet() const {
-   return CodePairBase::isEverythingAllSet() && !_email.empty();
+bool CodePairBase::EmailCodePair::IsEverythingAllSet() const {
+   return CodePairBase::IsEverythingAllSet() && !_email.empty();
 }
-std::string CodePairBase::EmailCodePair::baseInfo() const { return email(); }
+std::string CodePairBase::EmailCodePair::BaseInfo() const { return Email(); }

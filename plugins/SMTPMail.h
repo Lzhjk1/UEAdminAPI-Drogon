@@ -32,13 +32,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <drogon/plugins/Plugin.h>
 #include <drogon/utils/coroutine.h>
+#include "utils/MFA/IEmailService.h"
 #include <atomic>
 #include <functional>
 #include <coroutine>
 
 
 class SendEmailOperation;
-class SMTPMail : public drogon::Plugin<SMTPMail> {
+class SMTPMail : public drogon::Plugin<SMTPMail>, public IEmailSender {
 public:
   SMTPMail() = default;
   /// This method must be called by drogon to initialize and start the plugin.

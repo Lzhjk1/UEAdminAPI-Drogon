@@ -22,10 +22,10 @@ enum class eChannelType {
 class IMFAChannel {
 public:
     virtual ~IMFAChannel() = default;
-    virtual eChannelType channelType() const = 0;
-    virtual optional<shared_ptr<ICodePair>> getCodePair(const string &key) = 0;
-    virtual drogon::Task<pair<bool, string>> sendCode(shared_ptr<ICodePair> codePair) = 0;
-    virtual bool verifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) = 0;
+    virtual eChannelType ChannelType() const = 0;
+    virtual optional<shared_ptr<ICodePair>> GetCodePair(const string &key) = 0;
+    virtual drogon::Task<pair<bool, string>> SendCode(shared_ptr<ICodePair> codePair) = 0;
+    virtual bool VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) = 0;
 };
 
 class MFAChannelBase : public IMFAChannel {
@@ -34,28 +34,28 @@ protected:
     vector<shared_ptr<ICodePair>> _listCodePairs;
     eChannelType _channelType;
 
-    void clearExpired();
-    bool addCodePairToList(shared_ptr<ICodePair> codePair);
+    void ClearExpired();
+    bool AddCodePairToList(shared_ptr<ICodePair> codePair);
 
 public:
     explicit MFAChannelBase(eChannelType channelType);
-    eChannelType channelType() const override;
-    optional<shared_ptr<ICodePair>> getCodePair(const string &key) override;
-    bool verifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) override;
+    eChannelType ChannelType() const override;
+    optional<shared_ptr<ICodePair>> GetCodePair(const string &key) override;
+    bool VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) override;
 
-    static eChannelType determineChannelType(const string &target);
+    static eChannelType DetermineChannelType(const string &target);
 };
 
 class MFA_EmailChannel : public MFAChannelBase {
     IEmailService *_emailService;
 public:
-    MFA_EmailChannel(IEmailService *emailService);
-    drogon::Task<pair<bool, string>> sendCode(shared_ptr<ICodePair> codePair) override;
+    MFA_EmailChannel(IEmailService* emailService);
+    drogon::Task<pair<bool, string>> SendCode(shared_ptr<ICodePair> codePair) override;
 };
 
 class MFA_SMSChannel : public MFAChannelBase {
     ISmsService *_smsService;
 public:
     MFA_SMSChannel(ISmsService *smsService);
-    drogon::Task<pair<bool, string>> sendCode(shared_ptr<ICodePair> codePair) override;
+    drogon::Task<pair<bool, string>> SendCode(shared_ptr<ICodePair> codePair) override;
 };
