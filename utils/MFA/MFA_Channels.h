@@ -23,7 +23,7 @@ class IMFAChannel {
 public:
     virtual ~IMFAChannel() = default;
     virtual eChannelType ChannelType() const = 0;
-    virtual optional<shared_ptr<ICodePair>> GetCodePair(const string &key) = 0;
+    virtual optional<shared_ptr<ICodePair>> GetCodePair(const string &key, const eMFAType& type) = 0;
     virtual drogon::Task<pair<bool, string>> SendCode(shared_ptr<ICodePair> codePair) = 0;
     virtual bool VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) = 0;
 };
@@ -40,7 +40,7 @@ protected:
 public:
     explicit MFAChannelBase(eChannelType channelType);
     eChannelType ChannelType() const override;
-    optional<shared_ptr<ICodePair>> GetCodePair(const string &key) override;
+    optional<shared_ptr<ICodePair>> GetCodePair(const string &key, const eMFAType& type) override;
     bool VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) override;
 
     static eChannelType DetermineChannelType(const string &target);

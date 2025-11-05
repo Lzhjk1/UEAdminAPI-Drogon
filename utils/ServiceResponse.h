@@ -50,7 +50,7 @@
 
 template<typename T>
 class ServiceResponse {
-private:
+public:
     T Data;
     bool Success;
     std::string Message;
