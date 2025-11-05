@@ -51,7 +51,7 @@ bool MFAChannelBase::AddCodePairToList(std::shared_ptr<ICodePair> codePair) {
     std::lock_guard lock(_mutex);
     auto it = std::find_if(_listCodePairs.begin(), _listCodePairs.end(),
                            [&](const std::shared_ptr<ICodePair> &p) {
-                               return p->BaseInfo() == codePair->BaseInfo() && p->Code() == codePair->Code();
+                               return p->BaseInfo() == codePair->BaseInfo() && p->MFAType() == codePair->MFAType();
                            });
     if (it != _listCodePairs.end())
         _listCodePairs.erase(it);
@@ -93,7 +93,8 @@ drogon::Task<std::pair<bool, std::string>> MFA_EmailChannel::SendCode(std::share
 
     std::string ret = co_await _emailService->SendEmailCoro(codePair->BaseInfo(), subject, content);
     // 检查返回的字符串, 如果其中有fail字样则表示发送失败
-    if (ret.find("Email sent") == std::string::npos) {
+    // 这种检测方法不稳定, 以后应该会更换emailService
+    if (ret.find("EMail sent") == std::string::npos) {
        LOG_ERROR << LOG_TAG << ("验证码发送失败, 邮件发送失败: " + ret);
        co_return {false, "验证码发送失败, 邮件发送失败: " + ret};
     }
