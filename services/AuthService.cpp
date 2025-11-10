@@ -6,6 +6,8 @@
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 
+#include "models/UserFlashtoken.h"
+
 AuthService::AuthService(const Json::Value &config) {
     _secret = config["UserManage"]["jwt_secret"].asString();
     _jwtIssuer = config["UserManage"]["jwt_issuer"].asString();
@@ -69,27 +71,52 @@ bool AuthService::VerifyPasswordHash(const std::string &password,
     return VerifyPasswordHash(password, hashView, saltView);
 }
 
-std::string AuthService::CreateToken(const User &user, uint64_t durationSeconds) {
+std::string AuthService::CreateToken(int id, int status, uint64_t durationSeconds) {
     auto token = jwt::create()
                      .set_issuer(_jwtIssuer)
                      .set_type("JWS")
-                     .set_payload_claim("id", jwt::claim(std::to_string(user.getValueOfId())))
+                     .set_payload_claim("id", jwt::claim(std::to_string(id)))
                      .set_payload_claim(std::string("tokenType"), jwt::claim(std::string("token")))
-                     // status是附加验证信息, 但目前没有使用, 只是一个随机数字
-                     .set_payload_claim(std::string("status"), jwt::claim(std::to_string(rand()) + std::to_string(rand())))
+                     // status是附加验证信息
+                     .set_payload_claim(std::string("status"), jwt::claim(std::to_string(status)))
                      .set_expires_in(std::chrono::seconds{durationSeconds})
                      .sign(jwt::algorithm::hs512{ _secret });
     return token;
 }
-std::string AuthService::CreateFlashToken(const User &user, uint64_t durationSeconds) {
+std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationSeconds) {
     auto token = jwt::create()
                      .set_issuer(_jwtIssuer)
                      .set_type("JWS")
-                     .set_payload_claim("id", jwt::claim(std::to_string(user.getValueOfId())))
+                     .set_payload_claim("id", jwt::claim(std::to_string(id)))
                      .set_payload_claim(std::string("tokenType"), jwt::claim(std::string("flashToken")))
-                     // status是附加验证信息, 但目前没有使用, 只是一个随机数字
-                     .set_payload_claim(std::string("status"), jwt::claim(std::to_string(rand()) + std::to_string(rand())))
+                     // status是附加验证信息
+                     .set_payload_claim(std::string("status"), jwt::claim(std::to_string(status)))
                      .set_expires_in(std::chrono::seconds{durationSeconds})
                      .sign(jwt::algorithm::hs512{ _secret });
+
     return token;
+}
+
+int AuthService::CheckTokenAndParseUserId(const std::string &token) {
+    try {
+        // 解码并验证token
+        auto decoded = jwt::decode(token);
+        auto verifier = jwt::verify()
+            .allow_algorithm(jwt::algorithm::hs512{_secret})
+            .with_issuer(_jwtIssuer);
+
+        verifier.verify(decoded);
+
+        // 获取用户ID
+        auto userIdClaim = decoded.get_payload_claim("id");
+        std::string userIdStr = userIdClaim.as_string();
+        int32_t userId = std::stoi(userIdStr);
+
+        return userId;
+    }
+    catch (const std::exception &e) {
+        LOG_ERROR << std::format("对于Token: {}, 验证失败: {}", token, e.what());
+        LOG_ERROR << "Token验证失败: " << e.what();
+        return -1;
+    }
 }

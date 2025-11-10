@@ -11,8 +11,13 @@
 //     return value;
 // }
 
+
+
 // 枚举类型
 enum class eMFAType : uint32_t {
+    // 用于标记错误
+    Error = 0,
+
     Default = 1 << 0,
     Login = 1 << 1,
     Register = 1 << 2,

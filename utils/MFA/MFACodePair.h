@@ -49,8 +49,11 @@ class CodePairBase::SMSCodePair : public CodePairBase {
    std::string _phoneNumber;
    std::string _countryCode;
 public:
-   SMSCodePair(const std::string& phoneNumber, const std::string& code, eMFAType mfaType, const std::string& countryCode = "+86", std::optional<std::chrono::system_clock::time_point> expireTime = std::nullopt);
-   SMSCodePair(const std::string& phoneNumber, eMFAType mfaType, const std::string& countryCode = "+86", std::optional<std::chrono::system_clock::time_point> expireTime = std::nullopt);
+   SMSCodePair(const std::string& phoneNumber, const std::string& code, eMFAType mfaType, std::optional<std::chrono::system_clock::time_point> expireTime = std::nullopt);
+   SMSCodePair(const std::string& phoneNumber, eMFAType mfaType, std::optional<std::chrono::system_clock::time_point> expireTime = std::nullopt);
+   
+   // 工具函数：解析电话号码，返回(countryCode, phoneNumber)元组
+   static std::tuple<std::string, std::string> ParsePhoneNumber(const std::string& phoneNumber);
    std::string PhoneNumber() const;
    void SetPhoneNumber(const std::string&);
    std::string CountryCode() const;

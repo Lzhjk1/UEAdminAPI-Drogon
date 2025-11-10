@@ -49,6 +49,7 @@ class UserFlashtoken
         static const std::string _flash_token;
         static const std::string _token_desc;
         static const std::string _expire_at;
+        static const std::string _status;
     };
 
     static const int primaryKeyNumber;
@@ -134,8 +135,16 @@ class UserFlashtoken
     ///Set the value of the column expire_at
     void setExpireAt(const ::trantor::Date &pExpireAt) noexcept;
 
+    /**  For column status  */
+    ///Get the value of the column status, returns the default value if the column is null
+    const int32_t &getValueOfStatus() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<int32_t> &getStatus() const noexcept;
+    ///Set the value of the column status
+    void setStatus(const int32_t &pStatus) noexcept;
 
-    static size_t getColumnNumber() noexcept {  return 4;  }
+
+    static size_t getColumnNumber() noexcept {  return 5;  }
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
@@ -164,6 +173,7 @@ class UserFlashtoken
     std::shared_ptr<std::string> flashToken_;
     std::shared_ptr<std::string> tokenDesc_;
     std::shared_ptr<::trantor::Date> expireAt_;
+    std::shared_ptr<int32_t> status_;
     struct MetaData
     {
         const std::string colName_;
@@ -175,7 +185,7 @@ class UserFlashtoken
         const bool notNull_;
     };
     static const std::vector<MetaData> metaData_;
-    bool dirtyFlag_[4]={ false };
+    bool dirtyFlag_[5]={ false };
   public:
     static const std::string &sqlForFindingByPrimaryKey()
     {
@@ -213,6 +223,11 @@ class UserFlashtoken
             sql += "expire_at,";
             ++parametersCount;
         }
+        if(dirtyFlag_[4])
+        {
+            sql += "status,";
+            ++parametersCount;
+        }
         if(parametersCount > 0)
         {
             sql[sql.length()-1]=')';
@@ -240,6 +255,11 @@ class UserFlashtoken
             sql.append(placeholderStr, n);
         }
         if(dirtyFlag_[3])
+        {
+            n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
+            sql.append(placeholderStr, n);
+        }
+        if(dirtyFlag_[4])
         {
             n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
             sql.append(placeholderStr, n);

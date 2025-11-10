@@ -65,17 +65,54 @@ std::shared_ptr<ICodePair> CodePairBase::CreateCodePair(const std::string& targe
 
 // ========== SMSCodePair ==========
 
-CodePairBase::SMSCodePair::SMSCodePair(const std::string& phoneNumber, const std::string& code, eMFAType mfaType, const std::string& countryCode, std::optional<std::chrono::system_clock::time_point> expireTime) {
-   _phoneNumber = phoneNumber;
+// 工具函数：解析电话号码，返回(countryCode, phoneNumber)元组
+std::tuple<std::string, std::string> CodePairBase::SMSCodePair::ParsePhoneNumber(const std::string& phoneNumber) {
+   // 检查号码是否带区号
+   if (phoneNumber.find("+") == 0) {
+      // 找到区号和号码的分界点
+      size_t endOfCountryCode = phoneNumber.find(" ", 1);
+      if (endOfCountryCode == std::string::npos) {
+         // 如果没有空格，尝试找到数字和非数字的分界点
+         endOfCountryCode = 1;
+         while (endOfCountryCode < phoneNumber.length() && isdigit(phoneNumber[endOfCountryCode])) {
+            endOfCountryCode++;
+         }
+      }
+      
+      // 提取区号
+      std::string countryCode = phoneNumber.substr(0, endOfCountryCode);
+      
+      // 提取纯号码（跳过可能的空格）
+      size_t startOfPhoneNumber = endOfCountryCode;
+      if (startOfPhoneNumber < phoneNumber.length() && phoneNumber[startOfPhoneNumber] == ' ') {
+         startOfPhoneNumber++;
+      }
+      std::string purePhoneNumber = phoneNumber.substr(startOfPhoneNumber);
+      
+      return std::make_tuple(countryCode, purePhoneNumber);
+   } else {
+      // 没有区号，默认+86
+      return std::make_tuple("+86", phoneNumber);
+   }
+}
+
+CodePairBase::SMSCodePair::SMSCodePair(const std::string& phoneNumber, const std::string& code, eMFAType mfaType, std::optional<std::chrono::system_clock::time_point> expireTime) {
+   // 使用ParsePhoneNumber解析电话号码
+   auto [countryCode, purePhoneNumber] = ParsePhoneNumber(phoneNumber);
+   _countryCode = countryCode;
+   _phoneNumber = purePhoneNumber;
+   
    SetCode(code);
    SetMfaType(mfaType);
-   _countryCode = countryCode;
    _expireTime = expireTime.value_or(std::chrono::system_clock::now() + std::chrono::minutes(5));
 }
-CodePairBase::SMSCodePair::SMSCodePair(const std::string& phoneNumber, eMFAType mfaType, const std::string& countryCode, std::optional<std::chrono::system_clock::time_point> expireTime) {
-   _phoneNumber = phoneNumber;
-   SetMfaType(mfaType);
+CodePairBase::SMSCodePair::SMSCodePair(const std::string& phoneNumber, eMFAType mfaType, std::optional<std::chrono::system_clock::time_point> expireTime) {
+   // 使用ParsePhoneNumber解析电话号码
+   auto [countryCode, purePhoneNumber] = ParsePhoneNumber(phoneNumber);
    _countryCode = countryCode;
+   _phoneNumber = purePhoneNumber;
+   
+   SetMfaType(mfaType);
    _expireTime = expireTime.value_or(std::chrono::system_clock::now() + std::chrono::minutes(5));
 }
 std::string CodePairBase::SMSCodePair::PhoneNumber() const { return _countryCode + _phoneNumber; }

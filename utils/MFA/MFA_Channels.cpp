@@ -22,7 +22,7 @@ std::optional<std::shared_ptr<ICodePair>> MFAChannelBase::GetCodePair(const std:
 
 bool MFAChannelBase::VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg) {
     ClearExpired();
-    auto target = GetCodePair(baseInfo);
+    auto target = GetCodePair(baseInfo, type);
     if (!target) {
         errorMsg = "验证码不存在或已过期";
         return false;

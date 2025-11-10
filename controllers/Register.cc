@@ -2,6 +2,7 @@
 #include "models/User.h"
 #include <utils/EnumUserPrivileges.h>
 #include "services/AuthService.h"
+#include "services/MFAService.h"
 #include <utils/PostParamMap.h>
 #include <numeric>
 
@@ -15,25 +16,35 @@ using namespace UEAdminAPI;
 Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     // 依赖
     auto _authService = AuthService::Instance();
+    auto _mfaService = MFAService::Instance();
 
 	auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
 
 	auto reqJson = req->getJsonObject();
 
     // 使用PostParamMap类处理参数
     PostParamMap paramMap;
     // 设置需要的参数
-    paramMap.addParam("username", true)         \
-        .addParam("password", true)             \
-        .addParam("privilege", false, "User")   \
-        .addParam("nickname", false)            \
-        .addParam("email", false)               \
-        .addParam("phone", false)               \
-        .addParam("isMale", false, "true");
+    paramMap.addParam("username", true)
+        .addParam("password", true)
+        .addParam("privilege", false, "User")
+        .addParam("nickname", false)
+        .addParam("email", false)
+        .addParam("phone", false)
+        .addParam("isMale", false, "true")
+        .addParam("verifyCode", true);
 
     paramMap.readParamsFromJson(*reqJson);
     std::vector<std::string> missingFields = paramMap.checkRequiredParams();
-        
+
+    // 如果有缺失的必填项，返回错误
+    if (!missingFields.empty()) {
+        resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
+        resp->setStatusCode(k400BadRequest);
+        co_return resp;
+    }
+
     // 通过检测email和phone字段来判断注册方式
     bool isEmailRegister = false;
     if(!(paramMap.hasParam("email") || paramMap.hasParam("phone"))) {
@@ -43,9 +54,9 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         isEmailRegister = true;
     }
 
-    // 如果有缺失的必填项，返回错误
-    if (!missingFields.empty()) {
-        resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
+    // 如果验证码检查失败
+    if(!(co_await _mfaService->VerifyTheCode(paramMap.getParamValue("email"), paramMap.getParamValue("verifyCode"), eMFAType::Register)).Success) {
+        resp->setBody("{\"success\": false, \"message\": \"验证码错误\"}");
         co_return resp;
     }
 
@@ -57,16 +68,6 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     // 数据库相关初始化
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
-
-    //auto targetUser = mapperUsers.findFutureOne(Criteria(User::Cols::_name, CompareOperator::EQ, mapParams["username"].value)).get();
-    // string strHash = *targetUser.getPasswordHash();
-    //if(AuthRepository::VerifyPasswordHash(mapParams["password"].value,
-    //                                     AuthRepository::stringToVector(*targetUser.getPasswordHash()),
-    //                                     AuthRepository::stringToVector(*targetUser.getPasswordSalt()))) {
-    //    LOG_INFO << "用户已存在，且密码正确";
-    //    resp->setBody("{\"success\": true, \"userId\": " + to_string(*targetUser.getId()) + "}");
-    //    co_return resp;
-    //}
 
     // 检查用户名是否已存在
     User foundUser;
@@ -117,9 +118,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     newUser.setCreateAt(trantor::Date::now());
 
     // TODO: 当前为阻塞式的插入，后续可改进
-    auto future = mapperUsers.insertFuture(newUser);
-
-    auto insertedUser = future.get();
+    auto insertedUser = mapperUsers.insertFuture(newUser).get();
 
     resp->setBody("{\"success\": true, \"userId\": " + to_string(*insertedUser.getId()) + "}");
 

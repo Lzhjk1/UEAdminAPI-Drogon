@@ -9,12 +9,13 @@ eMFAType stringToMFAType(const std::string& str) {
     else if (str == "EmailBind") return eMFAType::EmailBind;
     else if (str == "PhoneChange") return eMFAType::PhoneChange;
     else if (str == "DeleteUser") return eMFAType::DeleteUser;
-    else if (str == "LoginOrRegister") return eMFAType::LoginOrRegister;
-    throw std::invalid_argument("Unknown MFA type: " + str);
+    
+    return eMFAType::Error;
 }
 
 std::string MFATypeToString(eMFAType type) {
     switch (type) {
+        case eMFAType::Error: return "Error";
         case eMFAType::Default: return "Default";
         case eMFAType::Login: return "Login";
         case eMFAType::Register: return "Register";
@@ -22,15 +23,20 @@ std::string MFATypeToString(eMFAType type) {
         case eMFAType::EmailBind: return "EmailBind";
         case eMFAType::PhoneChange: return "PhoneChange";
         case eMFAType::DeleteUser: return "DeleteUser";
-        case eMFAType::LoginOrRegister: return "LoginOrRegister";
         default: throw std::invalid_argument("Unknown MFA type");
     }
 }
 
 eMFAType operator|(eMFAType a, eMFAType b) {
+    if (a == eMFAType::Error || b == eMFAType::Error){
+        throw std::invalid_argument("Cannot combine Error MFA type");
+    }
     return static_cast<eMFAType>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
 }
 
 bool operator&(eMFAType a, eMFAType b) {
+    if (a == eMFAType::Error || b == eMFAType::Error){
+        throw std::invalid_argument("Cannot combine Error MFA type");
+    }
     return (static_cast<uint32_t>(a) & static_cast<uint32_t>(b)) != 0;
 }

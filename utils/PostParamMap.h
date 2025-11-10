@@ -15,6 +15,10 @@ namespace UEAdminAPI {
         std::string name;
     };
 
+    /// @brief 用于简化从HttpRequestPtr读取参数的流程
+    /// 1. 先实例化, 然后通过 addParam 方法添加接口所需要的参数, 可以指定参数是否必须, 以及默认值;
+    /// 2. 然后通过 readParamsFromJson 传入 req->getJsonObject() 来读取body中的参数;
+    /// 3. 最后通过 checkRequiredParams 方法检查参数是否完整, 该方法返回一个包含缺失参数名字的列表;
     class PostParamMap {
     private:
         std::unordered_map<std::string, param> _mapParams;

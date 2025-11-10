@@ -18,6 +18,7 @@ const std::string UserFlashtoken::Cols::_user_id = "\"user_id\"";
 const std::string UserFlashtoken::Cols::_flash_token = "\"flash_token\"";
 const std::string UserFlashtoken::Cols::_token_desc = "\"token_desc\"";
 const std::string UserFlashtoken::Cols::_expire_at = "\"expire_at\"";
+const std::string UserFlashtoken::Cols::_status = "\"status\"";
 const std::string UserFlashtoken::primaryKeyName = "user_id";
 const bool UserFlashtoken::hasPrimaryKey = true;
 const std::string UserFlashtoken::tableName = "\"user_flashtoken\"";
@@ -26,7 +27,8 @@ const std::vector<typename UserFlashtoken::MetaData> UserFlashtoken::metaData_={
 {"user_id","int32_t","integer",4,0,1,1},
 {"flash_token","std::string","character varying",300,0,0,1},
 {"token_desc","std::string","character varying",500,0,0,1},
-{"expire_at","::trantor::Date","timestamp with time zone",0,0,0,1}
+{"expire_at","::trantor::Date","timestamp with time zone",0,0,0,1},
+{"status","int32_t","integer",4,0,0,1}
 };
 const std::string &UserFlashtoken::getColumnName(size_t index) noexcept(false)
 {
@@ -71,11 +73,15 @@ UserFlashtoken::UserFlashtoken(const Row &r, const ssize_t indexOffset) noexcept
                 expireAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
         }
+        if(!r["status"].isNull())
+        {
+            status_=std::make_shared<int32_t>(r["status"].as<int32_t>());
+        }
     }
     else
     {
         size_t offset = (size_t)indexOffset;
-        if(offset + 4 > r.size())
+        if(offset + 5 > r.size())
         {
             LOG_FATAL << "Invalid SQL result for this model";
             return;
@@ -119,13 +125,18 @@ UserFlashtoken::UserFlashtoken(const Row &r, const ssize_t indexOffset) noexcept
                 expireAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
         }
+        index = offset + 4;
+        if(!r[index].isNull())
+        {
+            status_=std::make_shared<int32_t>(r[index].as<int32_t>());
+        }
     }
 
 }
 
 UserFlashtoken::UserFlashtoken(const Json::Value &pJson, const std::vector<std::string> &pMasqueradingVector) noexcept(false)
 {
-    if(pMasqueradingVector.size() != 4)
+    if(pMasqueradingVector.size() != 5)
     {
         LOG_ERROR << "Bad masquerading vector";
         return;
@@ -178,6 +189,14 @@ UserFlashtoken::UserFlashtoken(const Json::Value &pJson, const std::vector<std::
                 }
                 expireAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
+        }
+    }
+    if(!pMasqueradingVector[4].empty() && pJson.isMember(pMasqueradingVector[4]))
+    {
+        dirtyFlag_[4] = true;
+        if(!pJson[pMasqueradingVector[4]].isNull())
+        {
+            status_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[4]].asInt64());
         }
     }
 }
@@ -234,12 +253,20 @@ UserFlashtoken::UserFlashtoken(const Json::Value &pJson) noexcept(false)
             }
         }
     }
+    if(pJson.isMember("status"))
+    {
+        dirtyFlag_[4]=true;
+        if(!pJson["status"].isNull())
+        {
+            status_=std::make_shared<int32_t>((int32_t)pJson["status"].asInt64());
+        }
+    }
 }
 
 void UserFlashtoken::updateByMasqueradedJson(const Json::Value &pJson,
                                             const std::vector<std::string> &pMasqueradingVector) noexcept(false)
 {
-    if(pMasqueradingVector.size() != 4)
+    if(pMasqueradingVector.size() != 5)
     {
         LOG_ERROR << "Bad masquerading vector";
         return;
@@ -293,6 +320,14 @@ void UserFlashtoken::updateByMasqueradedJson(const Json::Value &pJson,
             }
         }
     }
+    if(!pMasqueradingVector[4].empty() && pJson.isMember(pMasqueradingVector[4]))
+    {
+        dirtyFlag_[4] = true;
+        if(!pJson[pMasqueradingVector[4]].isNull())
+        {
+            status_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[4]].asInt64());
+        }
+    }
 }
 
 void UserFlashtoken::updateByJson(const Json::Value &pJson) noexcept(false)
@@ -344,6 +379,14 @@ void UserFlashtoken::updateByJson(const Json::Value &pJson) noexcept(false)
                 }
                 expireAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
+        }
+    }
+    if(pJson.isMember("status"))
+    {
+        dirtyFlag_[4] = true;
+        if(!pJson["status"].isNull())
+        {
+            status_=std::make_shared<int32_t>((int32_t)pJson["status"].asInt64());
         }
     }
 }
@@ -431,6 +474,23 @@ void UserFlashtoken::setExpireAt(const ::trantor::Date &pExpireAt) noexcept
     dirtyFlag_[3] = true;
 }
 
+const int32_t &UserFlashtoken::getValueOfStatus() const noexcept
+{
+    static const int32_t defaultValue = int32_t();
+    if(status_)
+        return *status_;
+    return defaultValue;
+}
+const std::shared_ptr<int32_t> &UserFlashtoken::getStatus() const noexcept
+{
+    return status_;
+}
+void UserFlashtoken::setStatus(const int32_t &pStatus) noexcept
+{
+    status_ = std::make_shared<int32_t>(pStatus);
+    dirtyFlag_[4] = true;
+}
+
 void UserFlashtoken::updateId(const uint64_t id)
 {
 }
@@ -441,7 +501,8 @@ const std::vector<std::string> &UserFlashtoken::insertColumns() noexcept
         "user_id",
         "flash_token",
         "token_desc",
-        "expire_at"
+        "expire_at",
+        "status"
     };
     return inCols;
 }
@@ -492,6 +553,17 @@ void UserFlashtoken::outputArgs(drogon::orm::internal::SqlBinder &binder) const
             binder << nullptr;
         }
     }
+    if(dirtyFlag_[4])
+    {
+        if(getStatus())
+        {
+            binder << getValueOfStatus();
+        }
+        else
+        {
+            binder << nullptr;
+        }
+    }
 }
 
 const std::vector<std::string> UserFlashtoken::updateColumns() const
@@ -512,6 +584,10 @@ const std::vector<std::string> UserFlashtoken::updateColumns() const
     if(dirtyFlag_[3])
     {
         ret.push_back(getColumnName(3));
+    }
+    if(dirtyFlag_[4])
+    {
+        ret.push_back(getColumnName(4));
     }
     return ret;
 }
@@ -562,6 +638,17 @@ void UserFlashtoken::updateArgs(drogon::orm::internal::SqlBinder &binder) const
             binder << nullptr;
         }
     }
+    if(dirtyFlag_[4])
+    {
+        if(getStatus())
+        {
+            binder << getValueOfStatus();
+        }
+        else
+        {
+            binder << nullptr;
+        }
+    }
 }
 Json::Value UserFlashtoken::toJson() const
 {
@@ -598,6 +685,14 @@ Json::Value UserFlashtoken::toJson() const
     {
         ret["expire_at"]=Json::Value();
     }
+    if(getStatus())
+    {
+        ret["status"]=getValueOfStatus();
+    }
+    else
+    {
+        ret["status"]=Json::Value();
+    }
     return ret;
 }
 
@@ -605,7 +700,7 @@ Json::Value UserFlashtoken::toMasqueradedJson(
     const std::vector<std::string> &pMasqueradingVector) const
 {
     Json::Value ret;
-    if(pMasqueradingVector.size() == 4)
+    if(pMasqueradingVector.size() == 5)
     {
         if(!pMasqueradingVector[0].empty())
         {
@@ -651,6 +746,17 @@ Json::Value UserFlashtoken::toMasqueradedJson(
                 ret[pMasqueradingVector[3]]=Json::Value();
             }
         }
+        if(!pMasqueradingVector[4].empty())
+        {
+            if(getStatus())
+            {
+                ret[pMasqueradingVector[4]]=getValueOfStatus();
+            }
+            else
+            {
+                ret[pMasqueradingVector[4]]=Json::Value();
+            }
+        }
         return ret;
     }
     LOG_ERROR << "Masquerade failed";
@@ -685,6 +791,14 @@ Json::Value UserFlashtoken::toMasqueradedJson(
     else
     {
         ret["expire_at"]=Json::Value();
+    }
+    if(getStatus())
+    {
+        ret["status"]=getValueOfStatus();
+    }
+    else
+    {
+        ret["status"]=Json::Value();
     }
     return ret;
 }
@@ -731,13 +845,23 @@ bool UserFlashtoken::validateJsonForCreation(const Json::Value &pJson, std::stri
         err="The expire_at column cannot be null";
         return false;
     }
+    if(pJson.isMember("status"))
+    {
+        if(!validJsonOfField(4, "status", pJson["status"], err, true))
+            return false;
+    }
+    else
+    {
+        err="The status column cannot be null";
+        return false;
+    }
     return true;
 }
 bool UserFlashtoken::validateMasqueradedJsonForCreation(const Json::Value &pJson,
                                                         const std::vector<std::string> &pMasqueradingVector,
                                                         std::string &err)
 {
-    if(pMasqueradingVector.size() != 4)
+    if(pMasqueradingVector.size() != 5)
     {
         err = "Bad masquerading vector";
         return false;
@@ -795,6 +919,19 @@ bool UserFlashtoken::validateMasqueradedJsonForCreation(const Json::Value &pJson
             return false;
         }
       }
+      if(!pMasqueradingVector[4].empty())
+      {
+          if(pJson.isMember(pMasqueradingVector[4]))
+          {
+              if(!validJsonOfField(4, pMasqueradingVector[4], pJson[pMasqueradingVector[4]], err, true))
+                  return false;
+          }
+        else
+        {
+            err="The " + pMasqueradingVector[4] + " column cannot be null";
+            return false;
+        }
+      }
     }
     catch(const Json::LogicError &e)
     {
@@ -830,13 +967,18 @@ bool UserFlashtoken::validateJsonForUpdate(const Json::Value &pJson, std::string
         if(!validJsonOfField(3, "expire_at", pJson["expire_at"], err, false))
             return false;
     }
+    if(pJson.isMember("status"))
+    {
+        if(!validJsonOfField(4, "status", pJson["status"], err, false))
+            return false;
+    }
     return true;
 }
 bool UserFlashtoken::validateMasqueradedJsonForUpdate(const Json::Value &pJson,
                                                       const std::vector<std::string> &pMasqueradingVector,
                                                       std::string &err)
 {
-    if(pMasqueradingVector.size() != 4)
+    if(pMasqueradingVector.size() != 5)
     {
         err = "Bad masquerading vector";
         return false;
@@ -865,6 +1007,11 @@ bool UserFlashtoken::validateMasqueradedJsonForUpdate(const Json::Value &pJson,
       if(!pMasqueradingVector[3].empty() && pJson.isMember(pMasqueradingVector[3]))
       {
           if(!validJsonOfField(3, pMasqueradingVector[3], pJson[pMasqueradingVector[3]], err, false))
+              return false;
+      }
+      if(!pMasqueradingVector[4].empty() && pJson.isMember(pMasqueradingVector[4]))
+      {
+          if(!validJsonOfField(4, pMasqueradingVector[4], pJson[pMasqueradingVector[4]], err, false))
               return false;
       }
     }
@@ -942,6 +1089,18 @@ bool UserFlashtoken::validJsonOfField(size_t index,
                 return false;
             }
             if(!pJson.isString())
+            {
+                err="Type error in the "+fieldName+" field";
+                return false;
+            }
+            break;
+        case 4:
+            if(pJson.isNull())
+            {
+                err="The " + fieldName + " column cannot be null";
+                return false;
+            }
+            if(!pJson.isInt())
             {
                 err="Type error in the "+fieldName+" field";
                 return false;

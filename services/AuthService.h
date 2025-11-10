@@ -29,7 +29,22 @@ public:
                             const std::shared_ptr<std::vector<char>> &hashPtr,
                             const std::shared_ptr<std::vector<char>> &saltPtr);
 
-    // 相比原版, 这两个函数生成的Token都有tokenType字段, 而且采用HS512算法
-    std::string CreateToken(const User &user, uint64_t durationSeconds);
-    std::string CreateFlashToken(const User &user, uint64_t durationSeconds = 1296000); // 15天 = 15 * 24 * 60 * 60
+    /// @brief 创建一个Token
+    /// @param id 用户Id
+    /// @param status 状态码, 用于在数据库中标记一个Token, 以实现旧Token失效机制
+    /// @param durationSeconds Token有效期, 单位为秒, 默认1小时
+    /// @return 
+    std::string CreateToken(int id, int status, uint64_t durationSeconds = 3600); // 1小时 = 60 * 60
+    
+    /// @brief 创建一个FlashToken
+    /// @param id 用户Id
+    /// @param status 状态码, 用于在数据库中标记一个Token, 以实现旧Token失效机制
+    /// @param durationSeconds Token有效期, 单位为秒, 默认3天
+    /// @return 
+    std::string CreateFlashToken(int id, int status, uint64_t durationSeconds = 259200); // 3天 = 3 * 24 * 60 * 60
+
+    /// @brief 从Token解析用户ID, Token不合法或过期失效时返回-1
+    /// @param token Token
+    /// @return 用户Id, Token不合法或过期失效时返回 -1
+    int CheckTokenAndParseUserId(const std::string &token);
 };
