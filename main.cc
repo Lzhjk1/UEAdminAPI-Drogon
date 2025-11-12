@@ -10,6 +10,8 @@
 #include "services/MFAService.h"
 #include "services/EmailService.h"
 #include "services/AuthService.h"
+#include "services/GitlabService.h"
+#include "services/ThirdPartyLoginService.h"
 
 
 #include "utils/ServiceResponse.h"
@@ -61,11 +63,12 @@ int main() {
         AuthService::Init(app.getCustomConfig());
         TencentSMSService::Init(app.getCustomConfig());
         EmailService::Init(smtpPlugin, app.getCustomConfig());
-
         MFAService::Init(
             EmailService::Instance(), 
             TencentSMSService::Instance()
         );
+        UEAdminAPI::GitlabService::Init(app.getCustomConfig());
+        UEAdminAPI::Services::ThirdPartyLoginService::Init(app.getCustomConfig());
 
         LOG_INFO << "服务初始化完成";
     });

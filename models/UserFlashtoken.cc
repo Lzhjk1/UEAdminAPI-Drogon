@@ -25,9 +25,9 @@ const std::string UserFlashtoken::tableName = "\"user_flashtoken\"";
 
 const std::vector<typename UserFlashtoken::MetaData> UserFlashtoken::metaData_={
 {"user_id","int32_t","integer",4,0,1,1},
-{"flash_token","std::string","character varying",300,0,0,1},
-{"token_desc","std::string","character varying",500,0,0,1},
-{"expire_at","::trantor::Date","timestamp with time zone",0,0,0,1},
+{"flash_token","std::string","character varying",300,0,0,0},
+{"token_desc","std::string","character varying",500,0,0,0},
+{"expire_at","::trantor::Date","timestamp with time zone",0,0,0,0},
 {"status","int32_t","integer",4,0,0,1}
 };
 const std::string &UserFlashtoken::getColumnName(size_t index) noexcept(false)
@@ -434,6 +434,11 @@ void UserFlashtoken::setFlashToken(std::string &&pFlashToken) noexcept
     flashToken_ = std::make_shared<std::string>(std::move(pFlashToken));
     dirtyFlag_[1] = true;
 }
+void UserFlashtoken::setFlashTokenToNull() noexcept
+{
+    flashToken_.reset();
+    dirtyFlag_[1] = true;
+}
 
 const std::string &UserFlashtoken::getValueOfTokenDesc() const noexcept
 {
@@ -456,6 +461,11 @@ void UserFlashtoken::setTokenDesc(std::string &&pTokenDesc) noexcept
     tokenDesc_ = std::make_shared<std::string>(std::move(pTokenDesc));
     dirtyFlag_[2] = true;
 }
+void UserFlashtoken::setTokenDescToNull() noexcept
+{
+    tokenDesc_.reset();
+    dirtyFlag_[2] = true;
+}
 
 const ::trantor::Date &UserFlashtoken::getValueOfExpireAt() const noexcept
 {
@@ -471,6 +481,11 @@ const std::shared_ptr<::trantor::Date> &UserFlashtoken::getExpireAt() const noex
 void UserFlashtoken::setExpireAt(const ::trantor::Date &pExpireAt) noexcept
 {
     expireAt_ = std::make_shared<::trantor::Date>(pExpireAt);
+    dirtyFlag_[3] = true;
+}
+void UserFlashtoken::setExpireAtToNull() noexcept
+{
+    expireAt_.reset();
     dirtyFlag_[3] = true;
 }
 
@@ -820,30 +835,15 @@ bool UserFlashtoken::validateJsonForCreation(const Json::Value &pJson, std::stri
         if(!validJsonOfField(1, "flash_token", pJson["flash_token"], err, true))
             return false;
     }
-    else
-    {
-        err="The flash_token column cannot be null";
-        return false;
-    }
     if(pJson.isMember("token_desc"))
     {
         if(!validJsonOfField(2, "token_desc", pJson["token_desc"], err, true))
             return false;
     }
-    else
-    {
-        err="The token_desc column cannot be null";
-        return false;
-    }
     if(pJson.isMember("expire_at"))
     {
         if(!validJsonOfField(3, "expire_at", pJson["expire_at"], err, true))
             return false;
-    }
-    else
-    {
-        err="The expire_at column cannot be null";
-        return false;
     }
     if(pJson.isMember("status"))
     {
@@ -887,11 +887,6 @@ bool UserFlashtoken::validateMasqueradedJsonForCreation(const Json::Value &pJson
               if(!validJsonOfField(1, pMasqueradingVector[1], pJson[pMasqueradingVector[1]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[1] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[2].empty())
       {
@@ -900,11 +895,6 @@ bool UserFlashtoken::validateMasqueradedJsonForCreation(const Json::Value &pJson
               if(!validJsonOfField(2, pMasqueradingVector[2], pJson[pMasqueradingVector[2]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[2] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[3].empty())
       {
@@ -913,11 +903,6 @@ bool UserFlashtoken::validateMasqueradedJsonForCreation(const Json::Value &pJson
               if(!validJsonOfField(3, pMasqueradingVector[3], pJson[pMasqueradingVector[3]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[3] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[4].empty())
       {
@@ -1045,8 +1030,7 @@ bool UserFlashtoken::validJsonOfField(size_t index,
         case 1:
             if(pJson.isNull())
             {
-                err="The " + fieldName + " column cannot be null";
-                return false;
+                return true;
             }
             if(!pJson.isString())
             {
@@ -1065,8 +1049,7 @@ bool UserFlashtoken::validJsonOfField(size_t index,
         case 2:
             if(pJson.isNull())
             {
-                err="The " + fieldName + " column cannot be null";
-                return false;
+                return true;
             }
             if(!pJson.isString())
             {
@@ -1085,8 +1068,7 @@ bool UserFlashtoken::validJsonOfField(size_t index,
         case 3:
             if(pJson.isNull())
             {
-                err="The " + fieldName + " column cannot be null";
-                return false;
+                return true;
             }
             if(!pJson.isString())
             {

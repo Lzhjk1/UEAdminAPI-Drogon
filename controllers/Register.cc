@@ -1,8 +1,10 @@
 #include "Register.h"
 #include "models/User.h"
+#include "models/UserGitlabInfo.h"
 #include <utils/EnumUserPrivileges.h>
 #include "services/AuthService.h"
 #include "services/MFAService.h"
+#include "services/GitlabService.h"
 #include <utils/PostParamMap.h>
 #include <numeric>
 
@@ -17,6 +19,8 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     // 依赖
     auto _authService = AuthService::Instance();
     auto _mfaService = MFAService::Instance();
+    auto _gitlabService = GitlabService::Instance();
+
 
 	auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
@@ -55,10 +59,10 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     }
 
     // 如果验证码检查失败
-    if(!(co_await _mfaService->VerifyTheCode(paramMap.getParamValue("email"), paramMap.getParamValue("verifyCode"), eMFAType::Register)).Success) {
-        resp->setBody("{\"success\": false, \"message\": \"验证码错误\"}");
-        co_return resp;
-    }
+    //if(!(co_await _mfaService->VerifyTheCode(paramMap.getParamValue("email"), paramMap.getParamValue("verifyCode"), eMFAType::Register)).Success) {
+    //    resp->setBody("{\"success\": false, \"message\": \"验证码错误\"}");
+    //    co_return resp;
+    //}
 
     // 设置昵称默认为用户名
     if(!paramMap.hasParam("nickname")) {
@@ -68,6 +72,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     // 数据库相关初始化
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
+    drogon::orm::Mapper<UserGitlabInfo> mapperUserGitlabInfos(dbClientPtr);
 
     // 检查用户名是否已存在
     User foundUser;
@@ -117,8 +122,83 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     newUser.setIsMale(paramMap.getParamValue("isMale") == "true" ? true : false);
     newUser.setCreateAt(trantor::Date::now());
 
+    // 同步创建 GitLab 账号
+    int gitlabUserId = 0;
+    if(!_gitlabService->createUser(paramMap.getParamValue("username"), paramMap.getParamValue("password"), paramMap.getParamValue("email"), gitlabUserId)){
+        resp->setBody("{\"success\": false, \"message\": \"创建 GitLab 账号失败\"}");
+        co_return resp;
+    }
+
+    // 邀请用户加入项目
+    if(!_gitlabService->adminInvitationProject(1, UEAdminAPI::GitlabService::AccessLevels::Developer, gitlabUserId)){
+        resp->setBody("{\"success\": false, \"message\": \"邀请用户加入项目失败\"}");
+        co_return resp;
+    }
+
+    // 创建gitlab impersonation token
+    uint32_t gitImpersonationTokenId = 0;
+    string gitlabImpersonationToken = "";
+    if(!_gitlabService->createImpersonationToken(gitlabUserId, gitlabImpersonationToken, gitImpersonationTokenId)){
+        resp->setBody("{\"success\": false, \"message\": \"创建 GitLab Impersonation Token失败\"}");
+        co_return resp;
+    }
+
+    // 创建用户gitlab信息数据库对象
+    auto newUserGitlab = UserGitlabInfo();
+    newUserGitlab.setUserId(newUser.getValueOfId());
+    newUserGitlab.setGitId(gitlabUserId);
+    newUserGitlab.setGitlabImpersonationToken(gitlabImpersonationToken);
+    newUserGitlab.setGitlabImpersonationTokenId(gitImpersonationTokenId);
+
+    // 插入数据库
     // TODO: 当前为阻塞式的插入，后续可改进
-    auto insertedUser = mapperUsers.insertFuture(newUser).get();
+    // auto transaction = co_await dbClientPtr->newTransactionCoro();
+    auto insertedUserFuture = mapperUsers.insertFuture(newUser);
+    auto insertedUserGitlabInfoFuture = mapperUserGitlabInfos.insertFuture(newUserGitlab);
+
+    // 获取future
+    bool step1Failed = false;
+    bool step2Failed = false;
+
+    User insertedUser;
+    UserGitlabInfo insertedUserGitlabInfo;
+
+    try{
+        insertedUser = insertedUserFuture.get();
+    }catch (const drogon::orm::DrogonDbException& e) {
+        LOG_ERROR << "插入用户失败:" <<e.base().what();
+        step1Failed = true;
+    }
+
+    
+    try{
+        insertedUserGitlabInfo = insertedUserGitlabInfoFuture.get();
+    }catch (const drogon::orm::DrogonDbException& e) {
+        LOG_ERROR << "插入Gitlab信息失败:" <<e.base().what();
+        step2Failed = true;
+    }
+
+
+    if(step1Failed){
+        if(!_gitlabService->deleteUser(gitlabUserId)){
+            LOG_ERROR << "创建用户时失败, 回滚时删除Gitlab用户失败";
+        }
+        LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
+        resp->setBody("{\"success\": false, \"message\": \"创建用户失败\"}");
+        co_return resp;
+    }
+    if(!step1Failed && step2Failed){
+        if(!_gitlabService->deleteUser(gitlabUserId)){
+            LOG_ERROR << "创建用户时失败, 回滚时删除Gitlab用户失败";
+        }
+        LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
+        if(mapperUsers.deleteFutureOne(insertedUser).get() == 0){
+            LOG_ERROR << "创建用户时失败, 回滚时删除先前插入的用户数据失败";
+        }
+        resp->setBody("{\"success\": false, \"message\": \"创建用户失败\"}");
+        co_return resp;
+    }
+    
 
     resp->setBody("{\"success\": true, \"userId\": " + to_string(*insertedUser.getId()) + "}");
 

@@ -48,6 +48,7 @@ class UserGitlabInfo
         static const std::string _user_id;
         static const std::string _gitlab_impersonation_token_id;
         static const std::string _gitlab_impersonation_token;
+        static const std::string _git_id;
     };
 
     static const int primaryKeyNumber;
@@ -124,8 +125,16 @@ class UserGitlabInfo
     void setGitlabImpersonationToken(const std::string &pGitlabImpersonationToken) noexcept;
     void setGitlabImpersonationToken(std::string &&pGitlabImpersonationToken) noexcept;
 
+    /**  For column git_id  */
+    ///Get the value of the column git_id, returns the default value if the column is null
+    const int32_t &getValueOfGitId() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<int32_t> &getGitId() const noexcept;
+    ///Set the value of the column git_id
+    void setGitId(const int32_t &pGitId) noexcept;
 
-    static size_t getColumnNumber() noexcept {  return 3;  }
+
+    static size_t getColumnNumber() noexcept {  return 4;  }
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
@@ -153,6 +162,7 @@ class UserGitlabInfo
     std::shared_ptr<int32_t> userId_;
     std::shared_ptr<int32_t> gitlabImpersonationTokenId_;
     std::shared_ptr<std::string> gitlabImpersonationToken_;
+    std::shared_ptr<int32_t> gitId_;
     struct MetaData
     {
         const std::string colName_;
@@ -164,7 +174,7 @@ class UserGitlabInfo
         const bool notNull_;
     };
     static const std::vector<MetaData> metaData_;
-    bool dirtyFlag_[3]={ false };
+    bool dirtyFlag_[4]={ false };
   public:
     static const std::string &sqlForFindingByPrimaryKey()
     {
@@ -197,6 +207,11 @@ class UserGitlabInfo
             sql += "gitlab_impersonation_token,";
             ++parametersCount;
         }
+        if(dirtyFlag_[3])
+        {
+            sql += "git_id,";
+            ++parametersCount;
+        }
         if(parametersCount > 0)
         {
             sql[sql.length()-1]=')';
@@ -219,6 +234,11 @@ class UserGitlabInfo
             sql.append(placeholderStr, n);
         }
         if(dirtyFlag_[2])
+        {
+            n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
+            sql.append(placeholderStr, n);
+        }
+        if(dirtyFlag_[3])
         {
             n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
             sql.append(placeholderStr, n);

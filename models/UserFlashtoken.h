@@ -117,6 +117,7 @@ class UserFlashtoken
     ///Set the value of the column flash_token
     void setFlashToken(const std::string &pFlashToken) noexcept;
     void setFlashToken(std::string &&pFlashToken) noexcept;
+    void setFlashTokenToNull() noexcept;
 
     /**  For column token_desc  */
     ///Get the value of the column token_desc, returns the default value if the column is null
@@ -126,6 +127,7 @@ class UserFlashtoken
     ///Set the value of the column token_desc
     void setTokenDesc(const std::string &pTokenDesc) noexcept;
     void setTokenDesc(std::string &&pTokenDesc) noexcept;
+    void setTokenDescToNull() noexcept;
 
     /**  For column expire_at  */
     ///Get the value of the column expire_at, returns the default value if the column is null
@@ -134,6 +136,7 @@ class UserFlashtoken
     const std::shared_ptr<::trantor::Date> &getExpireAt() const noexcept;
     ///Set the value of the column expire_at
     void setExpireAt(const ::trantor::Date &pExpireAt) noexcept;
+    void setExpireAtToNull() noexcept;
 
     /**  For column status  */
     ///Get the value of the column status, returns the default value if the column is null
