@@ -10,7 +10,7 @@
 using namespace drogon_model::UEAdminAPI;
 using namespace trantor;
 
-namespace uehttp {
+namespace UEAdminAPI {
 
 static std::string jwt_secret;
 static std::string jwt_issuer;

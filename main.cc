@@ -43,7 +43,7 @@ int main() {
 
     HttpAppFramework &app = drogon::app();
     //Set HTTP listener address and port
-    app.addListener("0.0.0.0", 5555);
+    //app.addListener("0.0.0.0", 5555);
     //Load config file
     //drogon::app().loadConfigFile("../config.json");
     app.loadConfigFile("../../../config.yaml");

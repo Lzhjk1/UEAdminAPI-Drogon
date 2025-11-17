@@ -5,6 +5,8 @@
 config.json
 config.yaml
 
+cert/
+
 .cmake/
 build/
 

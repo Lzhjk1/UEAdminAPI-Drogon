@@ -7,6 +7,7 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include "utils/DataFormatUtils.h"
 
 namespace UEAdminAPI {
 namespace Services {
@@ -32,7 +33,7 @@ ThirdPartyLoginPlatformBase::ThirdPartyLoginPlatformBase(const Json::Value& conf
     this->clientSecret = clientSecret;
 
     // 设置重定向URL
-    this->redirectUrl = this->serverHost + "/api/third/" + name;
+    this->redirectUrl = this->serverHost + "/api/third/" + DataFormatUtil::toLowerCase(name);
 
     // 创建HTTP客户端
     httpClient = drogon::HttpClient::newHttpClient("https://graph.qq.com");
@@ -626,38 +627,26 @@ bool ThirdPartyLoginPlatform_WeChat::callBack(const std::string& code, const std
 // ThirdPartyLoginService 实现
 ThirdPartyLoginService::ThirdPartyLoginService(const Json::Value& config) {
     // 添加QQ平台
-    platforms["QQ"] = std::make_unique<ThirdPartyLoginPlatform_QQ>(config);
+    platforms[ThirdPartyPlatform::QQ] = std::make_unique<ThirdPartyLoginPlatform_QQ>(config);
 
     // 添加微信平台
-    platforms["WeChat"] = std::make_unique<ThirdPartyLoginPlatform_WeChat>(config);
+    platforms[ThirdPartyPlatform::WeChat] = std::make_unique<ThirdPartyLoginPlatform_WeChat>(config);
 }
 
 IThirdPartyLoginPlatform* ThirdPartyLoginService::getPlatform(ThirdPartyPlatform platform) {
-    std::string platformName;
-    switch (platform) {
-        case ThirdPartyPlatform::QQ:
-            platformName = "QQ";
-            break;
-        case ThirdPartyPlatform::WeChat:
-            platformName = "WeChat";
-            break;
-        default:
-            return nullptr;
-    }
-
     std::lock_guard<std::mutex> lock(mutex);
-    auto it = platforms.find(platformName);
+    auto it = platforms.find(platform);
     return it != platforms.end() ? it->second.get() : nullptr;
 }
 
-void ThirdPartyLoginService::deletePlatform(const std::string& platformName) {
+void ThirdPartyLoginService::deletePlatform(ThirdPartyPlatform platform) {
     std::lock_guard<std::mutex> lock(mutex);
-    platforms.erase(platformName);
+    platforms.erase(platform);
 }
 
 void ThirdPartyLoginService::clearExpired() {
-    for (auto& [name, platform] : platforms) {
-        platform->clearExpired();
+    for (auto& [platform, platformImpl] : platforms) {
+        platformImpl->clearExpired();
     }
 }
 

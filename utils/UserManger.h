@@ -8,7 +8,7 @@
 #include <shared_mutex>
 #include "Singleton.h"
 
-namespace uehttp {
+namespace UEAdminAPI {
 
 class UserData{
 public:

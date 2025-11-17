@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace uehttp {
+namespace UEAdminAPI {
 
     class DataFormatUtil {
     public:
@@ -66,6 +66,9 @@ namespace uehttp {
          * @return false 不是jwt字符串
          */
         static bool isJwtString(const std::string &jwt);
+
+        // 转换字符串为小写
+        static std::string toLowerCase(const std::string &str);
     };
 
 }

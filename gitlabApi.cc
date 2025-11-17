@@ -15,7 +15,7 @@
 #include "sstream"
 #include <json/json.h>
 
-namespace uehttp {
+namespace UEAdminAPI {
 namespace thirdApi {
 
 static qtch::Logger::ptr logger = QTCH_LOG_NAME("uehttp");
@@ -61,7 +61,7 @@ std::string GitLabAPI::generateFakeEmail(const std::string& userName){
         QTCH_LOG_ERROR(logger) << "generateFakeEmail userName can't be null";
         return "";
     }
-    std::string code = uehttp::DataFormatUtil::RandomCode(6);
+    std::string code = UEAdminAPI::DataFormatUtil::RandomCode(6);
     std::string email = userName + "_" + code + "@email.uesoft.com";
 
     return email;

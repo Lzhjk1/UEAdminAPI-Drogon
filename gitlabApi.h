@@ -15,7 +15,7 @@
 #include "qtch/http/http.h"
 
 
-namespace uehttp{
+namespace UEAdminAPI{
 namespace thirdApi{
 
 

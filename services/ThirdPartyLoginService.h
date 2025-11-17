@@ -15,7 +15,8 @@ namespace Services {
 // 第三方平台枚举
 enum class ThirdPartyPlatform {
     QQ,
-    WeChat
+    WeChat,
+    None
 };
 
 // 第三方登录值
@@ -133,12 +134,12 @@ public:
     ThirdPartyLoginService(const Json::Value& config);
 
     IThirdPartyLoginPlatform* getPlatform(ThirdPartyPlatform platform);
-    void deletePlatform(const std::string& platformName);
+    void deletePlatform(ThirdPartyPlatform platform);
     void clearExpired();
 
 private:
     std::mutex mutex;
-    std::unordered_map<std::string, std::unique_ptr<IThirdPartyLoginPlatform>> platforms;
+    std::unordered_map<ThirdPartyPlatform, std::unique_ptr<IThirdPartyLoginPlatform>> platforms;
 };
 
 } // namespace Services

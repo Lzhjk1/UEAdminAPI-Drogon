@@ -51,12 +51,6 @@ Task<HttpResponsePtr> ThirdPartyLogin::callback(HttpRequestPtr req,
                               const std::string& state) const {
     // 获取平台枚举
     auto platformEnum = getPlatformFromString(platform);
-    if (platformEnum == Services::ThirdPartyPlatform::QQ && platform != "QQ") {
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k404NotFound);
-        resp->setBody("不支持的第三方平台");
-        co_return resp;
-    }
 
     // 获取平台服务
     auto platformService = ThirdPartyLoginService::Instance()->getPlatform(platformEnum);
@@ -181,7 +175,7 @@ Services::ThirdPartyPlatform ThirdPartyLogin::getPlatformFromString(const std::s
     }
 
     // 返回一个无效值
-    return Services::ThirdPartyPlatform::QQ;
+    return Services::ThirdPartyPlatform::None;
 }
 
 } // namespace Controllers

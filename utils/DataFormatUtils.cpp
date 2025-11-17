@@ -1,7 +1,7 @@
 #include "DataFormatUtils.h"
 #include <regex>
 
-namespace uehttp {
+namespace UEAdminAPI {
 
 
 bool DataFormatUtil::isPhoneNumber(const std::string& phoneNumber) {
@@ -22,6 +22,11 @@ bool DataFormatUtil::isJwtString(const std::string& jwt) {
     return std::regex_match(jwt, pattern);
 }
 
+std::string DataFormatUtil::toLowerCase(const std::string &str) {
+    std::string result = str;
+    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+    return result;
+}
 
 std::string DataFormatUtil::encryptPwd(const std::string& userName,const std::string& userPwd){
     // std::stringstream ss;
