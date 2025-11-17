@@ -8,6 +8,7 @@
 #include <mutex>
 #include <chrono>
 #include <drogon/HttpClient.h>
+#include <drogon/HttpAppFramework.h>
 
 namespace UEAdminAPI {
 namespace Services {
@@ -26,6 +27,7 @@ public:
                         const std::chrono::system_clock::time_point& expireTime);
 
     ThirdPartyLoginValue(const std::string& code, const std::string& verifyCode);
+
 
     std::string code;
     std::string authorizationCode;
@@ -47,18 +49,19 @@ class IThirdPartyLoginPlatform {
 public:
     virtual ~IThirdPartyLoginPlatform() = default;
 
-    virtual ThirdPartyLoginValue* getLoginValue(const std::string& code) = 0;
-    virtual bool verifyCode(const std::string& code, const std::string& verifyCode) = 0;
-    virtual std::shared_ptr<ThirdPartyLoginValue> createNewThirdLoginValue() = 0;
-    virtual void clearExpired() = 0;
-    virtual bool fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
-    virtual std::string getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
-    virtual bool fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
-    virtual std::string getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
-    virtual std::string getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
-    virtual bool fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
-    virtual std::string getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
-    virtual bool callBack(const std::string& code, const std::string& state) = 0;
+    virtual drogon::Task<ThirdPartyLoginValue*> getLoginValue(const std::string& code) = 0;
+    virtual drogon::Task<bool> verifyCode(const std::string& code, const std::string& verifyCode) = 0;
+    virtual drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> createNewThirdLoginValue() = 0;
+    virtual drogon::Task<void> clearExpired() = 0;
+    virtual drogon::Task<bool> fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
+    virtual drogon::Task<std::string> getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
+    virtual drogon::Task<bool> fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
+    virtual drogon::Task<std::string> getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
+    virtual drogon::Task<std::string> getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
+    virtual drogon::Task<bool> fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
+    virtual drogon::Task<std::string> getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
+    virtual drogon::Task<bool> callBack(const std::string& code, const std::string& state) = 0;
+    virtual drogon::Task<std::string> saveInfoToDB(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
 
     virtual std::string getName() const = 0;
     virtual std::string getRedirectUrl() const = 0;
@@ -70,10 +73,10 @@ public:
     ThirdPartyLoginPlatformBase(const Json::Value& config, const std::string& name);
     virtual ~ThirdPartyLoginPlatformBase() = default;
 
-    ThirdPartyLoginValue* getLoginValue(const std::string& code) override;
-    bool verifyCode(const std::string& code, const std::string& verifyCode) override;
-    std::shared_ptr<ThirdPartyLoginValue> createNewThirdLoginValue() override;
-    void clearExpired() override;
+    drogon::Task<ThirdPartyLoginValue*> getLoginValue(const std::string& code) override;
+    drogon::Task<bool> verifyCode(const std::string& code, const std::string& verifyCode) override;
+    drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> createNewThirdLoginValue() override;
+    drogon::Task<void> clearExpired() override;
 
     std::string getName() const override {
         return name;
@@ -103,14 +106,15 @@ class ThirdPartyLoginPlatform_QQ : public ThirdPartyLoginPlatformBase {
 public:
     ThirdPartyLoginPlatform_QQ(const Json::Value& config);
 
-    bool fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    std::string getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    bool fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    std::string getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    std::string getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    bool fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    std::string getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    bool callBack(const std::string& code, const std::string& state) override;
+    drogon::Task<bool> fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<std::string> getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<bool> fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<std::string> getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<std::string> getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<bool> fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<std::string> getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<bool> callBack(const std::string& code, const std::string& state) override;
+    drogon::Task<std::string> saveInfoToDB(std::shared_ptr<ThirdPartyLoginValue> value) override;
 };
 
 // 微信第三方登录平台实现
@@ -118,14 +122,15 @@ class ThirdPartyLoginPlatform_WeChat : public ThirdPartyLoginPlatformBase {
 public:
     ThirdPartyLoginPlatform_WeChat(const Json::Value& config);
 
-    bool fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    std::string getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    bool fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    std::string getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    std::string getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    bool fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    std::string getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) override;
-    bool callBack(const std::string& code, const std::string& state) override;
+    drogon::Task<bool> fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<std::string> getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<bool> fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<std::string> getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<std::string> getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<bool> fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<std::string> getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) override;
+    drogon::Task<bool> callBack(const std::string& code, const std::string& state) override;
+    drogon::Task<std::string> saveInfoToDB(std::shared_ptr<ThirdPartyLoginValue> value) override;
 };
 
 // 第三方登录管理器
@@ -133,9 +138,9 @@ class ThirdPartyLoginService : public SingletonWithInit<ThirdPartyLoginService> 
 public:
     ThirdPartyLoginService(const Json::Value& config);
 
-    IThirdPartyLoginPlatform* getPlatform(ThirdPartyPlatform platform);
-    void deletePlatform(ThirdPartyPlatform platform);
-    void clearExpired();
+    drogon::Task<IThirdPartyLoginPlatform*> getPlatform(ThirdPartyPlatform platform);
+    drogon::Task<void> deletePlatform(ThirdPartyPlatform platform);
+    drogon::Task<void> clearExpired();
 
 private:
     std::mutex mutex;

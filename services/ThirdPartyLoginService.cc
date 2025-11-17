@@ -79,16 +79,16 @@ ThirdPartyLoginPlatformBase::checkAndGetPlatformConfig(const std::string& platfo
     return std::make_tuple(serverHost, clientId, clientSecret);
 }
 
-ThirdPartyLoginValue* ThirdPartyLoginPlatformBase::getLoginValue(const std::string& code) {
+drogon::Task<ThirdPartyLoginValue*> ThirdPartyLoginPlatformBase::getLoginValue(const std::string& code) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     auto it = std::find_if(loginValues.begin(), loginValues.end(),
                           [&code](const std::shared_ptr<ThirdPartyLoginValue>& value) {
                               return value->code == code;
                           });
-    return it != loginValues.end() ? it->get() : nullptr;
+    co_return it != loginValues.end() ? it->get() : nullptr;
 }
 
-bool ThirdPartyLoginPlatformBase::verifyCode(const std::string& code, const std::string& verifyCode) {
+drogon::Task<bool> ThirdPartyLoginPlatformBase::verifyCode(const std::string& code, const std::string& verifyCode) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     auto it = std::find_if(loginValues.begin(), loginValues.end(),
                           [&code](const std::shared_ptr<ThirdPartyLoginValue>& value) {
@@ -96,21 +96,21 @@ bool ThirdPartyLoginPlatformBase::verifyCode(const std::string& code, const std:
                           });
 
     if (it == loginValues.end()) {
-        return false;
+        co_return false;
     }
 
     auto& value = *it;
     if (value->isExpired()) {
         loginValues.erase(it);
-        return false;
+        co_return false;
     }
 
-    return value->verifyCode == verifyCode;
+    co_return value->verifyCode == verifyCode;
 }
 
-std::shared_ptr<ThirdPartyLoginValue> ThirdPartyLoginPlatformBase::createNewThirdLoginValue() {
+drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> ThirdPartyLoginPlatformBase::createNewThirdLoginValue() {
     std::lock_guard<std::recursive_mutex> lock(mutex);
-    clearExpired();
+    co_await clearExpired();
 
     std::string newCode;
     while (true) {
@@ -126,10 +126,10 @@ std::shared_ptr<ThirdPartyLoginValue> ThirdPartyLoginPlatformBase::createNewThir
 
     auto newLoginValue = std::make_shared<ThirdPartyLoginValue>(newCode, RandomGenerator::getRandNumberStr(6));
     loginValues.push_back(newLoginValue);
-    return newLoginValue;
+    co_return newLoginValue;
 }
 
-void ThirdPartyLoginPlatformBase::clearExpired() {
+drogon::Task<void> ThirdPartyLoginPlatformBase::clearExpired() {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     loginValues.erase(
         std::remove_if(loginValues.begin(), loginValues.end(),
@@ -137,6 +137,7 @@ void ThirdPartyLoginPlatformBase::clearExpired() {
                           return value->isExpired();
                       }),
         loginValues.end());
+    co_return;
 }
 
 // ThirdPartyLoginPlatform_QQ 实现
@@ -146,17 +147,17 @@ ThirdPartyLoginPlatform_QQ::ThirdPartyLoginPlatform_QQ(const Json::Value& config
     httpClient = drogon::HttpClient::newHttpClient("https://graph.qq.com");
 }
 
-bool ThirdPartyLoginPlatform_QQ::fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) {
     if (value->code.empty()) {
         throw std::runtime_error("登录码为空, 请检查登录码是否正确.");
     }
 
     // 构造请求链接
     std::stringstream ss;
-    ss << "https://graph.qq.com/oauth2.0/token?grant_type=authorization_code"
+    ss << "/oauth2.0/token?grant_type=authorization_code"
        << "&client_id=" << clientId
        << "&client_secret=" << clientSecret
-       << "&code=" << value->code
+       << "&code=" << value->authorizationCode
        << "&redirect_uri=" << redirectUrl
        << "&fmt=json";
 
@@ -165,19 +166,19 @@ bool ThirdPartyLoginPlatform_QQ::fetchTokens(std::shared_ptr<ThirdPartyLoginValu
     req->setMethod(drogon::Get);
     req->setPath(ss.str());
 
-    auto [result, response] = httpClient->sendRequest(req);
+    auto response = co_await httpClient->sendRequestCoro(req);
     
     
-    if (result != drogon::ReqResult::Ok) {
+    if (!response) {
         LOG_ERROR << "QQ平台获取AccessToken失败, 无法获取响应";
-        return false;
+        co_return false;
     }
 
     // 处理响应
     if (response->getStatusCode() != drogon::k200OK) {
         LOG_ERROR << "QQ平台获取AccessToken失败, 状态码: " << response->getStatusCode()
                   << ", 原因: " << response->getJsonError();
-        return false;
+        co_return false;
     }
 
     // 解析JSON
@@ -185,14 +186,14 @@ bool ThirdPartyLoginPlatform_QQ::fetchTokens(std::shared_ptr<ThirdPartyLoginValu
     Json::Reader reader;
     if (!reader.parse(std::string(response->getBody()), json)) {
         LOG_ERROR << "QQ平台获取AccessToken失败, 解析响应为JSON时失败, 响应原文: " << response->getBody();
-        return false;
+        co_return false;
     }
 
     // 处理业务错误
     if (json.isMember("ret") && json["ret"].asInt() != 0) {
         LOG_ERROR << "QQ平台获取AccessToken失败, 错误码: " << json["ret"].asInt()
                   << ", 错误信息: " << json["msg"].asString();
-        return false;
+        co_return false;
     }
 
     // 保存数据到Value
@@ -203,51 +204,51 @@ bool ThirdPartyLoginPlatform_QQ::fetchTokens(std::shared_ptr<ThirdPartyLoginValu
         value->refreshToken = json["refresh_token"].asString();
     }
 
-    return true;
+    co_return true;
 }
 
-std::string ThirdPartyLoginPlatform_QQ::getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) {
     if (value->accessToken.empty()) {
-        if (!fetchTokens(value)) {
+        if (!co_await fetchTokens(value)) {
             LOG_ERROR << "获取QQ平台AccessToken失败.";
-            return "";
+            co_return "";
         }
     }
     if (value->accessToken.empty()) {
         LOG_ERROR << "获取QQ平台AccessToken失败, FetchTokens后AccessToken仍为空.";
-        return "";
+        co_return "";
     }
 
-    return value->accessToken;
+    co_return value->accessToken;
 }
 
-bool ThirdPartyLoginPlatform_QQ::fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
     std::string accessToken = value->accessToken;
     if (accessToken.empty()) {
         LOG_ERROR << "获取QQ平台OpenId失败, AccessToken为空.";
-        return false;
+        co_return false;
     }
 
     // 构造请求链接
     std::stringstream ss;
-    ss << "https://graph.qq.com/oauth2.0/me?access_token=" << accessToken << "&fmt=json";
+    ss << "/oauth2.0/me?access_token=" << accessToken << "&fmt=json";
 
     // 发送请求
     auto req = drogon::HttpRequest::newHttpRequest();
     req->setMethod(drogon::Get);
     req->setPath(ss.str());
 
-    auto [result, response] = httpClient->sendRequest(req);
+    auto response = co_await httpClient->sendRequestCoro(req);
     if (!response) {
         LOG_ERROR << "QQ平台获取OpenId失败, 无法获取响应";
-        return false;
+        co_return false;
     }
 
     // 处理响应
     if (response->getStatusCode() != drogon::k200OK) {
         LOG_ERROR << "QQ平台获取OpenId失败, 状态码: " << response->getStatusCode()
                   << ", 原因: " << response->getJsonError();
-        return false;
+        co_return false;
     }
 
     // 解析JSON
@@ -255,14 +256,14 @@ bool ThirdPartyLoginPlatform_QQ::fetchOpenId(std::shared_ptr<ThirdPartyLoginValu
     Json::Reader reader;
     if (!reader.parse(std::string(response->getBody()), json)) {
         LOG_ERROR << "QQ平台获取OpenId失败, 解析响应为JSON时失败, 响应原文: " << response->getBody();
-        return false;
+        co_return false;
     }
 
     // 处理业务错误
     if (json.isMember("ret") && json["ret"].asInt() != 0) {
         LOG_ERROR << "QQ平台获取OpenId失败, 错误码: " << json["ret"].asInt()
                   << ", 错误信息: " << json["msg"].asString();
-        return false;
+        co_return false;
     }
 
     // 保存数据到Value
@@ -270,50 +271,50 @@ bool ThirdPartyLoginPlatform_QQ::fetchOpenId(std::shared_ptr<ThirdPartyLoginValu
         value->openId = json["openid"].asString();
     }
 
-    return true;
+    co_return true;
 }
 
-std::string ThirdPartyLoginPlatform_QQ::getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
     if (!value->openId.empty()) {
-        return value->openId;
+        co_return value->openId;
     }
 
-    std::string accessToken = getAccessToken(value);
+    std::string accessToken = co_await getAccessToken(value);
     if (accessToken.empty()) {
         LOG_ERROR << "获取QQ平台OpenId失败, AccessToken为空.";
-        return "";
+        co_return "";
     }
 
-    if (!fetchOpenId(value)) {
+    if (!co_await fetchOpenId(value)) {
         LOG_ERROR << "获取QQ平台OpenId失败.";
-        return "";
+        co_return "";
     }
 
-    return value->openId;
+    co_return value->openId;
 }
 
-std::string ThirdPartyLoginPlatform_QQ::getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) {
     std::stringstream ss;
     ss << "https://graph.qq.com/oauth2.0/authorize?response_type=code"
        << "&client_id=" << clientId
        << "&redirect_uri=" << redirectUrl
        << "&state=" << value->code;
 
-    return ss.str();
+    co_return ss.str();
 }
 
-bool ThirdPartyLoginPlatform_QQ::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) {
     std::string accessToken = value->accessToken;
     std::string openId = value->openId;
 
     if (accessToken.empty() || openId.empty()) {
         LOG_ERROR << "获取QQ平台用户信息失败, AccessToken或OpenId为空.";
-        return false;
+        co_return false;
     }
 
     // 构造请求链接
     std::stringstream ss;
-    ss << "https://graph.qq.com/user/get_user_info"
+    ss << "/user/get_user_info"
        << "?access_token=" << accessToken
        << "&oauth_consumer_key=" << clientId
        << "&openid=" << openId
@@ -324,17 +325,17 @@ bool ThirdPartyLoginPlatform_QQ::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPa
     req->setMethod(drogon::Get);
     req->setPath(ss.str());
 
-    auto [result, response] = httpClient->sendRequest(req);
+    auto response = co_await httpClient->sendRequestCoro(req);
     if (!response) {
         LOG_ERROR << "QQ平台获取用户信息失败, 无法获取响应";
-        return false;
+        co_return false;
     }
 
     // 处理响应
     if (response->getStatusCode() != drogon::k200OK) {
         LOG_ERROR << "QQ平台获取用户信息失败, 状态码: " << response->getStatusCode()
                   << ", 原因: " << response->getJsonError();
-        return false;
+        co_return false;
     }
 
     // 解析JSON
@@ -342,14 +343,14 @@ bool ThirdPartyLoginPlatform_QQ::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPa
     Json::Reader reader;
     if (!reader.parse(std::string(response->getBody()), json)) {
         LOG_ERROR << "QQ平台获取用户信息失败, 解析响应为JSON时失败, 响应原文: " << response->getBody();
-        return false;
+        co_return false;
     }
 
     // 处理业务错误
     if (json.isMember("ret") && json["ret"].asInt() != 0) {
         LOG_ERROR << "QQ平台获取用户信息失败, 错误码: " << json["ret"].asInt()
                   << ", 错误信息: " << json["msg"].asString();
-        return false;
+        co_return false;
     }
 
     // 保存数据到Value
@@ -360,28 +361,28 @@ bool ThirdPartyLoginPlatform_QQ::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPa
         value->headImgUrl = json["figureurl_qq_2"].asString();
     }
 
-    return true;
+    co_return true;
 }
 
-std::string ThirdPartyLoginPlatform_QQ::getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) {
     if (!value->nickName.empty()) {
-        return value->nickName;
+        co_return value->nickName;
     }
 
-    if (!fetchThirdPartyUserInfo(value)) {
+    if (!co_await fetchThirdPartyUserInfo(value)) {
         LOG_ERROR << "获取QQ平台用户昵称失败.";
-        return "";
+        co_return "";
     }
 
     if (value->nickName.empty()) {
         LOG_ERROR << "获取QQ平台用户昵称失败, 获取到的昵称为空.";
-        return "";
+        co_return "";
     }
 
-    return value->nickName;
+    co_return value->nickName;
 }
 
-bool ThirdPartyLoginPlatform_QQ::callBack(const std::string& code, const std::string& state) {
+drogon::Task<bool> ThirdPartyLoginPlatform_QQ::callBack(const std::string& code, const std::string& state) {
     std::shared_ptr<ThirdPartyLoginValue> targetValue;
     {
         std::lock_guard<std::recursive_mutex> lock(mutex);
@@ -391,18 +392,27 @@ bool ThirdPartyLoginPlatform_QQ::callBack(const std::string& code, const std::st
                               });
         if (it == loginValues.end()) {
             LOG_ERROR << "QQ平台回调失败, 找不到对应的登录值, Code: " << code << ", State: " << state;
-            return false;
+            co_return false;
         }
         targetValue = *it;
     }
 
     targetValue->authorizationCode = code;
+    std::string accessToken = co_await getAccessToken(targetValue);
+    std::string openId = co_await getOpenId(targetValue);
+    std::string nickName = co_await getThirdPartyUserNickName(targetValue);
+    
     LOG_INFO << "QQ平台回调成功, Code: " << code << ", State: " << state
-             << " AccessToken = " << getAccessToken(targetValue)
-             << " OpenId = " << getOpenId(targetValue)
-             << " NickName = " << getThirdPartyUserNickName(targetValue);
+             << " AccessToken = " << accessToken
+             << " OpenId = " << openId
+             << " NickName = " << nickName;
 
-    return true;
+    co_return true;
+}
+
+drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::saveInfoToDB(std::shared_ptr<ThirdPartyLoginValue> value)
+{
+    throw std::runtime_error("Not Implemented.");
 }
 
 // ThirdPartyLoginPlatform_WeChat 实现
@@ -412,14 +422,14 @@ ThirdPartyLoginPlatform_WeChat::ThirdPartyLoginPlatform_WeChat(const Json::Value
     httpClient = drogon::HttpClient::newHttpClient("https://api.weixin.qq.com");
 }
 
-bool ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) {
     if (value->code.empty()) {
         throw std::runtime_error("登录码为空, 请检查登录码是否正确.");
     }
 
     // 构造请求链接
     std::stringstream ss;
-    ss << "https://api.weixin.qq.com/sns/oauth2/access_token"
+    ss << "/sns/oauth2/access_token"
        << "?appid=" << clientId
        << "&secret=" << clientSecret
        << "&code=" << value->code
@@ -430,17 +440,17 @@ bool ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<ThirdPartyLogin
     req->setMethod(drogon::Get);
     req->setPath(ss.str());
 
-    auto [result, response] = httpClient->sendRequest(req);
+    auto response = co_await httpClient->sendRequestCoro(req);
     if (!response) {
         LOG_ERROR << "微信平台获取AccessToken失败, 无法获取响应";
-        return false;
+        co_return false;
     }
 
     // 处理响应
     if (response->getStatusCode() != drogon::k200OK) {
         LOG_ERROR << "微信平台获取AccessToken失败, 状态码: " << response->getStatusCode()
                   << ", 原因: " << response->getJsonError();
-        return false;
+        co_return false;
     }
 
     // 解析JSON
@@ -448,14 +458,14 @@ bool ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<ThirdPartyLogin
     Json::Reader reader;
     if (!reader.parse(std::string(response->getBody()), json)) {
         LOG_ERROR << "微信平台获取AccessToken失败, 解析响应为JSON时失败, 响应原文: " << response->getBody();
-        return false;
+        co_return false;
     }
 
     // 微信比较特殊, 错误时返回另一结构的json数据, 不能直接解析
     if (json.isMember("errcode")) {
         LOG_ERROR << "微信平台获取AccessToken失败, 错误码: " << json["errcode"].asInt()
                   << ", 错误信息: " << json["errmsg"].asString();
-        return false;
+        co_return false;
     }
 
     // 保存数据到Value
@@ -469,49 +479,49 @@ bool ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<ThirdPartyLogin
         value->refreshToken = json["refresh_token"].asString();
     }
 
-    return true;
+    co_return true;
 }
 
-std::string ThirdPartyLoginPlatform_WeChat::getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) {
     if (value->accessToken.empty()) {
-        if (!fetchTokens(value)) {
+        if (!co_await fetchTokens(value)) {
             LOG_ERROR << "获取微信平台AccessToken失败.";
-            return "";
+            co_return "";
         }
     }
     if (value->accessToken.empty()) {
         LOG_ERROR << "获取微信平台AccessToken失败, FetchTokens后AccessToken仍为空.";
-        return "";
+        co_return "";
     }
 
-    return value->accessToken;
+    co_return value->accessToken;
 }
 
-bool ThirdPartyLoginPlatform_WeChat::fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
     // 微信平台在获取Token的同时也获取了OpenId, 所以不需要单独获取OpenId. 但接口定义了这个方法, 必须要实现
-    return fetchTokens(value);
+    co_return co_await fetchTokens(value);
 }
 
-std::string ThirdPartyLoginPlatform_WeChat::getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
     if (!value->openId.empty()) {
-        return value->openId;
+        co_return value->openId;
     }
 
-    std::string accessToken = getAccessToken(value);
+    std::string accessToken = co_await getAccessToken(value);
     if (accessToken.empty()) {
         LOG_ERROR << "获取微信平台OpenId失败, AccessToken为空.";
-        return "";
+        co_return "";
     }
 
-    if (!fetchOpenId(value)) {
+    if (!co_await fetchOpenId(value)) {
         LOG_ERROR << "获取微信平台OpenId失败.";
-        return "";
+        co_return "";
     }
 
-    return value->openId;
+    co_return value->openId;
 }
 
-std::string ThirdPartyLoginPlatform_WeChat::getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) {
     std::stringstream ss;
     ss << "https://open.weixin.qq.com/connect/qrconnect"
        << "?appid=" << clientId
@@ -520,21 +530,21 @@ std::string ThirdPartyLoginPlatform_WeChat::getAuthorizationUrl(std::shared_ptr<
        << "&scope=snsapi_login"
        << "&response_type=code";
 
-    return ss.str();
+    co_return ss.str();
 }
 
-bool ThirdPartyLoginPlatform_WeChat::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) {
     std::string accessToken = value->accessToken;
     std::string openId = value->openId;
 
     if (accessToken.empty() || openId.empty()) {
         LOG_ERROR << "获取微信平台用户信息失败, AccessToken或OpenId为空.";
-        return false;
+        co_return false;
     }
 
     // 构造请求链接
     std::stringstream ss;
-    ss << "https://api.weixin.qq.com/sns/userinfo"
+    ss << "/sns/userinfo"
        << "?access_token=" << accessToken
        << "&openid=" << openId;
 
@@ -543,17 +553,17 @@ bool ThirdPartyLoginPlatform_WeChat::fetchThirdPartyUserInfo(std::shared_ptr<Thi
     req->setMethod(drogon::Get);
     req->setPath(ss.str());
 
-    auto [result, response] = httpClient->sendRequest(req);
+    auto response = co_await httpClient->sendRequestCoro(req);
     if (!response) {
         LOG_ERROR << "微信平台获取用户信息失败, 无法获取响应";
-        return false;
+        co_return false;
     }
 
     // 处理响应
     if (response->getStatusCode() != drogon::k200OK) {
         LOG_ERROR << "微信平台获取用户信息失败, 状态码: " << response->getStatusCode()
                   << ", 原因: " << response->getJsonError();
-        return false;
+        co_return false;
     }
 
     // 解析JSON
@@ -561,14 +571,14 @@ bool ThirdPartyLoginPlatform_WeChat::fetchThirdPartyUserInfo(std::shared_ptr<Thi
     Json::Reader reader;
     if (!reader.parse(std::string(response->getBody()), json)) {
         LOG_ERROR << "微信平台获取用户信息失败, 解析响应为JSON时失败, 响应原文: " << response->getBody();
-        return false;
+        co_return false;
     }
 
     // 处理业务错误
     if (json.isMember("errcode")) {
         LOG_ERROR << "微信平台获取用户信息失败, 错误码: " << json["errcode"].asInt()
                   << ", 错误信息: " << json["errmsg"].asString();
-        return false;
+        co_return false;
     }
 
     // 保存数据到Value
@@ -579,28 +589,28 @@ bool ThirdPartyLoginPlatform_WeChat::fetchThirdPartyUserInfo(std::shared_ptr<Thi
         value->headImgUrl = json["headimgurl"].asString();
     }
 
-    return true;
+    co_return true;
 }
 
-std::string ThirdPartyLoginPlatform_WeChat::getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) {
+drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) {
     if (!value->nickName.empty()) {
-        return value->nickName;
+        co_return value->nickName;
     }
 
-    if (!fetchThirdPartyUserInfo(value)) {
+    if (!co_await fetchThirdPartyUserInfo(value)) {
         LOG_ERROR << "获取微信平台用户昵称失败.";
-        return "";
+        co_return "";
     }
 
     if (value->nickName.empty()) {
         LOG_ERROR << "获取微信平台用户昵称失败, 获取到的昵称为空.";
-        return "";
+        co_return "";
     }
 
-    return value->nickName;
+    co_return value->nickName;
 }
 
-bool ThirdPartyLoginPlatform_WeChat::callBack(const std::string& code, const std::string& state) {
+drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::callBack(const std::string& code, const std::string& state) {
     std::shared_ptr<ThirdPartyLoginValue> targetValue;
     {
         std::lock_guard<std::recursive_mutex> lock(mutex);
@@ -610,18 +620,27 @@ bool ThirdPartyLoginPlatform_WeChat::callBack(const std::string& code, const std
                               });
         if (it == loginValues.end()) {
             LOG_ERROR << "微信平台回调失败, 找不到对应的登录值, Code: " << code << ", State: " << state;
-            return false;
+            co_return false;
         }
         targetValue = *it;
     }
 
     targetValue->authorizationCode = code;
+    std::string accessToken = co_await getAccessToken(targetValue);
+    std::string openId = co_await getOpenId(targetValue);
+    std::string nickName = co_await getThirdPartyUserNickName(targetValue);
+    
     LOG_INFO << "微信平台回调成功, Code: " << code << ", State: " << state
-             << " AccessToken = " << getAccessToken(targetValue)
-             << " OpenId = " << getOpenId(targetValue)
-             << " NickName = " << getThirdPartyUserNickName(targetValue);
+             << " AccessToken = " << accessToken
+             << " OpenId = " << openId
+             << " NickName = " << nickName;
 
-    return true;
+    co_return true;
+}
+
+drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::saveInfoToDB(std::shared_ptr<ThirdPartyLoginValue> value)
+{
+    throw std::runtime_error("Not implemented.");
 }
 
 // ThirdPartyLoginService 实现
@@ -633,21 +652,23 @@ ThirdPartyLoginService::ThirdPartyLoginService(const Json::Value& config) {
     platforms[ThirdPartyPlatform::WeChat] = std::make_unique<ThirdPartyLoginPlatform_WeChat>(config);
 }
 
-IThirdPartyLoginPlatform* ThirdPartyLoginService::getPlatform(ThirdPartyPlatform platform) {
+drogon::Task<IThirdPartyLoginPlatform*> ThirdPartyLoginService::getPlatform(ThirdPartyPlatform platform) {
     std::lock_guard<std::mutex> lock(mutex);
     auto it = platforms.find(platform);
-    return it != platforms.end() ? it->second.get() : nullptr;
+    co_return it != platforms.end() ? it->second.get() : nullptr;
 }
 
-void ThirdPartyLoginService::deletePlatform(ThirdPartyPlatform platform) {
+drogon::Task<void> ThirdPartyLoginService::deletePlatform(ThirdPartyPlatform platform) {
     std::lock_guard<std::mutex> lock(mutex);
     platforms.erase(platform);
+    co_return;
 }
 
-void ThirdPartyLoginService::clearExpired() {
+drogon::Task<void> ThirdPartyLoginService::clearExpired() {
     for (auto& [platform, platformImpl] : platforms) {
-        platformImpl->clearExpired();
+        co_await platformImpl->clearExpired();
     }
+    co_return;
 }
 
 } // namespace Services

@@ -10,7 +10,7 @@ namespace UEAdminAPI {
 namespace Controllers {
 
 Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req,
-                                 const std::string& platform) const {
+                                 const std::string platform) const {
     // 获取平台枚举
     auto platformEnum = getPlatformFromString(platform);
     //if (platformEnum == Services::ThirdPartyPlatform::QQ && platform != "QQ") {
@@ -21,7 +21,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req,
     //}
 
     // 获取平台服务
-    auto platformService = ThirdPartyLoginService::Instance()->getPlatform(platformEnum);
+    auto platformService = co_await ThirdPartyLoginService::Instance()->getPlatform(platformEnum);
     if (!platformService) {
         auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k404NotFound);
@@ -30,10 +30,10 @@ Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req,
     }
 
     // 创建新的登录值
-    auto loginValue = platformService->createNewThirdLoginValue();
+    auto loginValue = co_await platformService->createNewThirdLoginValue();
 
     // 获取授权URL
-    std::string authUrl = platformService->getAuthorizationUrl(loginValue);
+    std::string authUrl = co_await platformService->getAuthorizationUrl(loginValue);
 
     // 构造返回JSON
     Json::Value response;
@@ -46,14 +46,14 @@ Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req,
 }
 
 Task<HttpResponsePtr> ThirdPartyLogin::callback(HttpRequestPtr req,
-                              const std::string& platform,
-                              const std::string& code,
-                              const std::string& state) const {
+                              const std::string platform,
+                              const std::string code,
+                              const std::string state) const {
     // 获取平台枚举
     auto platformEnum = getPlatformFromString(platform);
 
     // 获取平台服务
-    auto platformService = ThirdPartyLoginService::Instance()->getPlatform(platformEnum);
+    auto platformService = co_await ThirdPartyLoginService::Instance()->getPlatform(platformEnum);
     if (!platformService) {
         auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k404NotFound);
@@ -62,7 +62,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::callback(HttpRequestPtr req,
     }
 
     // 处理回调
-    bool success = platformService->callBack(code, state);
+    bool success = co_await platformService->callBack(code, state);
 
     if (!success) {
         auto resp = HttpResponse::newHttpResponse();
@@ -72,7 +72,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::callback(HttpRequestPtr req,
     }
 
     // 获取登录值
-    auto loginValue = platformService->getLoginValue(state);
+    auto loginValue = co_await platformService->getLoginValue(state);
     if (!loginValue) {
         auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k400BadRequest);
@@ -93,10 +93,13 @@ Task<HttpResponsePtr> ThirdPartyLogin::callback(HttpRequestPtr req,
 }
 
 Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
-                                 const std::string& platform) const {
+                                                const std::string platform,
+                                                const std::string code,
+                                                const std::string verifyCode) const {
+
     // 获取平台枚举
     auto platformEnum = getPlatformFromString(platform);
-    if (platformEnum == Services::ThirdPartyPlatform::QQ && platform != "QQ") {
+    if (platformEnum == Services::ThirdPartyPlatform::None) {
         auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k404NotFound);
         resp->setBody("不支持的第三方平台");
@@ -104,7 +107,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
     }
 
     // 获取平台服务
-    auto platformService = ThirdPartyLoginService::Instance()->getPlatform(platformEnum);
+    auto platformService = co_await ThirdPartyLoginService::Instance()->getPlatform(platformEnum);
     if (!platformService) {
         auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k404NotFound);
@@ -112,23 +115,6 @@ Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
         co_return resp;
     }
 
-    // 获取请求体
-    auto json = req->getJsonObject();
-    if (!json) {
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k400BadRequest);
-        resp->setBody("请求体格式错误");
-        co_return resp;
-    }
-
-    // 获取code和verifyCode
-    std::string code, verifyCode;
-    if (json->isMember("code")) {
-        code = (*json)["code"].asString();
-    }
-    if (json->isMember("verifyCode")) {
-        verifyCode = (*json)["verifyCode"].asString();
-    }
 
     if (code.empty() || verifyCode.empty()) {
         auto resp = HttpResponse::newHttpResponse();
@@ -138,7 +124,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
     }
 
     // 验证code
-    bool success = platformService->verifyCode(code, verifyCode);
+    bool success = co_await platformService->verifyCode(code, verifyCode);
 
     if (!success) {
         auto resp = HttpResponse::newHttpResponse();
@@ -148,7 +134,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
     }
 
     // 获取登录值
-    auto loginValue = platformService->getLoginValue(code);
+    auto loginValue = co_await platformService->getLoginValue(code);
     if (!loginValue) {
         auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k400BadRequest);

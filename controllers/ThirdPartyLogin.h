@@ -15,22 +15,24 @@ public:
     // 第三方登录回调
     ADD_METHOD_TO(ThirdPartyLogin::callback, "/api/third/{1}?code={2}&state={3}", Get);
     // 验证第三方登录
-    ADD_METHOD_TO(ThirdPartyLogin::verifyLogin, "/api/third/{1}/verify", Get);
+    ADD_METHOD_TO(ThirdPartyLogin::verifyLogin, "/api/third/verify?platform={1}&code={2}&verifyCode={3}", Get);
     METHOD_LIST_END
 
     // 获取第三方登录URL
     Task<HttpResponsePtr> getLoginUrl(HttpRequestPtr req,
-                     const std::string& platform) const;
+		                            const std::string platform) const;
 
     // 第三方登录回调
     Task<HttpResponsePtr> callback(HttpRequestPtr req,
-                  const std::string& platform,
-                  const std::string& code,
-                  const std::string& state) const;
+		                            const std::string platform,
+		                            const std::string code,
+		                            const std::string state) const;
 
-    // 验证第三方登录
-    Task<HttpResponsePtr> verifyLogin(HttpRequestPtr req,
-                    const std::string& platform) const;
+	// 验证第三方登录
+	Task<HttpResponsePtr> verifyLogin(HttpRequestPtr req,
+		                            const std::string platform,
+		                            const std::string code,
+		                            const std::string verifyCode) const;
 
 private:
     Services::ThirdPartyPlatform getPlatformFromString(const std::string& platform) const;
