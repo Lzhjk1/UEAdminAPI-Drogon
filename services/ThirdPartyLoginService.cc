@@ -105,7 +105,7 @@ drogon::Task<bool> ThirdPartyLoginPlatformBase::verifyCode(const std::string& co
         co_return false;
     }
 
-    co_return value->verifyCode == verifyCode;
+    co_return value->verifyCode == verifyCode && !value->authorizationCode.empty();
 }
 
 drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> ThirdPartyLoginPlatformBase::createNewThirdLoginValue() {
