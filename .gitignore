@@ -4,6 +4,7 @@
 # 忽略配置文件
 config.json
 config.yaml
+models/model.json
 
 cert/
 
