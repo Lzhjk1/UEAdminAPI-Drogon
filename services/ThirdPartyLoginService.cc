@@ -24,25 +24,26 @@ ThirdPartyLoginValue::ThirdPartyLoginValue(const std::string& code, const std::s
 }
 
 // ThirdPartyLoginPlatformBase 实现
-ThirdPartyLoginPlatformBase::ThirdPartyLoginPlatformBase(const Json::Value& config, const std::string& name)
-    : name(name) {
+ThirdPartyLoginPlatformBase::ThirdPartyLoginPlatformBase(const Json::Value& config, const ThirdPartyPlatform& platform)
+    : platform(platform) {
     // 检查并获取配置
-    auto [serverHost, clientId, clientSecret] = checkAndGetPlatformConfig(name, config);
+    auto [serverHost, clientId, clientSecret] = checkAndGetPlatformConfig(platform, config);
     this->serverHost = serverHost;
     this->clientId = clientId;
     this->clientSecret = clientSecret;
 
     // 设置重定向URL
-    this->redirectUrl = this->serverHost + "/api/third/" + DataFormatUtil::toLowerCase(name);
+    this->redirectUrl = this->serverHost + "/api/third/" + ThirdPartyPlatformToString(platform, true);
 
     // 创建HTTP客户端
     httpClient = drogon::HttpClient::newHttpClient("https://graph.qq.com");
 }
 
 std::tuple<std::string, std::string, std::string> 
-ThirdPartyLoginPlatformBase::checkAndGetPlatformConfig(const std::string& platformName, const Json::Value& config) {
+ThirdPartyLoginPlatformBase::checkAndGetPlatformConfig(const ThirdPartyPlatform& platform, const Json::Value& config) {
     // 检查配置
     bool isNecessaryConfigsNotSet = false;
+    std::string platformName = ThirdPartyPlatformToString(platform);
 
     // 检查ServerHost是否已经配置
     std::string serverHost;
@@ -142,7 +143,7 @@ drogon::Task<void> ThirdPartyLoginPlatformBase::clearExpired() {
 
 // ThirdPartyLoginPlatform_QQ 实现
 ThirdPartyLoginPlatform_QQ::ThirdPartyLoginPlatform_QQ(const Json::Value& config)
-    : ThirdPartyLoginPlatformBase(config, "QQ") {
+    : ThirdPartyLoginPlatformBase(config, ThirdPartyPlatform::QQ) {
     // QQ使用特定的客户端
     httpClient = drogon::HttpClient::newHttpClient("https://graph.qq.com");
 }
@@ -417,7 +418,7 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::saveInfoToDB(std::shared_p
 
 // ThirdPartyLoginPlatform_WeChat 实现
 ThirdPartyLoginPlatform_WeChat::ThirdPartyLoginPlatform_WeChat(const Json::Value& config)
-    : ThirdPartyLoginPlatformBase(config, "WeChat") {
+    : ThirdPartyLoginPlatformBase(config, ThirdPartyPlatform::WeChat) {
     // 微信使用特定的客户端
     httpClient = drogon::HttpClient::newHttpClient("https://api.weixin.qq.com");
 }
@@ -669,6 +670,17 @@ drogon::Task<void> ThirdPartyLoginService::clearExpired() {
         co_await platformImpl->clearExpired();
     }
     co_return;
+}
+
+std::string ThirdPartyPlatformToString(ThirdPartyPlatform platform, bool isLowerCase) {
+    switch (platform) {
+        case ThirdPartyPlatform::QQ:
+            return isLowerCase ? "qq" : "QQ";
+        case ThirdPartyPlatform::WeChat:
+            return isLowerCase ? "wechat" : "WeChat";
+        default:
+            return "";
+    }
 }
 
 } // namespace Services

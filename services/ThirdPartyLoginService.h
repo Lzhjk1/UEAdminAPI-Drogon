@@ -17,8 +17,9 @@ namespace Services {
 enum class ThirdPartyPlatform {
     QQ,
     WeChat,
-    None
+    None    // 解析出错时使用的错误值, 不要把它与一个平台相对应
 };
+std::string ThirdPartyPlatformToString(ThirdPartyPlatform platform, bool isLowerCase = false);
 
 // 第三方登录值
 class ThirdPartyLoginValue {
@@ -30,9 +31,9 @@ public:
 
 
     std::string code;
-    std::string authorizationCode;
     std::string verifyCode;
-    std::string accessToken;
+    std::string authorizationCode;  // 回调时获得的code, 用于获取accessToken
+    std::string accessToken;        // QQ官方给出60天有效期, 用于获取OpenID等信息
     std::string refreshToken;
     std::string openId;
     std::string nickName;
@@ -49,7 +50,9 @@ class IThirdPartyLoginPlatform {
 public:
     virtual ~IThirdPartyLoginPlatform() = default;
 
+    // 获取code对应的登录值
     virtual drogon::Task<ThirdPartyLoginValue*> getLoginValue(const std::string& code) = 0;
+    // 验证code与verifyCode是否匹配, 并且验证是否已经经过callback获取了authorizationCode
     virtual drogon::Task<bool> verifyCode(const std::string& code, const std::string& verifyCode) = 0;
     virtual drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> createNewThirdLoginValue() = 0;
     virtual drogon::Task<void> clearExpired() = 0;
@@ -63,14 +66,14 @@ public:
     virtual drogon::Task<bool> callBack(const std::string& code, const std::string& state) = 0;
     virtual drogon::Task<std::string> saveInfoToDB(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
 
-    virtual std::string getName() const = 0;
+    virtual ThirdPartyPlatform getPlatform() const = 0;
     virtual std::string getRedirectUrl() const = 0;
 };
 
 // 第三方登录平台基类
 class ThirdPartyLoginPlatformBase : public IThirdPartyLoginPlatform {
 public:
-    ThirdPartyLoginPlatformBase(const Json::Value& config, const std::string& name);
+    ThirdPartyLoginPlatformBase(const Json::Value& config, const ThirdPartyPlatform& platform);
     virtual ~ThirdPartyLoginPlatformBase() = default;
 
     drogon::Task<ThirdPartyLoginValue*> getLoginValue(const std::string& code) override;
@@ -78,8 +81,8 @@ public:
     drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> createNewThirdLoginValue() override;
     drogon::Task<void> clearExpired() override;
 
-    std::string getName() const override {
-        return name;
+    ThirdPartyPlatform getPlatform() const override {
+        return platform;
     }
 
     std::string getRedirectUrl() const override {
@@ -90,7 +93,7 @@ protected:
     std::string serverHost;
     std::string clientId;
     std::string clientSecret;
-    std::string name;
+    ThirdPartyPlatform platform;
     std::string redirectUrl;
 
     std::recursive_mutex mutex;
@@ -98,7 +101,7 @@ protected:
 
     drogon::HttpClientPtr httpClient;
 
-    std::tuple<std::string, std::string, std::string> checkAndGetPlatformConfig(const std::string& platformName, const Json::Value& config);
+    std::tuple<std::string, std::string, std::string> checkAndGetPlatformConfig(const ThirdPartyPlatform& platform, const Json::Value& config);
 };
 
 // QQ第三方登录平台实现
