@@ -2,8 +2,8 @@
 
 #include "UserManageService.h"
 
-ServiceResponse<int> UserManageService::RegisterUser(const RegisterUserDto &) {
+std::tuple<bool, std::string> UserManageService::RegisterUser(const RegisterUserDto &) {
    
     drogon::app().getCustomConfig();
-    return ServiceResponse<int>();
+    return {true, "ok"};
 }

@@ -110,7 +110,9 @@ Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target
     resp->setStatusCode(k200OK);
     HttpResult result;
 
-    if(!(co_await _mfaService->VerifyTheCode(target, verifyCode, eMFAType::Login)).Success){
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, verifyCode, eMFAType::Login);
+    if(!isSuccess) {
+        LOG_ERROR << errMsg;
         result.setResult(-1, "验证码错误");
         resp->setBody(result.toJsonString());
         co_return resp;
