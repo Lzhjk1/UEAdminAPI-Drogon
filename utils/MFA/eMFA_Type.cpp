@@ -1,5 +1,6 @@
 #include "eMFA_Type.h"
 #include <stdexcept>
+#include <trantor/utils/Logger.h>
 
 eMFAType stringToMFAType(const std::string& str) {
     if (str == "Default") return eMFAType::Default;
@@ -7,9 +8,11 @@ eMFAType stringToMFAType(const std::string& str) {
     else if (str == "Register") return eMFAType::Register;
     else if (str == "ResetPassword") return eMFAType::ResetPassword;
     else if (str == "EmailBind") return eMFAType::EmailBind;
+    else if (str == "ThirdPartyBind") return eMFAType::ThirdPartyBind;
     else if (str == "PhoneChange") return eMFAType::PhoneChange;
     else if (str == "DeleteUser") return eMFAType::DeleteUser;
     
+    LOG_ERROR << "发现未知的MFA类型: " + str;
     return eMFAType::Error;
 }
 
@@ -21,6 +24,7 @@ std::string MFATypeToString(eMFAType type) {
         case eMFAType::Register: return "Register";
         case eMFAType::ResetPassword: return "ResetPassword";
         case eMFAType::EmailBind: return "EmailBind";
+        case eMFAType::ThirdPartyBind: return "ThirdPartyBind";
         case eMFAType::PhoneChange: return "PhoneChange";
         case eMFAType::DeleteUser: return "DeleteUser";
         default: throw std::invalid_argument("Unknown MFA type");

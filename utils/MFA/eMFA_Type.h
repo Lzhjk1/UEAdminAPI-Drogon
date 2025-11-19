@@ -23,14 +23,15 @@ enum class eMFAType : uint32_t {
     Register = 1 << 2,
     ResetPassword = 1 << 3,
     EmailBind = 1 << 4,
-    PhoneChange = 1 << 5,
-    DeleteUser = 1 << 6
+    ThirdPartyBind = 1 << 5,
+    PhoneChange = 1 << 6,
+    DeleteUser = 1 << 7
 };
 
 // 函数声明
 // 将字符串转换为 eMFAType, 当修改枚举时请同步修改此函数
 eMFAType stringToMFAType(const std::string& str);
-// 枚举转换为字符串
+// 枚举转换为字符串, 当修改枚举时请同步修改此函数
 std::string MFATypeToString(eMFAType type);
 eMFAType operator|(eMFAType a, eMFAType b);
 bool operator&(eMFAType a, eMFAType b);
