@@ -22,6 +22,14 @@ PostParamMap& PostParamMap::addParam(const std::string& name, bool isNecessary, 
     return *this;
 }
 
+PostParamMap &PostParamMap::addParamAsMutex(const std::string &name1, const std::string &name2, const std::string& defaultValue1, const std::string& defaultValue2) {
+    addParam(name1, false, defaultValue1);
+    addParam(name2, false, defaultValue2);
+
+    _mutexParamGroups.push_back({name1, name2});
+    return *this;
+}
+
 void PostParamMap::setParamValue(const std::string& name, const std::string& value) {
     auto it = _mapParams.find(name);
     if (it != _mapParams.end()) {
@@ -39,13 +47,31 @@ std::string PostParamMap::getParamValue(const std::string& name) const {
 }
 
 std::vector<std::string> PostParamMap::checkRequiredParams() const {
-    std::vector<std::string> missingFields;
+    std::vector<std::string> errors;
+    
+    // 检查必填参数
     for (const auto &item : _mapParams) {
         if (item.second.isNecessary && !item.second.isExist) {
-            missingFields.push_back(item.first);
+            errors.push_back("缺少必填参数: " + item.first);
         }
     }
-    return missingFields;
+    
+    // 检查互斥参数
+    for (const auto& group : _mutexParamGroups) {
+        const auto& paramA = _mapParams.at(group.first);
+        const auto& paramB = _mapParams.at(group.second);
+        
+        // 检查两个参数是否同时存在
+        if (paramA.isExist && paramB.isExist) {
+            errors.push_back(group.first + " 和 " + group.second + " 不能同时提供");
+        }
+        // 检查两个参数是否都不存在
+        else if (!paramA.isExist && !paramB.isExist) {
+            errors.push_back(group.first + " 和 " + group.second + " 必须提供其中一个");
+        }
+    }
+    
+    return errors;
 }
 
 void PostParamMap::readParamsFromJson(const Json::Value &json) {

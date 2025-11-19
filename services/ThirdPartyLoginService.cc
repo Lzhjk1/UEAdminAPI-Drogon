@@ -8,6 +8,7 @@
 #include <sstream>
 #include <algorithm>
 #include "utils/DataFormatUtils.h"
+#include <shared_mutex>
 
 namespace UEAdminAPI {
 namespace Services {
@@ -80,17 +81,17 @@ ThirdPartyLoginPlatformBase::checkAndGetPlatformConfig(const ThirdPartyPlatform&
     return std::make_tuple(serverHost, clientId, clientSecret);
 }
 
-drogon::Task<ThirdPartyLoginValue*> ThirdPartyLoginPlatformBase::getLoginValue(const std::string& code) {
-    std::lock_guard<std::recursive_mutex> lock(mutex);
+drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> ThirdPartyLoginPlatformBase::getLoginValue(const std::string& code) {
+    std::shared_lock<std::shared_mutex> lock(mutex);
     auto it = std::find_if(loginValues.begin(), loginValues.end(),
                           [&code](const std::shared_ptr<ThirdPartyLoginValue>& value) {
                               return value->code == code;
                           });
-    co_return it != loginValues.end() ? it->get() : nullptr;
+    co_return it != loginValues.end() ? *it : nullptr;
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatformBase::verifyCode(const std::string& code, const std::string& verifyCode) {
-    std::lock_guard<std::recursive_mutex> lock(mutex);
+    std::unique_lock<std::shared_mutex> lock(mutex);
     auto it = std::find_if(loginValues.begin(), loginValues.end(),
                           [&code](const std::shared_ptr<ThirdPartyLoginValue>& value) {
                               return value->code == code;
@@ -110,7 +111,7 @@ drogon::Task<bool> ThirdPartyLoginPlatformBase::verifyCode(const std::string& co
 }
 
 drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> ThirdPartyLoginPlatformBase::createNewThirdLoginValue() {
-    std::lock_guard<std::recursive_mutex> lock(mutex);
+    std::unique_lock<std::shared_mutex> lock(mutex);
     co_await clearExpired();
 
     std::string newCode;
@@ -131,7 +132,7 @@ drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> ThirdPartyLoginPlatformBase:
 }
 
 drogon::Task<void> ThirdPartyLoginPlatformBase::clearExpired() {
-    std::lock_guard<std::recursive_mutex> lock(mutex);
+    std::unique_lock<std::shared_mutex> lock(mutex);
     loginValues.erase(
         std::remove_if(loginValues.begin(), loginValues.end(),
                       [](const std::shared_ptr<ThirdPartyLoginValue>& value) {
@@ -386,7 +387,7 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getThirdPartyUserNickName(
 drogon::Task<bool> ThirdPartyLoginPlatform_QQ::callBack(const std::string& code, const std::string& state) {
     std::shared_ptr<ThirdPartyLoginValue> targetValue;
     {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
+        std::shared_lock<std::shared_mutex> lock(mutex);
         auto it = std::find_if(loginValues.begin(), loginValues.end(),
                               [&state](const std::shared_ptr<ThirdPartyLoginValue>& value) {
                                   return value->code == state;
@@ -399,9 +400,13 @@ drogon::Task<bool> ThirdPartyLoginPlatform_QQ::callBack(const std::string& code,
     }
 
     targetValue->authorizationCode = code;
+    // TODO: 代码风格差异, 之后考虑要不要统一
+    // TODO: 这样的get, set函数风格我觉得不好, getset应该属于loginvalue, 而不是platform, 也就是调用方式应为loginvalue->getAccessToken()这样,
     std::string accessToken = co_await getAccessToken(targetValue);
     std::string openId = co_await getOpenId(targetValue);
     std::string nickName = co_await getThirdPartyUserNickName(targetValue);
+    // loginvalue续期(本来为2分钟有效期), 后续确认登录用
+    targetValue->expireTime = std::chrono::system_clock::now() + std::chrono::minutes(5);
     
     LOG_INFO << "QQ平台回调成功, Code: " << code << ", State: " << state
              << " AccessToken = " << accessToken
@@ -614,7 +619,7 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getThirdPartyUserNickN
 drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::callBack(const std::string& code, const std::string& state) {
     std::shared_ptr<ThirdPartyLoginValue> targetValue;
     {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
+        std::shared_lock<std::shared_mutex> lock(mutex);
         auto it = std::find_if(loginValues.begin(), loginValues.end(),
                               [&state](const std::shared_ptr<ThirdPartyLoginValue>& value) {
                                   return value->code == state;
@@ -657,6 +662,17 @@ drogon::Task<IThirdPartyLoginPlatform*> ThirdPartyLoginService::getPlatform(Thir
     std::lock_guard<std::mutex> lock(mutex);
     auto it = platforms.find(platform);
     co_return it != platforms.end() ? it->second.get() : nullptr;
+}
+
+drogon::Task<std::tuple<ThirdPartyPlatform, std::shared_ptr<ThirdPartyLoginValue>>> ThirdPartyLoginService::getCodeAndItsPlatform(const std::string &code) {
+    std::lock_guard<std::mutex> lock(mutex);
+    for(const auto& platform: platforms) {
+        auto value = co_await platform.second->getLoginValue(code);
+        if(!value){
+            continue;
+        }
+        co_return std::make_tuple(platform.first, value);
+    }
 }
 
 drogon::Task<void> ThirdPartyLoginService::deletePlatform(ThirdPartyPlatform platform) {

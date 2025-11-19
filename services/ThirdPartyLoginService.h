@@ -9,11 +9,14 @@
 #include <chrono>
 #include <drogon/HttpClient.h>
 #include <drogon/HttpAppFramework.h>
+#include <shared_mutex>
 
 namespace UEAdminAPI {
 namespace Services {
 
 // 第三方平台枚举
+// 相关函数: getPlatformFromString, ThirdPartyPlatformToString
+// 修改时需要一并修改
 enum class ThirdPartyPlatform {
     QQ,
     WeChat,
@@ -51,7 +54,7 @@ public:
     virtual ~IThirdPartyLoginPlatform() = default;
 
     // 获取code对应的登录值
-    virtual drogon::Task<ThirdPartyLoginValue*> getLoginValue(const std::string& code) = 0;
+    virtual drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> getLoginValue(const std::string& code) = 0;
     // 验证code与verifyCode是否匹配, 并且验证是否已经经过callback获取了authorizationCode
     virtual drogon::Task<bool> verifyCode(const std::string& code, const std::string& verifyCode) = 0;
     virtual drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> createNewThirdLoginValue() = 0;
@@ -76,7 +79,7 @@ public:
     ThirdPartyLoginPlatformBase(const Json::Value& config, const ThirdPartyPlatform& platform);
     virtual ~ThirdPartyLoginPlatformBase() = default;
 
-    drogon::Task<ThirdPartyLoginValue*> getLoginValue(const std::string& code) override;
+    drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> getLoginValue(const std::string& code) override;
     drogon::Task<bool> verifyCode(const std::string& code, const std::string& verifyCode) override;
     drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> createNewThirdLoginValue() override;
     drogon::Task<void> clearExpired() override;
@@ -96,7 +99,7 @@ protected:
     ThirdPartyPlatform platform;
     std::string redirectUrl;
 
-    std::recursive_mutex mutex;
+    std::shared_mutex mutex;
     std::vector<std::shared_ptr<ThirdPartyLoginValue>> loginValues;
 
     drogon::HttpClientPtr httpClient;
@@ -142,6 +145,10 @@ public:
     ThirdPartyLoginService(const Json::Value& config);
 
     drogon::Task<IThirdPartyLoginPlatform*> getPlatform(ThirdPartyPlatform platform);
+    // 不要使用!
+    // 因为会在多个platform里搜索code, 而code是由各个platform自己生成, 所以存在重复可能.
+    // 请使用platform自己的方法
+    drogon::Task<std::tuple<ThirdPartyPlatform, std::shared_ptr<ThirdPartyLoginValue>>> getCodeAndItsPlatform(const std::string& code);
     drogon::Task<void> deletePlatform(ThirdPartyPlatform platform);
     drogon::Task<void> clearExpired();
 
