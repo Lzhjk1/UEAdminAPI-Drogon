@@ -31,6 +31,10 @@ std::pair<bool, std::string> MFA_Manager::VerifyTheCode(const std::string& targe
 }
 
 drogon::Task<std::pair<bool, std::string>> MFA_Manager::SendTheCode(const std::string& target, const std::string& code, eMFAType type) {
+    if (type == eMFAType::Error) {
+        co_return {false, "验证码类型错误"};
+    }
+
   auto channelType = MFAChannelBase::DetermineChannelType(target);
   if (channelType == eChannelType::None) {
       co_return {false, "无法判断渠道类型"};
