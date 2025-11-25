@@ -128,3 +128,8 @@ drogon::Task<std::pair<bool, std::string>> MFA_SMSChannel::SendCode(std::shared_
     AddCodePairToList(codePair);
     co_return {true, "短信验证码发送成功"};
 }
+
+bool MFA_SMSChannel::VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) {
+    auto [countryCode, phoneNumber] = CodePairBase::SMSCodePair::ParsePhoneNumber(baseInfo);
+    return MFAChannelBase::VerifyTheCode(countryCode + phoneNumber, code, type, errorMsg);
+}
