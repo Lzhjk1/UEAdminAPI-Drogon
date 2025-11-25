@@ -6,6 +6,7 @@
 #include "services/MFAService.h"
 #include "services/GitlabService.h"
 #include <utils/PostParamMap.h>
+#include <utils/HttpResult.h>
 #include <numeric>
 
 using namespace std;
@@ -13,6 +14,7 @@ using namespace drogon;
 using namespace drogon::orm;
 using namespace drogon_model::UEAdminAPI;
 using namespace UEAdminAPI;
+using namespace UEAdminAPI::utils;
 
 // Add definition of your processing function here
 Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
@@ -24,6 +26,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
 
 	auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
+    HttpResult result;
 
 	auto reqJson = req->getJsonObject();
 
@@ -44,8 +47,9 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
 
     // 如果有缺失的必填项，返回错误
     if (!missingFields.empty()) {
-        resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
-        resp->setStatusCode(k400BadRequest);
+        HttpResult result;
+        result.setResult(-1, "缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }));
+        resp->setBody(result.toJsonString());
         co_return resp;
     }
 
@@ -59,10 +63,12 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     }
 
     // 如果验证码检查失败
-    //if(!(co_await _mfaService->VerifyTheCode(paramMap.getParamValue("email"), paramMap.getParamValue("verifyCode"), eMFAType::Register)).Success) {
-    //    resp->setBody("{\"success\": false, \"message\": \"验证码错误\"}");
-    //    co_return resp;
-    //}
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(paramMap.getParamValue("email"), paramMap.getParamValue("verifyCode"), eMFAType::Register);
+    if(!isSuccess) {
+        result.setResult(-1, errMsg);
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
 
     // 设置昵称默认为用户名
     if(!paramMap.hasParam("nickname")) {
@@ -87,9 +93,11 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     }
     if (isFound) {
         LOG_ERROR << "用户名已存在";
-        resp->setBody("{\"success\": false, \"message\": \"用户名已存在\"}");
+        result.setResult(-1, "用户名已存在");
+        resp->setBody(result.toJsonString());
         co_return resp;
     }
+
     // 检查邮箱是否已存在
     try{
         if(isEmailRegister){
@@ -104,8 +112,9 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         isFound = false;
     }
     if (isFound) {
-        LOG_ERROR << "邮箱已存在";
-        resp->setBody("{\"success\": false, \"message\": \"邮箱已存在\"}");
+        LOG_ERROR << std::format("邮箱: {} 已存在", paramMap.getParamValue("email"));
+        result.setResult(-1, "邮箱已存在");
+        resp->setBody(result.toJsonString());
         co_return resp;
     }
 
@@ -125,13 +134,15 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     // 同步创建 GitLab 账号
     int gitlabUserId = 0;
     if(!_gitlabService->createUser(paramMap.getParamValue("username"), paramMap.getParamValue("password"), paramMap.getParamValue("email"), gitlabUserId)){
-        resp->setBody("{\"success\": false, \"message\": \"创建 GitLab 账号失败\"}");
+        result.setResult(-1, "创建 GitLab 账号失败");
+        resp->setBody(result.toJsonString());
         co_return resp;
     }
 
     // 邀请用户加入项目
     if(!_gitlabService->adminInvitationProject(1, UEAdminAPI::GitlabService::AccessLevels::Developer, gitlabUserId)){
-        resp->setBody("{\"success\": false, \"message\": \"邀请用户加入项目失败\"}");
+        result.setResult(-1, "邀请用户加入项目失败");
+        resp->setBody(result.toJsonString());
         co_return resp;
     }
 
@@ -139,22 +150,15 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     uint32_t gitImpersonationTokenId = 0;
     string gitlabImpersonationToken = "";
     if(!_gitlabService->createImpersonationToken(gitlabUserId, gitlabImpersonationToken, gitImpersonationTokenId)){
-        resp->setBody("{\"success\": false, \"message\": \"创建 GitLab Impersonation Token失败\"}");
+        result.setResult(-1, "创建 GitLab Impersonation Token失败");
+        resp->setBody(result.toJsonString());
         co_return resp;
     }
-
-    // 创建用户gitlab信息数据库对象
-    auto newUserGitlab = UserGitlabInfo();
-    newUserGitlab.setUserId(newUser.getValueOfId());
-    newUserGitlab.setGitId(gitlabUserId);
-    newUserGitlab.setGitlabImpersonationToken(gitlabImpersonationToken);
-    newUserGitlab.setGitlabImpersonationTokenId(gitImpersonationTokenId);
 
     // 插入数据库
     // TODO: 当前为阻塞式的插入，后续可改进
     // auto transaction = co_await dbClientPtr->newTransactionCoro();
     auto insertedUserFuture = mapperUsers.insertFuture(newUser);
-    auto insertedUserGitlabInfoFuture = mapperUserGitlabInfos.insertFuture(newUserGitlab);
 
     // 获取future
     bool step1Failed = false;
@@ -170,6 +174,14 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         step1Failed = true;
     }
 
+    // 创建用户gitlab信息数据库对象
+    auto newUserGitlab = UserGitlabInfo();
+    // 要先插入用户, 才能获得用户Id
+    newUserGitlab.setUserId(insertedUser.getValueOfId());
+    newUserGitlab.setGitId(gitlabUserId);
+    newUserGitlab.setGitlabImpersonationToken(gitlabImpersonationToken);
+    newUserGitlab.setGitlabImpersonationTokenId(gitImpersonationTokenId);
+    auto insertedUserGitlabInfoFuture = mapperUserGitlabInfos.insertFuture(newUserGitlab);
     
     try{
         insertedUserGitlabInfo = insertedUserGitlabInfoFuture.get();
@@ -178,29 +190,37 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         step2Failed = true;
     }
 
-
+    // 如有错误, 撤销操作 (drogon有提供执行sql时的事务操作, 但是mapper的没找到)
     if(step1Failed){
         if(!_gitlabService->deleteUser(gitlabUserId)){
             LOG_ERROR << "创建用户时失败, 回滚时删除Gitlab用户失败";
         }
         LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
-        resp->setBody("{\"success\": false, \"message\": \"创建用户失败\"}");
+        result.setResult(-1, "创建用户失败");
+        resp->setBody(result.toJsonString());
         co_return resp;
     }
     if(!step1Failed && step2Failed){
         if(!_gitlabService->deleteUser(gitlabUserId)){
             LOG_ERROR << "创建用户时失败, 回滚时删除Gitlab用户失败";
         }
-        LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
+        else {
+            LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
+        }
         if(mapperUsers.deleteFutureOne(insertedUser).get() == 0){
             LOG_ERROR << "创建用户时失败, 回滚时删除先前插入的用户数据失败";
         }
-        resp->setBody("{\"success\": false, \"message\": \"创建用户失败\"}");
+        else {
+            LOG_ERROR << "创建用户时失败, 回滚时删除先前插入的用户数据成功";
+        }
+        result.setResult(-1, "创建用户失败");
+        resp->setBody(result.toJsonString());
         co_return resp;
     }
     
-
-    resp->setBody("{\"success\": true, \"userId\": " + to_string(*insertedUser.getId()) + "}");
+    result.setResult(0, "创建用户成功");
+    result.jsondata["userId"] = *insertedUser.getId();
+    resp->setBody(result.toJsonString());
 
     co_return resp;
 }
