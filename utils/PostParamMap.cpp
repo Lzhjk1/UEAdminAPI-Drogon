@@ -38,7 +38,7 @@ void PostParamMap::setParamValue(const std::string& name, const std::string& val
     }
 }
 
-std::string PostParamMap::getParamValue(const std::string& name) const {
+std::string PostParamMap::getParam(const std::string& name) const {
     auto it = _mapParams.find(name);
     if (it != _mapParams.end()) {
         return it->second.value;

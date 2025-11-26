@@ -26,6 +26,7 @@ public:
     // GET
     // 第三方登录回调
     // 实际上进入getLoginUrl接口返回的登录页面完成登录后, 浏览器会跳转到callback接口, 并获得code和state参数, 程序获取到之后就已经可以完成登录, 但是考虑到在AutoPDMS, 使用了一个独立的内置浏览器, 不便让该内置浏览器回传参数给AutoPDMS, 所以还需要AutoPDMS调用后续的verifyLogin接口来确认登录是否已经完成 
+    // 这一步只是将LoginValue与第三方账号关联, 并没有绑定到某个用户
     Task<HttpResponsePtr> callback(HttpRequestPtr req,
 		                            const std::string platform,
 		                            const std::string code,

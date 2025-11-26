@@ -1,11 +1,12 @@
 #pragma once
 #include "utils/SingletonWithInit.h"
+#include "utils/EnumUserPrivileges.h"
 #include "models/User.h"
 #include "json/json.h"
 #include <iostream>
 #include <string>
-
-using namespace drogon_model::UEAdminAPI;
+#include "utils/HttpResult.h"
+#include <drogon/drogon.h>
 
 class AuthService : public SingletonWithInit<AuthService> {
 private:
@@ -47,4 +48,33 @@ public:
     /// @param token Token
     /// @return 用户Id, Token不合法或过期失效时返回 -1
     int CheckTokenAndParseUserId(const std::string &token);
+
+    /// @brief 邮箱注册用户
+    /// @param username 用户名
+    /// @param password 密码
+    /// @param email 邮箱
+    /// @param verifyCode 验证码
+    /// @param nickname 昵称, 默认为空, 为空时使用用户名
+    /// @return std::tuple<int, std::string, int> 
+    /// 1: 返回码, 0表示成功, 
+    /// 2: 字符串信息, 
+    /// 3: 用户Id
+    drogon::Task<UEAdminAPI::utils::HttpResult> RegisterByEmail(
+        const std::string &username, 
+        const std::string &password, 
+        const std::string &email, 
+        const std::string &verifyCode, 
+        const UserPrivileges &privilege = UserPrivileges::User, 
+        const bool &isMale = true, 
+        const std::string &nickname = "");
+
+    /// @brief 手机号注册用户, 其余与邮箱注册相同
+    drogon::Task<UEAdminAPI::utils::HttpResult> RegisterByPhone(
+        const std::string &username, 
+        const std::string &password, 
+        const std::string &phoneNumber, 
+        const std::string &verifyCode, 
+        const UserPrivileges &privilege = UserPrivileges::User, 
+        const bool &isMale = true, 
+        const std::string &nickname = "");
 };

@@ -20,8 +20,8 @@ class Register : public drogon::HttpController<Register>
     // void your_method_name(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback, double p1, int p2) const;
     
     /// @brief 注册用户, 为避免无限注册，需要使用手机号或邮箱注册, 请求参数在Body里
-    /// @param req 请求
-    /// @return 
+    /// @param req 
+    /// @return 成功时, 返回注册的用户的id
     Task<HttpResponsePtr> RegisterUser(HttpRequestPtr req);
 
 };

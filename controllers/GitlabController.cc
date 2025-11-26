@@ -60,7 +60,7 @@ Task<HttpResponsePtr> GitlabController::createUser(HttpRequestPtr req) {
     User user;
     try {
         user = mapperUsers.findFutureOne(Criteria(User::Cols::_id, CompareOperator::EQ, 
-                                                 std::stoi(paramMap.getParamValue("userId")))).get();
+                                                 std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
         resp->setBody("{\"success\": false, \"message\": \"用户不存在\"}");
         resp->setStatusCode(k404NotFound);
@@ -71,8 +71,8 @@ Task<HttpResponsePtr> GitlabController::createUser(HttpRequestPtr req) {
     int32_t gitlabId;
     if (!gitlabService->createUser(
         user.getValueOfName(),
-        paramMap.getParamValue("password"),
-        paramMap.getParamValue("email"),
+        paramMap.getParam("password"),
+        paramMap.getParam("email"),
         gitlabId)) {
         resp->setBody("{\"success\": false, \"message\": \"创建GitLab用户失败\"}");
         resp->setStatusCode(k500InternalServerError);
@@ -138,7 +138,7 @@ Task<HttpResponsePtr> GitlabController::deleteUser(HttpRequestPtr req) {
     UserGitlabInfo gitlabInfo;
     try {
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
-                                                            std::stoi(paramMap.getParamValue("userId")))).get();
+                                                            std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
         resp->setStatusCode(k404NotFound);
@@ -163,7 +163,7 @@ Task<HttpResponsePtr> GitlabController::deleteUser(HttpRequestPtr req) {
     // 从数据库删除GitLab用户信息
     try {
         mapperGitlabInfo.deleteFutureBy(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
-                                               std::stoi(paramMap.getParamValue("userId")))).get();
+                                               std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
         LOG_ERROR << "删除GitLab用户信息失败: " << e.base().what();
         resp->setBody("{\"success\": false, \"message\": \"删除GitLab用户信息失败\"}");
@@ -213,7 +213,7 @@ Task<HttpResponsePtr> GitlabController::modifyUserPassword(HttpRequestPtr req) {
     UserGitlabInfo gitlabInfo;
     try {
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
-                                                            std::stoi(paramMap.getParamValue("userId")))).get();
+                                                            std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
         resp->setStatusCode(k404NotFound);
@@ -223,7 +223,7 @@ Task<HttpResponsePtr> GitlabController::modifyUserPassword(HttpRequestPtr req) {
     // 修改GitLab用户密码
     if (!gitlabService->modifyUserPassword(
         *gitlabInfo.getUserId(),
-        paramMap.getParamValue("password"))) {
+        paramMap.getParam("password"))) {
         resp->setBody("{\"success\": false, \"message\": \"修改GitLab用户密码失败\"}");
         resp->setStatusCode(k500InternalServerError);
         co_return resp;
@@ -270,7 +270,7 @@ Task<HttpResponsePtr> GitlabController::createImpersonationToken(HttpRequestPtr 
     UserGitlabInfo gitlabInfo;
     try {
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
-                                                            std::stoi(paramMap.getParamValue("userId")))).get();
+                                                            std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
         resp->setStatusCode(k404NotFound);
@@ -353,7 +353,7 @@ Task<HttpResponsePtr> GitlabController::deleteImpersonationToken(HttpRequestPtr 
     UserGitlabInfo gitlabInfo;
     try {
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
-                                                            std::stoi(paramMap.getParamValue("userId")))).get();
+                                                            std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
         resp->setStatusCode(k404NotFound);
@@ -431,7 +431,7 @@ Task<HttpResponsePtr> GitlabController::inviteToProject(HttpRequestPtr req) {
     UserGitlabInfo gitlabInfo;
     try {
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
-                                                            std::stoi(paramMap.getParamValue("userId")))).get();
+                                                            std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
         resp->setStatusCode(k404NotFound);
@@ -441,7 +441,7 @@ Task<HttpResponsePtr> GitlabController::inviteToProject(HttpRequestPtr req) {
     // 解析访问级别
     GitlabService::AccessLevels accessLevel;
     try {
-        accessLevel = static_cast<GitlabService::AccessLevels>(std::stoi(paramMap.getParamValue("accessLevel")));
+        accessLevel = static_cast<GitlabService::AccessLevels>(std::stoi(paramMap.getParam("accessLevel")));
     } catch (const std::exception& e) {
         resp->setBody("{\"success\": false, \"message\": \"无效的访问级别\"}");
         resp->setStatusCode(k400BadRequest);
@@ -450,7 +450,7 @@ Task<HttpResponsePtr> GitlabController::inviteToProject(HttpRequestPtr req) {
 
     // 邀请用户加入项目
     if (!gitlabService->adminInvitationProject(
-        std::stoi(paramMap.getParamValue("projectId")),
+        std::stoi(paramMap.getParam("projectId")),
         accessLevel,
         *gitlabInfo.getUserId())) {
         resp->setBody("{\"success\": false, \"message\": \"邀请用户加入GitLab项目失败\"}");

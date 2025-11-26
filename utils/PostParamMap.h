@@ -45,7 +45,7 @@ namespace UEAdminAPI {
         void setParamValue(const std::string& name, const std::string& value);
 
         // 获取参数值
-        std::string getParamValue(const std::string& name) const;
+        std::string getParam(const std::string& name) const;
         
         // 检查特定参数是否存在
         bool hasParam(const std::string& name) const;
