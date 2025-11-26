@@ -338,7 +338,7 @@ bool GitlabService::createImpersonationToken(uint32_t id, std::string& impersona
     Json::Value root;
     root["user_id"] = id;
     root["name"] = "autopdms";
-    root["expires_at"] = "2047-04-01";
+    root["expires_at"] = "2026-11-23";
     root["scopes"].append("api");
 
     req->setBody(root.toStyledString());
@@ -421,7 +421,7 @@ void GitlabService::setGitlabApiHeaders(HttpRequestPtr req) {
     if (!req) {
         return;
     }
-    req->addHeader("Content-Type", "application/json");
+    req->setContentTypeCode(ContentType::CT_APPLICATION_JSON);
     req->addHeader("PRIVATE-TOKEN", _gitlabAdminToken);
     req->addHeader("Host", _gitlabApiHost);
 }
