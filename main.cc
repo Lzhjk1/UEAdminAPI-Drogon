@@ -52,10 +52,10 @@ int main() {
     
     // 因为插件需要启动后才能获取, 所以启动后再初始化
     auto loop = app.getLoop();
-    loop->runAfter(1 , [&app]{
+    loop->runAfter(1s , [&app]{
         if (!app.isRunning()) {
             LOG_INFO << "未启动, 等待1秒后重试";
-            sleepCoro(app.getLoop(), 1);
+            sleepCoro(app.getLoop(), 1s);
         }
         LOG_INFO << "启动成功, 开始初始化插件与服务";
         // 初始化单例服务
