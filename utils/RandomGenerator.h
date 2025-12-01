@@ -57,4 +57,33 @@ public:
     static std::string getRandNumberStr(int digits) {
         return std::to_string(getRandNumber64(digits));
     }
+
+    // 生成随机密码，格式：4位字母+6位数字+1位符号+4位数字
+    static std::string generateRandomPassword() {
+        static std::string letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        static std::string digits = "0123456789";
+        static std::string symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+        
+        std::string password;
+        
+        // 生成4位字母
+        for (int i = 0; i < 4; ++i) {
+            password += letters[getInt(0, letters.length() - 1)];
+        }
+        
+        // 生成6位数字
+        for (int i = 0; i < 6; ++i) {
+            password += digits[getInt(0, digits.length() - 1)];
+        }
+        
+        // 生成1位符号
+        password += symbols[getInt(0, symbols.length() - 1)];
+        
+        // 生成4位数字
+        for (int i = 0; i < 4; ++i) {
+            password += digits[getInt(0, digits.length() - 1)];
+        }
+        
+        return password;
+    }
 };

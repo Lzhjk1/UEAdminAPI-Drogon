@@ -20,7 +20,10 @@ public:
     std::string vectorToString(const std::vector<unsigned char> &vec);
     std::string vectorToString(const std::vector<char>& vec);
 
+    // 前Hash, 后Salt, 返回字节数组
     std::tuple<std::vector<unsigned char>, std::vector<unsigned char>> CreatePasswordHash(const std::string &password);
+    // 前Hash, 后Salt, 返回字符串
+    std::tuple<std::string, std::string> CreateStrPasswordHash(const std::string &password);
 
     bool VerifyPasswordHash(const std::string &password,
                             const std::vector<unsigned char> &hash,
@@ -77,4 +80,7 @@ public:
         const UserPrivileges &privilege = UserPrivileges::User, 
         const bool &isMale = true, 
         const std::string &nickname = "");
+
+    //
+    drogon::Task<UEAdminAPI::utils::HttpResult> Register(drogon_model::UEAdminAPI::User &user);
 };

@@ -39,11 +39,18 @@ public:
 
     // GET
 	// 验证第三方登录
-    // 首先验证code和verifyCode对应的value是否已被确认登录
+    // 仅确认对应的code和verifyCode是否已经登陆
 	Task<HttpResponsePtr> verifyLogin(HttpRequestPtr req,
 		                            const std::string platform,
 		                            const std::string code,
 		                            const std::string verifyCode) const;
+
+    //
+    Task<HttpResponsePtr> createUserFromThirdParty(HttpRequestPtr req,
+		                            const std::string platform,
+		                            const std::string code,
+		                            const std::string verifyCode) const;
+
 
 private:
     Services::ThirdPartyPlatform getPlatformFromString(const std::string& platform) const;

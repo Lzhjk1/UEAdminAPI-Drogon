@@ -3,7 +3,6 @@
 #include "models/User.h"
 #include "models/ThirdpartyPlatforms.h"
 #include "models/UserThirdpartyInfo.h"
-#include <drogon/orm/Mapper.h>
 
 #include "services/ThirdPartyLoginService.h"
 #include "services/MFAService.h"
@@ -14,11 +13,15 @@
 #include <utils/HttpResult.h>
 #include <iostream>
 #include <numeric>
+#include <drogon/orm/Mapper.h>
+
+#include "utils/RandomGenerator.h"
 
 using namespace drogon;
 using namespace drogon::orm;
 using namespace drogon_model::UEAdminAPI;
 using namespace UEAdminAPI::Services;
+using namespace UEAdminAPI::utils;
 
 namespace UEAdminAPI {
 namespace Controllers {
@@ -99,11 +102,11 @@ Task<HttpResponsePtr> ThirdPartyLogin::callback(HttpRequestPtr req,
     }
 
     // 构造返回JSON
-    result.jsondata["code"] = loginValue->code;
-    result.jsondata["verifyCode"] = loginValue->verifyCode;
-    result.jsondata["openId"] = loginValue->openId;
-    result.jsondata["nickName"] = loginValue->nickName;
-    result.jsondata["headImgUrl"] = loginValue->headImgUrl;
+    // result.jsondata["code"] = loginValue->code;
+    // result.jsondata["verifyCode"] = loginValue->verifyCode;
+    // result.jsondata["openId"] = loginValue->openId;
+    // result.jsondata["nickName"] = loginValue->nickName;
+    // result.jsondata["headImgUrl"] = loginValue->headImgUrl;
 
     resp->setBody(result.toJsonString());
 
@@ -414,11 +417,86 @@ Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
         co_return resp;
     }
 
-        // 构造返回JSON
+    // 构造返回JSON
+    result.setResult(0, "验证成功");
     resp->setBody(result.toJsonString());
 
     co_return resp;
+}
 
+Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr req, const std::string platform, const std::string code, const std::string verifyCode) const {
+    throw std::runtime_error("Not implemented");
+    // 依赖
+    auto _authService = AuthService::Instance();
+
+    utils::HttpResult result;
+    auto resp = HttpResponse::newHttpResponse();
+
+    // 获取平台枚举
+    auto platformEnum = getPlatformFromString(platform);
+
+    // 获取平台服务
+    auto platformService = co_await ThirdPartyLoginService::Instance()->getPlatform(platformEnum);
+    if (!platformService) {
+        result.setResult(-1, "不支持的第三方平台");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    if (code.empty() || verifyCode.empty()) {
+        result.setResult(-1, "缺少必要参数, code 和 verifyCode");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    // 验证code
+    bool success = co_await platformService->verifyCode(code, verifyCode);
+
+    if (!success) {
+        result.setResult(-1, "验证失败");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    // 获取登录值
+    auto loginValue = co_await platformService->getLoginValue(code);
+    if (!loginValue) {
+        result.setResult(-1, "找不到对应的登录值");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    if(loginValue->authorizationCode.empty()){
+        result.setResult(-1, "该code尚未登录, 验证失败");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    std::string username = loginValue->nickName;
+    // 生成随机的密码
+    std::string password = RandomGenerator::generateRandomPassword();
+
+    // 数据库初始化
+    auto dbClientPtr = drogon::app().getDbClient();
+    auto mapperUser = drogon::orm::Mapper<User>(dbClientPtr);
+    auto mapperThirdPartyInfo = drogon::orm::Mapper<UserThirdPartyInfo>(dbClientPtr);
+
+    // 生成密码hash和salt
+    auto [hash, salt] = _authService->CreateStrPasswordHash(password);
+
+    // 创建用户
+    User user;
+    user.setName(username);
+    user.setNickName(username);
+    user.setPasswordHash(hash);
+    user.setPasswordSalt(salt);
+    user.setCreateAt(trantor::Date::now());
+    user.setIsMale(true); // 默认
+    user.setPrivilege(int(UserPrivileges::User)); // 默认
+
+    
+
+    
     
 }
 

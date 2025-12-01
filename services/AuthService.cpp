@@ -1,3 +1,5 @@
+#include "AuthService.h"
+
 #include <jwt-cpp/jwt.h>
 #include <jwt-cpp/traits/open-source-parsers-jsoncpp/defaults.h>
 #include <jwt-cpp/traits/open-source-parsers-jsoncpp/traits.h>
@@ -57,6 +59,10 @@ std::tuple<std::vector<unsigned char>, std::vector<unsigned char>> AuthService::
     return std::make_tuple(hash, salt);
 }
 
+std::tuple<std::string, std::string> AuthService::CreateStrPasswordHash(const std::string &password) {
+    auto [hash, salt] = CreatePasswordHash(password);
+    return std::make_tuple(vectorToString(hash), vectorToString(salt));
+}
 bool AuthService::VerifyPasswordHash(const std::string &password,
                                         const std::vector<unsigned char> &hash,
                                         const std::vector<unsigned char> &salt) {
@@ -450,4 +456,8 @@ Task<HttpResult> AuthService::RegisterByPhone(
     result.jsondata["userId"] = *insertedUser.getId();
 
     co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::Register(drogon_model::UEAdminAPI::User &user) {
+    throw std::runtime_error("Not implemented");
 }
