@@ -35,6 +35,16 @@ class Login : public drogon::HttpController<Login>
     // void your_method_name(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback, double p1, int p2) const;
 
 
+    /// @brief 通过密码登录
+    /// @return 成功返回示例为 (相比邱, FlashToken没有id):
+    /// {
+    ///     "code": 200,
+    ///     "data": {
+    ///         "token": "token",
+    ///         "flashToken": "flashToken"
+    ///     }
+    ///     "msg": "success"
+    /// }
     Task<HttpResponsePtr> LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd);
 
     /// @brief 通过其他方式, 如邮箱, 手机验证码登录

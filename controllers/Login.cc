@@ -139,13 +139,22 @@ Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target
     }
 
     // 根据刚找到的用户的关系从数据库获取对应的user_flash_token的记录
-    auto flashtoken = targetUser.getUser_flashtoken(dbClientPtr);
-    
+    // 如果没找到则创建一条新的FlashToken
+    UserFlashtoken flashtoken;
+    try{
+        flashtoken = targetUser.getUser_flashtoken(dbClientPtr);
+    }
+    catch (UnexpectedRows& e){
+        // 没找到则创建
+        flashtoken.setUserId(targetUser.getValueOfId());
+        mapperFlashToken.insert(flashtoken);
+    }
+
     // 创建新的FlashToken
     // 生成随机数作为status, status用于标记最新的token 
     //(虽说这样是抛弃了JWT无状态的优点, 但也只是存了一个int数, 开销不大, 免去了要处理同时有多个FlashToken可用的问题的麻烦)
     int status = RandomGenerator::getInt(1, INT_MAX);
-    string token = _authService->CreateFlashToken(targetUser.getValueOfId(), status);
+    string flashToken = _authService->CreateFlashToken(targetUser.getValueOfId(), status);
     // 更新状态到数据库
     flashtoken.setStatus(status);
     auto ret = mapperFlashToken.update(flashtoken);
@@ -156,7 +165,11 @@ Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target
         co_return resp;
     }
 
-    result.jsondata["FlashToken"] = token;
+    // Token还未实际使用status状态变量, 仅FlashToken在使用, 所以这里的status仅占位
+    string token = _authService->CreateToken(targetUser.getValueOfId(), status);
+
+    result.jsondata["flashToken"] = flashToken;
+    result.jsondata["token"] = token;
     result.setResult(0, "登录成功");
     resp->setBody(result.toJsonString());
 

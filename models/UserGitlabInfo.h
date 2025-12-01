@@ -46,9 +46,9 @@ class UserGitlabInfo
     struct Cols
     {
         static const std::string _user_id;
+        static const std::string _git_id;
         static const std::string _gitlab_impersonation_token_id;
         static const std::string _gitlab_impersonation_token;
-        static const std::string _git_id;
     };
 
     static const int primaryKeyNumber;
@@ -108,6 +108,14 @@ class UserGitlabInfo
     ///Set the value of the column user_id
     void setUserId(const int32_t &pUserId) noexcept;
 
+    /**  For column git_id  */
+    ///Get the value of the column git_id, returns the default value if the column is null
+    const int32_t &getValueOfGitId() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<int32_t> &getGitId() const noexcept;
+    ///Set the value of the column git_id
+    void setGitId(const int32_t &pGitId) noexcept;
+
     /**  For column gitlab_impersonation_token_id  */
     ///Get the value of the column gitlab_impersonation_token_id, returns the default value if the column is null
     const int32_t &getValueOfGitlabImpersonationTokenId() const noexcept;
@@ -124,14 +132,6 @@ class UserGitlabInfo
     ///Set the value of the column gitlab_impersonation_token
     void setGitlabImpersonationToken(const std::string &pGitlabImpersonationToken) noexcept;
     void setGitlabImpersonationToken(std::string &&pGitlabImpersonationToken) noexcept;
-
-    /**  For column git_id  */
-    ///Get the value of the column git_id, returns the default value if the column is null
-    const int32_t &getValueOfGitId() const noexcept;
-    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
-    const std::shared_ptr<int32_t> &getGitId() const noexcept;
-    ///Set the value of the column git_id
-    void setGitId(const int32_t &pGitId) noexcept;
 
 
     static size_t getColumnNumber() noexcept {  return 4;  }
@@ -160,9 +160,9 @@ class UserGitlabInfo
     ///For mysql or sqlite3
     void updateId(const uint64_t id);
     std::shared_ptr<int32_t> userId_;
+    std::shared_ptr<int32_t> gitId_;
     std::shared_ptr<int32_t> gitlabImpersonationTokenId_;
     std::shared_ptr<std::string> gitlabImpersonationToken_;
-    std::shared_ptr<int32_t> gitId_;
     struct MetaData
     {
         const std::string colName_;
@@ -199,17 +199,17 @@ class UserGitlabInfo
         }
         if(dirtyFlag_[1])
         {
-            sql += "gitlab_impersonation_token_id,";
+            sql += "git_id,";
             ++parametersCount;
         }
         if(dirtyFlag_[2])
         {
-            sql += "gitlab_impersonation_token,";
+            sql += "gitlab_impersonation_token_id,";
             ++parametersCount;
         }
         if(dirtyFlag_[3])
         {
-            sql += "git_id,";
+            sql += "gitlab_impersonation_token,";
             ++parametersCount;
         }
         if(parametersCount > 0)

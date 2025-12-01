@@ -15,18 +15,18 @@ using namespace drogon::orm;
 using namespace drogon_model::UEAdminAPI;
 
 const std::string UserGitlabInfo::Cols::_user_id = "\"user_id\"";
+const std::string UserGitlabInfo::Cols::_git_id = "\"git_id\"";
 const std::string UserGitlabInfo::Cols::_gitlab_impersonation_token_id = "\"gitlab_impersonation_token_id\"";
 const std::string UserGitlabInfo::Cols::_gitlab_impersonation_token = "\"gitlab_impersonation_token\"";
-const std::string UserGitlabInfo::Cols::_git_id = "\"git_id\"";
 const std::string UserGitlabInfo::primaryKeyName = "user_id";
 const bool UserGitlabInfo::hasPrimaryKey = true;
 const std::string UserGitlabInfo::tableName = "\"user_gitlab_info\"";
 
 const std::vector<typename UserGitlabInfo::MetaData> UserGitlabInfo::metaData_={
 {"user_id","int32_t","integer",4,0,1,1},
+{"git_id","int32_t","integer",4,0,0,1},
 {"gitlab_impersonation_token_id","int32_t","integer",4,0,0,1},
-{"gitlab_impersonation_token","std::string","character varying",50,0,0,1},
-{"git_id","int32_t","integer",4,0,0,1}
+{"gitlab_impersonation_token","std::string","character varying",200,0,0,1}
 };
 const std::string &UserGitlabInfo::getColumnName(size_t index) noexcept(false)
 {
@@ -41,6 +41,10 @@ UserGitlabInfo::UserGitlabInfo(const Row &r, const ssize_t indexOffset) noexcept
         {
             userId_=std::make_shared<int32_t>(r["user_id"].as<int32_t>());
         }
+        if(!r["git_id"].isNull())
+        {
+            gitId_=std::make_shared<int32_t>(r["git_id"].as<int32_t>());
+        }
         if(!r["gitlab_impersonation_token_id"].isNull())
         {
             gitlabImpersonationTokenId_=std::make_shared<int32_t>(r["gitlab_impersonation_token_id"].as<int32_t>());
@@ -48,10 +52,6 @@ UserGitlabInfo::UserGitlabInfo(const Row &r, const ssize_t indexOffset) noexcept
         if(!r["gitlab_impersonation_token"].isNull())
         {
             gitlabImpersonationToken_=std::make_shared<std::string>(r["gitlab_impersonation_token"].as<std::string>());
-        }
-        if(!r["git_id"].isNull())
-        {
-            gitId_=std::make_shared<int32_t>(r["git_id"].as<int32_t>());
         }
     }
     else
@@ -71,17 +71,17 @@ UserGitlabInfo::UserGitlabInfo(const Row &r, const ssize_t indexOffset) noexcept
         index = offset + 1;
         if(!r[index].isNull())
         {
-            gitlabImpersonationTokenId_=std::make_shared<int32_t>(r[index].as<int32_t>());
+            gitId_=std::make_shared<int32_t>(r[index].as<int32_t>());
         }
         index = offset + 2;
         if(!r[index].isNull())
         {
-            gitlabImpersonationToken_=std::make_shared<std::string>(r[index].as<std::string>());
+            gitlabImpersonationTokenId_=std::make_shared<int32_t>(r[index].as<int32_t>());
         }
         index = offset + 3;
         if(!r[index].isNull())
         {
-            gitId_=std::make_shared<int32_t>(r[index].as<int32_t>());
+            gitlabImpersonationToken_=std::make_shared<std::string>(r[index].as<std::string>());
         }
     }
 
@@ -107,7 +107,7 @@ UserGitlabInfo::UserGitlabInfo(const Json::Value &pJson, const std::vector<std::
         dirtyFlag_[1] = true;
         if(!pJson[pMasqueradingVector[1]].isNull())
         {
-            gitlabImpersonationTokenId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[1]].asInt64());
+            gitId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[1]].asInt64());
         }
     }
     if(!pMasqueradingVector[2].empty() && pJson.isMember(pMasqueradingVector[2]))
@@ -115,7 +115,7 @@ UserGitlabInfo::UserGitlabInfo(const Json::Value &pJson, const std::vector<std::
         dirtyFlag_[2] = true;
         if(!pJson[pMasqueradingVector[2]].isNull())
         {
-            gitlabImpersonationToken_=std::make_shared<std::string>(pJson[pMasqueradingVector[2]].asString());
+            gitlabImpersonationTokenId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[2]].asInt64());
         }
     }
     if(!pMasqueradingVector[3].empty() && pJson.isMember(pMasqueradingVector[3]))
@@ -123,7 +123,7 @@ UserGitlabInfo::UserGitlabInfo(const Json::Value &pJson, const std::vector<std::
         dirtyFlag_[3] = true;
         if(!pJson[pMasqueradingVector[3]].isNull())
         {
-            gitId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[3]].asInt64());
+            gitlabImpersonationToken_=std::make_shared<std::string>(pJson[pMasqueradingVector[3]].asString());
         }
     }
 }
@@ -138,9 +138,17 @@ UserGitlabInfo::UserGitlabInfo(const Json::Value &pJson) noexcept(false)
             userId_=std::make_shared<int32_t>((int32_t)pJson["user_id"].asInt64());
         }
     }
-    if(pJson.isMember("gitlab_impersonation_token_id"))
+    if(pJson.isMember("git_id"))
     {
         dirtyFlag_[1]=true;
+        if(!pJson["git_id"].isNull())
+        {
+            gitId_=std::make_shared<int32_t>((int32_t)pJson["git_id"].asInt64());
+        }
+    }
+    if(pJson.isMember("gitlab_impersonation_token_id"))
+    {
+        dirtyFlag_[2]=true;
         if(!pJson["gitlab_impersonation_token_id"].isNull())
         {
             gitlabImpersonationTokenId_=std::make_shared<int32_t>((int32_t)pJson["gitlab_impersonation_token_id"].asInt64());
@@ -148,18 +156,10 @@ UserGitlabInfo::UserGitlabInfo(const Json::Value &pJson) noexcept(false)
     }
     if(pJson.isMember("gitlab_impersonation_token"))
     {
-        dirtyFlag_[2]=true;
+        dirtyFlag_[3]=true;
         if(!pJson["gitlab_impersonation_token"].isNull())
         {
             gitlabImpersonationToken_=std::make_shared<std::string>(pJson["gitlab_impersonation_token"].asString());
-        }
-    }
-    if(pJson.isMember("git_id"))
-    {
-        dirtyFlag_[3]=true;
-        if(!pJson["git_id"].isNull())
-        {
-            gitId_=std::make_shared<int32_t>((int32_t)pJson["git_id"].asInt64());
         }
     }
 }
@@ -184,7 +184,7 @@ void UserGitlabInfo::updateByMasqueradedJson(const Json::Value &pJson,
         dirtyFlag_[1] = true;
         if(!pJson[pMasqueradingVector[1]].isNull())
         {
-            gitlabImpersonationTokenId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[1]].asInt64());
+            gitId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[1]].asInt64());
         }
     }
     if(!pMasqueradingVector[2].empty() && pJson.isMember(pMasqueradingVector[2]))
@@ -192,7 +192,7 @@ void UserGitlabInfo::updateByMasqueradedJson(const Json::Value &pJson,
         dirtyFlag_[2] = true;
         if(!pJson[pMasqueradingVector[2]].isNull())
         {
-            gitlabImpersonationToken_=std::make_shared<std::string>(pJson[pMasqueradingVector[2]].asString());
+            gitlabImpersonationTokenId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[2]].asInt64());
         }
     }
     if(!pMasqueradingVector[3].empty() && pJson.isMember(pMasqueradingVector[3]))
@@ -200,7 +200,7 @@ void UserGitlabInfo::updateByMasqueradedJson(const Json::Value &pJson,
         dirtyFlag_[3] = true;
         if(!pJson[pMasqueradingVector[3]].isNull())
         {
-            gitId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[3]].asInt64());
+            gitlabImpersonationToken_=std::make_shared<std::string>(pJson[pMasqueradingVector[3]].asString());
         }
     }
 }
@@ -214,9 +214,17 @@ void UserGitlabInfo::updateByJson(const Json::Value &pJson) noexcept(false)
             userId_=std::make_shared<int32_t>((int32_t)pJson["user_id"].asInt64());
         }
     }
-    if(pJson.isMember("gitlab_impersonation_token_id"))
+    if(pJson.isMember("git_id"))
     {
         dirtyFlag_[1] = true;
+        if(!pJson["git_id"].isNull())
+        {
+            gitId_=std::make_shared<int32_t>((int32_t)pJson["git_id"].asInt64());
+        }
+    }
+    if(pJson.isMember("gitlab_impersonation_token_id"))
+    {
+        dirtyFlag_[2] = true;
         if(!pJson["gitlab_impersonation_token_id"].isNull())
         {
             gitlabImpersonationTokenId_=std::make_shared<int32_t>((int32_t)pJson["gitlab_impersonation_token_id"].asInt64());
@@ -224,18 +232,10 @@ void UserGitlabInfo::updateByJson(const Json::Value &pJson) noexcept(false)
     }
     if(pJson.isMember("gitlab_impersonation_token"))
     {
-        dirtyFlag_[2] = true;
+        dirtyFlag_[3] = true;
         if(!pJson["gitlab_impersonation_token"].isNull())
         {
             gitlabImpersonationToken_=std::make_shared<std::string>(pJson["gitlab_impersonation_token"].asString());
-        }
-    }
-    if(pJson.isMember("git_id"))
-    {
-        dirtyFlag_[3] = true;
-        if(!pJson["git_id"].isNull())
-        {
-            gitId_=std::make_shared<int32_t>((int32_t)pJson["git_id"].asInt64());
         }
     }
 }
@@ -262,6 +262,23 @@ const typename UserGitlabInfo::PrimaryKeyType & UserGitlabInfo::getPrimaryKey() 
     return *userId_;
 }
 
+const int32_t &UserGitlabInfo::getValueOfGitId() const noexcept
+{
+    static const int32_t defaultValue = int32_t();
+    if(gitId_)
+        return *gitId_;
+    return defaultValue;
+}
+const std::shared_ptr<int32_t> &UserGitlabInfo::getGitId() const noexcept
+{
+    return gitId_;
+}
+void UserGitlabInfo::setGitId(const int32_t &pGitId) noexcept
+{
+    gitId_ = std::make_shared<int32_t>(pGitId);
+    dirtyFlag_[1] = true;
+}
+
 const int32_t &UserGitlabInfo::getValueOfGitlabImpersonationTokenId() const noexcept
 {
     static const int32_t defaultValue = int32_t();
@@ -276,7 +293,7 @@ const std::shared_ptr<int32_t> &UserGitlabInfo::getGitlabImpersonationTokenId() 
 void UserGitlabInfo::setGitlabImpersonationTokenId(const int32_t &pGitlabImpersonationTokenId) noexcept
 {
     gitlabImpersonationTokenId_ = std::make_shared<int32_t>(pGitlabImpersonationTokenId);
-    dirtyFlag_[1] = true;
+    dirtyFlag_[2] = true;
 }
 
 const std::string &UserGitlabInfo::getValueOfGitlabImpersonationToken() const noexcept
@@ -293,28 +310,11 @@ const std::shared_ptr<std::string> &UserGitlabInfo::getGitlabImpersonationToken(
 void UserGitlabInfo::setGitlabImpersonationToken(const std::string &pGitlabImpersonationToken) noexcept
 {
     gitlabImpersonationToken_ = std::make_shared<std::string>(pGitlabImpersonationToken);
-    dirtyFlag_[2] = true;
+    dirtyFlag_[3] = true;
 }
 void UserGitlabInfo::setGitlabImpersonationToken(std::string &&pGitlabImpersonationToken) noexcept
 {
     gitlabImpersonationToken_ = std::make_shared<std::string>(std::move(pGitlabImpersonationToken));
-    dirtyFlag_[2] = true;
-}
-
-const int32_t &UserGitlabInfo::getValueOfGitId() const noexcept
-{
-    static const int32_t defaultValue = int32_t();
-    if(gitId_)
-        return *gitId_;
-    return defaultValue;
-}
-const std::shared_ptr<int32_t> &UserGitlabInfo::getGitId() const noexcept
-{
-    return gitId_;
-}
-void UserGitlabInfo::setGitId(const int32_t &pGitId) noexcept
-{
-    gitId_ = std::make_shared<int32_t>(pGitId);
     dirtyFlag_[3] = true;
 }
 
@@ -326,9 +326,9 @@ const std::vector<std::string> &UserGitlabInfo::insertColumns() noexcept
 {
     static const std::vector<std::string> inCols={
         "user_id",
+        "git_id",
         "gitlab_impersonation_token_id",
-        "gitlab_impersonation_token",
-        "git_id"
+        "gitlab_impersonation_token"
     };
     return inCols;
 }
@@ -348,6 +348,17 @@ void UserGitlabInfo::outputArgs(drogon::orm::internal::SqlBinder &binder) const
     }
     if(dirtyFlag_[1])
     {
+        if(getGitId())
+        {
+            binder << getValueOfGitId();
+        }
+        else
+        {
+            binder << nullptr;
+        }
+    }
+    if(dirtyFlag_[2])
+    {
         if(getGitlabImpersonationTokenId())
         {
             binder << getValueOfGitlabImpersonationTokenId();
@@ -357,22 +368,11 @@ void UserGitlabInfo::outputArgs(drogon::orm::internal::SqlBinder &binder) const
             binder << nullptr;
         }
     }
-    if(dirtyFlag_[2])
+    if(dirtyFlag_[3])
     {
         if(getGitlabImpersonationToken())
         {
             binder << getValueOfGitlabImpersonationToken();
-        }
-        else
-        {
-            binder << nullptr;
-        }
-    }
-    if(dirtyFlag_[3])
-    {
-        if(getGitId())
-        {
-            binder << getValueOfGitId();
         }
         else
         {
@@ -418,6 +418,17 @@ void UserGitlabInfo::updateArgs(drogon::orm::internal::SqlBinder &binder) const
     }
     if(dirtyFlag_[1])
     {
+        if(getGitId())
+        {
+            binder << getValueOfGitId();
+        }
+        else
+        {
+            binder << nullptr;
+        }
+    }
+    if(dirtyFlag_[2])
+    {
         if(getGitlabImpersonationTokenId())
         {
             binder << getValueOfGitlabImpersonationTokenId();
@@ -427,22 +438,11 @@ void UserGitlabInfo::updateArgs(drogon::orm::internal::SqlBinder &binder) const
             binder << nullptr;
         }
     }
-    if(dirtyFlag_[2])
+    if(dirtyFlag_[3])
     {
         if(getGitlabImpersonationToken())
         {
             binder << getValueOfGitlabImpersonationToken();
-        }
-        else
-        {
-            binder << nullptr;
-        }
-    }
-    if(dirtyFlag_[3])
-    {
-        if(getGitId())
-        {
-            binder << getValueOfGitId();
         }
         else
         {
@@ -461,6 +461,14 @@ Json::Value UserGitlabInfo::toJson() const
     {
         ret["user_id"]=Json::Value();
     }
+    if(getGitId())
+    {
+        ret["git_id"]=getValueOfGitId();
+    }
+    else
+    {
+        ret["git_id"]=Json::Value();
+    }
     if(getGitlabImpersonationTokenId())
     {
         ret["gitlab_impersonation_token_id"]=getValueOfGitlabImpersonationTokenId();
@@ -476,14 +484,6 @@ Json::Value UserGitlabInfo::toJson() const
     else
     {
         ret["gitlab_impersonation_token"]=Json::Value();
-    }
-    if(getGitId())
-    {
-        ret["git_id"]=getValueOfGitId();
-    }
-    else
-    {
-        ret["git_id"]=Json::Value();
     }
     return ret;
 }
@@ -507,9 +507,9 @@ Json::Value UserGitlabInfo::toMasqueradedJson(
         }
         if(!pMasqueradingVector[1].empty())
         {
-            if(getGitlabImpersonationTokenId())
+            if(getGitId())
             {
-                ret[pMasqueradingVector[1]]=getValueOfGitlabImpersonationTokenId();
+                ret[pMasqueradingVector[1]]=getValueOfGitId();
             }
             else
             {
@@ -518,9 +518,9 @@ Json::Value UserGitlabInfo::toMasqueradedJson(
         }
         if(!pMasqueradingVector[2].empty())
         {
-            if(getGitlabImpersonationToken())
+            if(getGitlabImpersonationTokenId())
             {
-                ret[pMasqueradingVector[2]]=getValueOfGitlabImpersonationToken();
+                ret[pMasqueradingVector[2]]=getValueOfGitlabImpersonationTokenId();
             }
             else
             {
@@ -529,9 +529,9 @@ Json::Value UserGitlabInfo::toMasqueradedJson(
         }
         if(!pMasqueradingVector[3].empty())
         {
-            if(getGitId())
+            if(getGitlabImpersonationToken())
             {
-                ret[pMasqueradingVector[3]]=getValueOfGitId();
+                ret[pMasqueradingVector[3]]=getValueOfGitlabImpersonationToken();
             }
             else
             {
@@ -549,6 +549,14 @@ Json::Value UserGitlabInfo::toMasqueradedJson(
     {
         ret["user_id"]=Json::Value();
     }
+    if(getGitId())
+    {
+        ret["git_id"]=getValueOfGitId();
+    }
+    else
+    {
+        ret["git_id"]=Json::Value();
+    }
     if(getGitlabImpersonationTokenId())
     {
         ret["gitlab_impersonation_token_id"]=getValueOfGitlabImpersonationTokenId();
@@ -565,14 +573,6 @@ Json::Value UserGitlabInfo::toMasqueradedJson(
     {
         ret["gitlab_impersonation_token"]=Json::Value();
     }
-    if(getGitId())
-    {
-        ret["git_id"]=getValueOfGitId();
-    }
-    else
-    {
-        ret["git_id"]=Json::Value();
-    }
     return ret;
 }
 
@@ -588,9 +588,19 @@ bool UserGitlabInfo::validateJsonForCreation(const Json::Value &pJson, std::stri
         err="The user_id column cannot be null";
         return false;
     }
+    if(pJson.isMember("git_id"))
+    {
+        if(!validJsonOfField(1, "git_id", pJson["git_id"], err, true))
+            return false;
+    }
+    else
+    {
+        err="The git_id column cannot be null";
+        return false;
+    }
     if(pJson.isMember("gitlab_impersonation_token_id"))
     {
-        if(!validJsonOfField(1, "gitlab_impersonation_token_id", pJson["gitlab_impersonation_token_id"], err, true))
+        if(!validJsonOfField(2, "gitlab_impersonation_token_id", pJson["gitlab_impersonation_token_id"], err, true))
             return false;
     }
     else
@@ -600,22 +610,12 @@ bool UserGitlabInfo::validateJsonForCreation(const Json::Value &pJson, std::stri
     }
     if(pJson.isMember("gitlab_impersonation_token"))
     {
-        if(!validJsonOfField(2, "gitlab_impersonation_token", pJson["gitlab_impersonation_token"], err, true))
+        if(!validJsonOfField(3, "gitlab_impersonation_token", pJson["gitlab_impersonation_token"], err, true))
             return false;
     }
     else
     {
         err="The gitlab_impersonation_token column cannot be null";
-        return false;
-    }
-    if(pJson.isMember("git_id"))
-    {
-        if(!validJsonOfField(3, "git_id", pJson["git_id"], err, true))
-            return false;
-    }
-    else
-    {
-        err="The git_id column cannot be null";
         return false;
     }
     return true;
@@ -702,19 +702,19 @@ bool UserGitlabInfo::validateJsonForUpdate(const Json::Value &pJson, std::string
         err = "The value of primary key must be set in the json object for update";
         return false;
     }
+    if(pJson.isMember("git_id"))
+    {
+        if(!validJsonOfField(1, "git_id", pJson["git_id"], err, false))
+            return false;
+    }
     if(pJson.isMember("gitlab_impersonation_token_id"))
     {
-        if(!validJsonOfField(1, "gitlab_impersonation_token_id", pJson["gitlab_impersonation_token_id"], err, false))
+        if(!validJsonOfField(2, "gitlab_impersonation_token_id", pJson["gitlab_impersonation_token_id"], err, false))
             return false;
     }
     if(pJson.isMember("gitlab_impersonation_token"))
     {
-        if(!validJsonOfField(2, "gitlab_impersonation_token", pJson["gitlab_impersonation_token"], err, false))
-            return false;
-    }
-    if(pJson.isMember("git_id"))
-    {
-        if(!validJsonOfField(3, "git_id", pJson["git_id"], err, false))
+        if(!validJsonOfField(3, "gitlab_impersonation_token", pJson["gitlab_impersonation_token"], err, false))
             return false;
     }
     return true;
@@ -800,19 +800,11 @@ bool UserGitlabInfo::validJsonOfField(size_t index,
                 err="The " + fieldName + " column cannot be null";
                 return false;
             }
-            if(!pJson.isString())
+            if(!pJson.isInt())
             {
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 50)
-            {
-                err="String length exceeds limit for the " +
-                    fieldName +
-                    " field (the maximum value is 50)";
-                return false;
-            }
-
             break;
         case 3:
             if(pJson.isNull())
@@ -820,11 +812,19 @@ bool UserGitlabInfo::validJsonOfField(size_t index,
                 err="The " + fieldName + " column cannot be null";
                 return false;
             }
-            if(!pJson.isInt())
+            if(!pJson.isString())
             {
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
+            if(pJson.isString() && std::strlen(pJson.asCString()) > 200)
+            {
+                err="String length exceeds limit for the " +
+                    fieldName +
+                    " field (the maximum value is 200)";
+                return false;
+            }
+
             break;
         default:
             err="Internal error in the server";

@@ -50,6 +50,7 @@ class UserFlashtoken
         static const std::string _token_desc;
         static const std::string _expire_at;
         static const std::string _status;
+        static const std::string _status_for_Token;
     };
 
     static const int primaryKeyNumber;
@@ -117,7 +118,6 @@ class UserFlashtoken
     ///Set the value of the column flash_token
     void setFlashToken(const std::string &pFlashToken) noexcept;
     void setFlashToken(std::string &&pFlashToken) noexcept;
-    void setFlashTokenToNull() noexcept;
 
     /**  For column token_desc  */
     ///Get the value of the column token_desc, returns the default value if the column is null
@@ -127,7 +127,6 @@ class UserFlashtoken
     ///Set the value of the column token_desc
     void setTokenDesc(const std::string &pTokenDesc) noexcept;
     void setTokenDesc(std::string &&pTokenDesc) noexcept;
-    void setTokenDescToNull() noexcept;
 
     /**  For column expire_at  */
     ///Get the value of the column expire_at, returns the default value if the column is null
@@ -136,7 +135,6 @@ class UserFlashtoken
     const std::shared_ptr<::trantor::Date> &getExpireAt() const noexcept;
     ///Set the value of the column expire_at
     void setExpireAt(const ::trantor::Date &pExpireAt) noexcept;
-    void setExpireAtToNull() noexcept;
 
     /**  For column status  */
     ///Get the value of the column status, returns the default value if the column is null
@@ -145,9 +143,19 @@ class UserFlashtoken
     const std::shared_ptr<int32_t> &getStatus() const noexcept;
     ///Set the value of the column status
     void setStatus(const int32_t &pStatus) noexcept;
+    void setStatusToNull() noexcept;
+
+    /**  For column status_for_Token  */
+    ///Get the value of the column status_for_Token, returns the default value if the column is null
+    const int32_t &getValueOfStatusForToken() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<int32_t> &getStatusForToken() const noexcept;
+    ///Set the value of the column status_for_Token
+    void setStatusForToken(const int32_t &pStatusForToken) noexcept;
+    void setStatusForTokenToNull() noexcept;
 
 
-    static size_t getColumnNumber() noexcept {  return 5;  }
+    static size_t getColumnNumber() noexcept {  return 6;  }
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
@@ -177,6 +185,7 @@ class UserFlashtoken
     std::shared_ptr<std::string> tokenDesc_;
     std::shared_ptr<::trantor::Date> expireAt_;
     std::shared_ptr<int32_t> status_;
+    std::shared_ptr<int32_t> statusForToken_;
     struct MetaData
     {
         const std::string colName_;
@@ -188,7 +197,7 @@ class UserFlashtoken
         const bool notNull_;
     };
     static const std::vector<MetaData> metaData_;
-    bool dirtyFlag_[5]={ false };
+    bool dirtyFlag_[6]={ false };
   public:
     static const std::string &sqlForFindingByPrimaryKey()
     {
@@ -231,6 +240,11 @@ class UserFlashtoken
             sql += "status,";
             ++parametersCount;
         }
+        if(dirtyFlag_[5])
+        {
+            sql += "status_for_Token,";
+            ++parametersCount;
+        }
         if(parametersCount > 0)
         {
             sql[sql.length()-1]=')';
@@ -263,6 +277,11 @@ class UserFlashtoken
             sql.append(placeholderStr, n);
         }
         if(dirtyFlag_[4])
+        {
+            n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
+            sql.append(placeholderStr, n);
+        }
+        if(dirtyFlag_[5])
         {
             n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
             sql.append(placeholderStr, n);
