@@ -501,9 +501,12 @@ Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr r
 }
 
 Services::ThirdPartyPlatform ThirdPartyLogin::getPlatformFromString(const std::string& platform) const {
-    if (platform == "QQ" || platform == "qq") {
+    // 转换为小写
+    std::string platformLower = DataFormatUtil::toLowerCase(platform);
+    
+    if (platform == "qq") {
         return Services::ThirdPartyPlatform::QQ;
-    } else if (platform == "WeChat" || platform == "wechat") {
+    } else if (platform == "wechat") {
         return Services::ThirdPartyPlatform::WeChat;
     }
 
