@@ -36,7 +36,7 @@ namespace UEAdminAPI {
         PostParamMap();
 
         // 添加参数定义
-        PostParamMap& addParam(const std::string& name, bool isNecessar = false, const std::string& defaultValue = "");
+        PostParamMap& addParam(const std::string& name, bool isNecessary = false, const std::string& defaultValue = "");
 
         // 互斥参数, 例如: 互斥参数组为 A 和 B, 则 A 和 B 不能同时存在
         PostParamMap& addParamAsMutex(const std::string& name1, const std::string& name2, const std::string& defaultValue1 = "", const std::string& defaultValue2 = "");
