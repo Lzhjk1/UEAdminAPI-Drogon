@@ -1,7 +1,6 @@
 #pragma once
 #include <iostream>
 
-using namespace std;
 
 enum class UserPrivileges{
     Default = 1 << 0,
@@ -9,11 +8,11 @@ enum class UserPrivileges{
     Admin = 1 << 2
 };
 
-inline UserPrivileges stringToUserPrivileges(const string& str){
+inline UserPrivileges stringToUserPrivileges(const std::string& str){
     if (str == "Default") return UserPrivileges::Default;
     else if (str == "User") return UserPrivileges::User;
     else if (str == "Admin") return UserPrivileges::Admin;
-    throw invalid_argument("Unknown UserPrivileges type: " + str);
+    throw std::invalid_argument("Unknown UserPrivileges type: " + str);
 }
 
 // inline UserPrivileges intToUserPrivileges(int i){

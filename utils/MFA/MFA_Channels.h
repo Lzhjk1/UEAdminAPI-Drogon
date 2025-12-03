@@ -11,8 +11,6 @@
 #include "eMFA_Type.h"
 #include "services/TencentSMSService.h"
 
-using namespace std;
-
 enum class eChannelType {
     SMS,
     Email,
@@ -28,13 +26,13 @@ public:
     virtual eChannelType ChannelType() const = 0;
 
     // 根据key和类型获取验证码对
-    virtual optional<shared_ptr<ICodePair>> GetCodePair(const string &key, const eMFAType& type) = 0;
+    virtual optional<shared_ptr<ICodePair>> GetCodePair(const std::string &key, const eMFAType& type) = 0;
 
     // 发送验证码
-    virtual drogon::Task<pair<bool, string>> SendCode(shared_ptr<ICodePair> codePair) = 0;
+    virtual drogon::Task<pair<bool, std::string>> SendCode(shared_ptr<ICodePair> codePair) = 0;
 
     // 检查验证码是否正确, 获取到的验证码将被清除
-    virtual bool VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) = 0;
+    virtual bool VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg) = 0;
 };
 
 // 验证码发送渠道基类, 实现渠道接口, 并提供一些公共方法
@@ -58,13 +56,13 @@ public:
     eChannelType ChannelType() const override;
 
     // 根据key和类型获取验证码对
-    optional<shared_ptr<ICodePair>> GetCodePair(const string &key, const eMFAType& type) override;
+    optional<shared_ptr<ICodePair>> GetCodePair(const std::string &key, const eMFAType& type) override;
 
     // 检查验证码是否正确, 获取到的验证码将被清除
-    bool VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) override;
+    bool VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg) override;
 
     // 静态方法, 根据目标字符串判断渠道类型, 返回类型枚举
-    static eChannelType DetermineChannelType(const string &target);
+    static eChannelType DetermineChannelType(const std::string &target);
 };
 
 // 邮件发送渠道
@@ -74,7 +72,7 @@ public:
     // 构造函数, 传入邮件服务接口实例
     explicit MFA_EmailChannel(IEmailService* emailService);
     // 发送验证码
-    drogon::Task<pair<bool, string>> SendCode(shared_ptr<ICodePair> codePair) override;
+    drogon::Task<pair<bool, std::string>> SendCode(shared_ptr<ICodePair> codePair) override;
 };
 
 // 短信发送渠道
@@ -84,7 +82,7 @@ public:
     // 构造函数, 传入短信服务接口实例
     explicit MFA_SMSChannel(ISmsService *smsService);
     // 发送验证码
-    drogon::Task<pair<bool, string>> SendCode(shared_ptr<ICodePair> codePair) override;
+    drogon::Task<pair<bool, std::string>> SendCode(shared_ptr<ICodePair> codePair) override;
     // 基类中的方法没有处理电话号的区号, 所以再重载一下
-    bool VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) override;
+    bool VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg) override;
 };

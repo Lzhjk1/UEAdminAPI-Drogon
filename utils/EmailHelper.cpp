@@ -53,7 +53,7 @@ bool UEAdminAPI::EmailHelper::SendEmail(const std::string &targetMailbox, const 
     }
 
     // emailId 目前没有使用
-    string emailId = smtpPlugin->sendEmail(
+    std::string emailId = smtpPlugin->sendEmail(
         _smtpServer,        // SMTP 服务器地址
         _smtpPort,          // SMTP 服务器端口
         _emailSource,       // 发件人邮箱

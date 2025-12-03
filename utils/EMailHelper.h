@@ -6,16 +6,15 @@
 
 
 using namespace drogon;
-using namespace std;
 
 namespace UEAdminAPI {
 	class EmailHelper {
 	private:
-		string _emailSource;
-		string _emailPassword;
-		string _claimedName;
+		std::string _emailSource;
+		std::string _emailPassword;
+		std::string _claimedName;
 
-		string _smtpServer;
+		std::string _smtpServer;
 		int _smtpPort;
 
 	public:

@@ -33,7 +33,7 @@ Task<HttpResponsePtr> TestController::TestHandler(HttpRequestPtr req) {
 
     // _gitlabService->adminInvitationProject(1, UEAdminAPI::GitlabService::AccessLevels::Developer, 50);
 
-    string gitlabImpersonationToken;
+    std::string gitlabImpersonationToken;
     uint32_t gitImpersonationTokenId = -1;
     _gitlabService->createImpersonationToken(50, gitlabImpersonationToken, gitImpersonationTokenId);
 
