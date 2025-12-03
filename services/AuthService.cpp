@@ -16,6 +16,7 @@
 #include "models/UserGitlabInfo.h"
 
 #include <utils/EnumUserPrivileges.h>
+#include <utils/RandomGenerator.h>
 
 using namespace drogon_model::UEAdminAPI;
 using namespace drogon::orm;
@@ -115,27 +116,31 @@ std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationS
     return token;
 }
 
-int AuthService::CheckTokenAndParseUserId(const std::string &token) {
+std::tuple<int, int, bool> AuthService::CheckTokenAndParseUserId(const std::string &token) {
+    // 解码并验证token
+    auto decoded = jwt::decode(token);
+    auto verifier = jwt::verify()
+        .allow_algorithm(jwt::algorithm::hs512{_secret})
+        .with_issuer(_jwtIssuer);
+    std::string tokenType = decoded.get_payload_claim("tokenType").as_string();
+    bool isFlashToken = tokenType == "flashToken";
     try {
-        // 解码并验证token
-        auto decoded = jwt::decode(token);
-        auto verifier = jwt::verify()
-            .allow_algorithm(jwt::algorithm::hs512{_secret})
-            .with_issuer(_jwtIssuer);
+
 
         verifier.verify(decoded);
 
         // 获取用户ID
         auto userIdClaim = decoded.get_payload_claim("id");
         std::string userIdStr = userIdClaim.as_string();
+        int status = decoded.get_payload_claim("status").as_integer();
         int32_t userId = std::stoi(userIdStr);
 
-        return userId;
+        return std::make_tuple(userId, status, isFlashToken);
     }
     catch (const std::exception &e) {
         LOG_ERROR << std::format("对于Token: {}, 验证失败: {}", token, e.what());
         LOG_ERROR << "Token验证失败: " << e.what();
-        return -1;
+        return std::make_tuple(-1, 0, isFlashToken);
     }
 }
 
@@ -147,154 +152,39 @@ Task<HttpResult> AuthService::RegisterByEmail(
     const UserPrivileges &privilege, 
     const bool &isMale, 
     const std::string &nickname) {
-    // 依赖
-    auto _mfaService = MFAService::Instance();
-    auto _gitlabService = GitlabService::Instance();
-
-    // 
     HttpResult result;
-
-    // 检查验证码
+    auto _mfaService = MFAService::Instance();
+    // 1. 检查验证码 (这里可以用 co_await 是因为 VerifyTheCode 返回的是 Task 或者 Awaitable)
     auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, code, eMFAType::Register);
     if(!isSuccess) {
         result.setResult(-1, errMsg);
         co_return result;
     }
-
-    // 数据库相关初始化
+    // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
-    drogon::orm::Mapper<UserGitlabInfo> mapperUserGitlabInfos(dbClientPtr);
-
-    // 检查用户名是否已存在
-    User foundUser;
-    bool isFound;
-    try {
-        foundUser = mapperUsers.findFutureOne(Criteria(User::Cols::_name, CompareOperator::EQ, username)).get();
-        isFound = true;
-    }
-    catch (const drogon::orm::DrogonDbException& e) {
-        // 有异常说明没找到
-        isFound = false;
-    }
-    if (isFound) {
-        LOG_ERROR << "用户名已存在";
+    // 使用同步辅助函数
+    if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
         result.setResult(-1, "用户名已存在");
         co_return result;
     }
-
-    // 检查邮箱是否已存在
-    try{
-        foundUser = mapperUsers.findFutureOne(Criteria(User::Cols::_email, CompareOperator::EQ, email)).get();
-        isFound = true;
-    }
-    catch (const drogon::orm::DrogonDbException& e) {
-        isFound = false;
-    }
-    if (isFound) {
-        LOG_ERROR << std::format("邮箱: {} 已存在", email);
+    if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_email, CompareOperator::EQ, email))) {
         result.setResult(-1, "邮箱已存在");
         co_return result;
     }
-
-    // 创建新用户
+    // 3. 组装对象
     auto newUser = User();
     newUser.setName(username);
-    auto [passwordHash, passwordSalt] = CreatePasswordHash(password);
-    newUser.setPasswordHash(vectorToString(passwordHash));
-    newUser.setPasswordSalt(vectorToString(passwordSalt));
+    auto [passwordHash, passwordSalt] = CreateStrPasswordHash(password);
+    newUser.setPasswordHash(passwordHash);
+    newUser.setPasswordSalt(passwordSalt);
     newUser.setPrivilege(int(privilege));
     newUser.setNickName(nickname.empty() ? username : nickname);
-    newUser.setEmail(email);
     newUser.setIsMale(isMale);
     newUser.setCreateAt(trantor::Date::now());
-
-    // 同步创建 GitLab 账号
-    int gitlabUserId = 0;
-    if(!_gitlabService->createUser(username, password, email, gitlabUserId)){
-        result.setResult(-1, "创建 GitLab 账号失败");
-        co_return result;
-    }
-
-    // 邀请用户加入项目
-    if(!_gitlabService->adminInvitationProject(1, UEAdminAPI::GitlabService::AccessLevels::Developer, gitlabUserId)){
-        result.setResult(-1, "邀请用户加入项目失败");
-        co_return result;
-    }
-
-    // 创建gitlab impersonation token
-    uint32_t gitImpersonationTokenId = 0;
-    string gitlabImpersonationToken = "";
-    if(!_gitlabService->createImpersonationToken(gitlabUserId, gitlabImpersonationToken, gitImpersonationTokenId)){
-        result.setResult(-1, "创建 GitLab Impersonation Token失败");
-        co_return result;
-    }
-
-    // 插入数据库
-    // TODO: 当前为阻塞式的插入，后续可改进
-    // auto transaction = co_await dbClientPtr->newTransactionCoro();
-    auto insertedUserFuture = mapperUsers.insertFuture(newUser);
-
-    // 获取future
-    bool step1Failed = false;
-    bool step2Failed = false;
-
-    User insertedUser;
-    UserGitlabInfo insertedUserGitlabInfo;
-
-    try{
-        insertedUser = insertedUserFuture.get();
-    }catch (const drogon::orm::DrogonDbException& e) {
-        LOG_ERROR << "插入用户失败:" <<e.base().what();
-        step1Failed = true;
-    }
-
-    // 创建用户gitlab信息数据库对象
-    auto newUserGitlab = UserGitlabInfo();
-    // 要先插入用户, 才能获得用户Id
-    newUserGitlab.setUserId(insertedUser.getValueOfId());
-    newUserGitlab.setGitId(gitlabUserId);
-    newUserGitlab.setGitlabImpersonationToken(gitlabImpersonationToken);
-    newUserGitlab.setGitlabImpersonationTokenId(gitImpersonationTokenId);
-    auto insertedUserGitlabInfoFuture = mapperUserGitlabInfos.insertFuture(newUserGitlab);
-    
-    try{
-        insertedUserGitlabInfo = insertedUserGitlabInfoFuture.get();
-    }catch (const drogon::orm::DrogonDbException& e) {
-        LOG_ERROR << "插入Gitlab信息失败:" <<e.base().what();
-        step2Failed = true;
-    }
-
-    // 如有错误, 撤销操作 (drogon有提供执行sql时的事务操作, 但是mapper的没找到)
-    if(step1Failed){
-        if(!_gitlabService->deleteUser(gitlabUserId)){
-            LOG_ERROR << "创建用户时失败, 回滚时删除Gitlab用户失败";
-        }
-        LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
-        result.setResult(-1, "创建用户失败");
-        co_return result;
-    }
-    if(!step1Failed && step2Failed){
-        if(!_gitlabService->deleteUser(gitlabUserId)){
-            LOG_ERROR << "创建用户时失败, 回滚时删除Gitlab用户失败";
-        }
-        else {
-            LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
-        }
-        if(mapperUsers.deleteFutureOne(insertedUser).get() == 0){
-            LOG_ERROR << "创建用户时失败, 回滚时删除先前插入的用户数据失败";
-        }
-        else {
-            LOG_ERROR << "创建用户时失败, 回滚时删除先前插入的用户数据成功";
-        }
-        result.setResult(-1, "创建用户失败");
-        co_return result;
-    }
-    
-    result.setResult(0, "创建用户成功");
-    result.jsondata["userId"] = *insertedUser.getId();
-
-    co_return result;
+    newUser.setEmail(email);
+    // 4. 执行
+    co_return co_await ExecuteRegistrationTransaction(newUser, password, email);
 }
 
 
@@ -308,9 +198,7 @@ Task<HttpResult> AuthService::RegisterByPhone(
         const std::string &nickname) {
     // 依赖
     auto _mfaService = MFAService::Instance();
-    auto _gitlabService = GitlabService::Instance();
-
-    // 
+    
     HttpResult result;
 
     // 检查验证码
@@ -319,147 +207,32 @@ Task<HttpResult> AuthService::RegisterByPhone(
         result.setResult(-1, errMsg);
         co_return result;
     }
-
-    // 数据库相关初始化
+    // 数据库初始化
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
-    drogon::orm::Mapper<UserGitlabInfo> mapperUserGitlabInfos(dbClientPtr);
-
-    // 检查用户名是否已存在
-    User foundUser;
-    bool isFound;
-    try {
-        foundUser = mapperUsers.findFutureOne(Criteria(User::Cols::_name, CompareOperator::EQ, username)).get();
-        isFound = true;
-    }
-    catch (const drogon::orm::DrogonDbException& e) {
-        // 有异常说明没找到
-        isFound = false;
-    }
-    if (isFound) {
-        LOG_ERROR << "用户名已存在";
+    // 查重
+    if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
         result.setResult(-1, "用户名已存在");
         co_return result;
     }
-
-    // 检查邮箱是否已存在
-    try{
-        foundUser = mapperUsers.findFutureOne(Criteria(User::Cols::_telephone_number, CompareOperator::EQ, phoneNumber)).get();
-        isFound = true;
-    }
-    catch (const drogon::orm::DrogonDbException& e) {
-        isFound = false;
-    }
-    if (isFound) {
-        LOG_ERROR << std::format("邮箱: {} 已存在", phoneNumber);
-        result.setResult(-1, "邮箱已存在");
+    if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_telephone_number, CompareOperator::EQ, phoneNumber))) {
+        result.setResult(-1, "手机号已存在");
         co_return result;
     }
-
-    // 创建新用户
+    // 构建用户
     auto newUser = User();
     newUser.setName(username);
-    auto [passwordHash, passwordSalt] = CreatePasswordHash(password);
-    newUser.setPasswordHash(vectorToString(passwordHash));
-    newUser.setPasswordSalt(vectorToString(passwordSalt));
+    auto [passwordHash, passwordSalt] = CreateStrPasswordHash(password);
+    newUser.setPasswordHash(passwordHash);
+    newUser.setPasswordSalt(passwordSalt);
     newUser.setPrivilege(int(privilege));
     newUser.setNickName(nickname.empty() ? username : nickname);
-    newUser.setTelephoneNumber(phoneNumber);
     newUser.setIsMale(isMale);
     newUser.setCreateAt(trantor::Date::now());
-
-    // 同步创建 GitLab 账号
-    int gitlabUserId = 0;
-    // 生成fake email
+    newUser.setTelephoneNumber(phoneNumber);
     std::string fakeEmail = std::format("{}@fake.com", username);
-    if(!_gitlabService->createUser(username, password, fakeEmail, gitlabUserId)){
-        result.setResult(-1, "创建 GitLab 账号失败");
-        co_return result;
-    }
-
-    // 邀请用户加入项目
-    if(!_gitlabService->adminInvitationProject(1, UEAdminAPI::GitlabService::AccessLevels::Developer, gitlabUserId)){
-        result.setResult(-1, "邀请用户加入项目失败");
-        co_return result;
-    }
-
-    // 创建gitlab impersonation token
-    uint32_t gitImpersonationTokenId = 0;
-    string gitlabImpersonationToken = "";
-    if(!_gitlabService->createImpersonationToken(gitlabUserId, gitlabImpersonationToken, gitImpersonationTokenId)){
-        result.setResult(-1, "创建 GitLab Impersonation Token失败");
-        co_return result;
-    }
-
-    // 插入数据库
-    // TODO: 当前为阻塞式的插入，后续可改进
-    // auto transaction = co_await dbClientPtr->newTransactionCoro();
-    auto insertedUserFuture = mapperUsers.insertFuture(newUser);
-
-    // 获取future
-    bool step1Failed = false;
-    bool step2Failed = false;
-
-    User insertedUser;
-    UserGitlabInfo insertedUserGitlabInfo;
-
-    try{
-        insertedUser = insertedUserFuture.get();
-    }catch (const drogon::orm::DrogonDbException& e) {
-        LOG_ERROR << "插入用户失败:" <<e.base().what();
-        step1Failed = true;
-    }
-
-    // 创建用户gitlab信息数据库对象
-    auto newUserGitlab = UserGitlabInfo();
-    // 要先插入用户, 才能获得用户Id
-    newUserGitlab.setUserId(insertedUser.getValueOfId());
-    newUserGitlab.setGitId(gitlabUserId);
-    newUserGitlab.setGitlabImpersonationToken(gitlabImpersonationToken);
-    newUserGitlab.setGitlabImpersonationTokenId(gitImpersonationTokenId);
-    auto insertedUserGitlabInfoFuture = mapperUserGitlabInfos.insertFuture(newUserGitlab);
-    
-    try{
-        insertedUserGitlabInfo = insertedUserGitlabInfoFuture.get();
-    }catch (const drogon::orm::DrogonDbException& e) {
-        LOG_ERROR << "插入Gitlab信息失败:" <<e.base().what();
-        step2Failed = true;
-    }
-
-    // 如有错误, 撤销操作 (drogon有提供执行sql时的事务操作, 但是mapper的没找到)
-    if(step1Failed){
-        if(!_gitlabService->deleteUser(gitlabUserId)){
-            LOG_ERROR << "创建用户时失败, 回滚时删除Gitlab用户失败";
-        }
-        LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
-        result.setResult(-1, "创建用户失败");
-        co_return result;
-    }
-    if(!step1Failed && step2Failed){
-        if(!_gitlabService->deleteUser(gitlabUserId)){
-            LOG_ERROR << "创建用户时失败, 回滚时删除Gitlab用户失败";
-        }
-        else {
-            LOG_ERROR << "创建用户时失败, 回滚, 先前创建的Gitlab用户已成功删除";
-        }
-        if(mapperUsers.deleteFutureOne(insertedUser).get() == 0){
-            LOG_ERROR << "创建用户时失败, 回滚时删除先前插入的用户数据失败";
-        }
-        else {
-            LOG_ERROR << "创建用户时失败, 回滚时删除先前插入的用户数据成功";
-        }
-        result.setResult(-1, "创建用户失败");
-        co_return result;
-    }
-    
-    result.setResult(0, "创建用户成功");
-    result.jsondata["userId"] = *insertedUser.getId();
-
-    co_return result;
-}
-
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::Register(drogon_model::UEAdminAPI::User &user) {
-    throw std::runtime_error("Not implemented");
+    // 执行
+    co_return co_await ExecuteRegistrationTransaction(newUser, password, fakeEmail);
 }
 
 drogon::Task<bool> AuthService::CheckTokenStatus(const int &userId, const int &status, const bool &isFlashToken) {
@@ -638,4 +411,101 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByEmail(const std:
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPhone(const std::string &phone, const std::string &code) {
     co_return co_await LoginByOther(phone, User::Cols::_telephone_number, code);
+}
+
+Task<HttpResult> AuthService::ExecuteRegistrationTransaction(
+    User preparedUser, 
+    const std::string &rawPassword, 
+    const std::string &gitlabEmail) {
+    
+    auto _gitlabService = GitlabService::Instance();
+    HttpResult result;
+    // 1. 同步创建 GitLab 账号
+    int gitlabUserId = 0;
+    if(!_gitlabService->createUser(preparedUser.getValueOfName(), rawPassword, gitlabEmail, gitlabUserId)){
+        result.setResult(-1, "创建 GitLab 账号失败");
+        co_return result;
+    }
+    // 2. 邀请用户加入项目
+    if(!_gitlabService->adminInvitationProject(1, UEAdminAPI::GitlabService::AccessLevels::Developer, gitlabUserId)){
+        // 注意：这里如果失败，理论上也应该回滚删除刚创建的 Gitlab 用户，原代码未处理，这里建议加上
+        _gitlabService->deleteUser(gitlabUserId); 
+        result.setResult(-1, "邀请用户加入项目失败");
+        co_return result;
+    }
+    // 3. 创建 gitlab impersonation token
+    uint32_t gitImpersonationTokenId = 0;
+    std::string gitlabImpersonationToken = "";
+    if(!_gitlabService->createImpersonationToken(gitlabUserId, gitlabImpersonationToken, gitImpersonationTokenId)){
+        _gitlabService->deleteUser(gitlabUserId);
+        result.setResult(-1, "创建 GitLab Impersonation Token失败");
+        co_return result;
+    }
+    // 4. 数据库操作准备
+    auto dbClientPtr = drogon::app().getDbClient();
+    drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
+    drogon::orm::Mapper<UserGitlabInfo> mapperUserGitlabInfos(dbClientPtr);
+    // 5. 插入用户 (Step 1)
+    bool step1Failed = false;
+    try {
+        // insertFuture 是阻塞等待结果的 future，原代码使用了 .get()
+        // 既然在协程中，建议使用 co_await mapperUsers.insertFuture(preparedUser); 
+        // 但为了保持你原代码逻辑的一致性，这里保留 .get() 风格或转为 co_await
+        mapperUsers.insert(preparedUser);
+    } catch (const drogon::orm::DrogonDbException& e) {
+        LOG_ERROR << "插入用户失败:" << e.base().what();
+        step1Failed = true;
+    }
+    // 6. 插入 Gitlab Info (Step 2)
+    bool step2Failed = false;
+    UserGitlabInfo newUserGitlab;
+    if (!step1Failed) {
+        newUserGitlab = UserGitlabInfo();
+        newUserGitlab.setUserId(preparedUser.getValueOfId());
+        newUserGitlab.setGitId(gitlabUserId);
+        newUserGitlab.setGitlabImpersonationToken(gitlabImpersonationToken);
+        newUserGitlab.setGitlabImpersonationTokenId(gitImpersonationTokenId);
+        
+        try {
+            mapperUserGitlabInfos.insert(newUserGitlab);
+        } catch (const drogon::orm::DrogonDbException& e) {
+            LOG_ERROR << "插入Gitlab信息失败:" << e.base().what();
+            step2Failed = true;
+        }
+    }
+    // 7. 回滚逻辑 (Rollback)
+    if (step1Failed || step2Failed) {
+        // 回滚 Gitlab 用户
+        if (!_gitlabService->deleteUser(gitlabUserId)) {
+            LOG_ERROR << "创建用户失败, 回滚时删除Gitlab用户失败";
+        } else {
+            LOG_ERROR << "创建用户失败, 回滚, 先前创建的Gitlab用户已成功删除";
+        }
+        // 如果是 Step 2 失败，说明 User 已经插进去了，需要把 User 删掉
+        if (!step1Failed && step2Failed) {
+            try {
+                mapperUsers.deleteOne(preparedUser);
+                LOG_ERROR << "创建用户失败, 回滚时删除先前插入的用户数据成功";
+            } catch (...) {
+                LOG_ERROR << "创建用户失败, 回滚时删除先前插入的用户数据失败";
+            }
+        }
+        result.setResult(-1, "创建用户失败");
+        co_return result;
+    }
+    
+    // 成功
+    result.setResult(0, "创建用户成功");
+    result.jsondata["userId"] = preparedUser.getValueOfId();
+    co_return result;
+}
+
+Task<bool> AuthService::CheckIfExist(drogon::orm::Mapper<User> &mapper, const drogon::orm::Criteria &criteria) {
+    try {
+        // 阻塞式调用
+        mapper.findOne(criteria);
+        co_return true;
+    } catch (...) {
+        co_return false;
+    }
 }

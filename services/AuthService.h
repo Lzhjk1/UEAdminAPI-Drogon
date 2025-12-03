@@ -81,8 +81,35 @@ public:
         const bool &isMale = true, 
         const std::string &nickname = "");
 
-    //
-    drogon::Task<UEAdminAPI::utils::HttpResult> Register(drogon_model::UEAdminAPI::User &user);
+    ///// @brief 附带第三方平台的邮箱注册
+    //drogon::Task<UEAdminAPI::utils::HttpResult> RegisterWithThirdPartyByEmail(
+    //    const std::string &username, 
+    //    const std::string &password, 
+    //    const std::string &email, 
+    //    const std::string &verifyCode, 
+    //    const UserPrivileges &privilege = UserPrivileges::User, 
+    //    const bool &isMale = true, 
+    //    const std::string &nickname,
+    //    const std::string &third_platform_name,
+    //    const std::string &third_code,
+    //    const std::string &third_verifyCode);
+
+    ////
+
+    ///// @brief 附带第三方平台的电话注册
+    //drogon::Task<UEAdminAPI::utils::HttpResult> RegisterWithThirdPartyByPhone(
+    //    const std::string &username, 
+    //    const std::string &password, 
+    //    const std::string &phoneNumber, 
+    //    const std::string &verifyCode, 
+    //    const UserPrivileges &privilege = UserPrivileges::User, 
+    //    const bool &isMale = true, 
+    //    const std::string &nickname,
+    //    const std::string &third_platform_name,
+    //    const std::string &third_code,
+    //    const std::string &third_verifyCode
+    //);
+
 
     // 检查指定用户的token的Status, 返回true表示有效, false表示无效
     drogon::Task<bool> CheckTokenStatus(const int &userId, const int &status, const bool &isFlashToken = false);
@@ -119,4 +146,21 @@ public:
     /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginByPhone(const std::string &phone, const std::string &verifyCode);
+
+private:
+    /**
+     * @brief 核心注册事务处理：Gitlab创建 -> 数据库插入 -> 异常回滚
+     * @param preparedUser 已经填充好基础信息（密码哈希、昵称、时间等）的User对象
+     * @param rawPassword 原始密码（用于Gitlab账号创建）
+     * @param gitlabEmail 用于Gitlab注册的邮箱（手机注册时为假邮箱）
+     * @return HttpResult
+     */
+    drogon::Task<UEAdminAPI::utils::HttpResult> ExecuteRegistrationTransaction(
+        drogon_model::UEAdminAPI::User preparedUser, 
+        const std::string &rawPassword, 
+        const std::string &gitlabEmail
+    );
+    
+    // 辅助函数：检查字段是否存在 (简化查重逻辑)
+    drogon::Task<bool> CheckIfExist(drogon::orm::Mapper<drogon_model::UEAdminAPI::User>& mapper, const drogon::orm::Criteria& criteria);
 };
