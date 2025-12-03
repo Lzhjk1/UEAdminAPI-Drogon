@@ -143,7 +143,7 @@ Task<HttpResult> AuthService::RegisterByEmail(
     const std::string &username, 
     const std::string &password, 
     const std::string &email, 
-    const std::string &verifyCode,
+    const std::string &code,
     const UserPrivileges &privilege, 
     const bool &isMale, 
     const std::string &nickname) {
@@ -155,7 +155,7 @@ Task<HttpResult> AuthService::RegisterByEmail(
     HttpResult result;
 
     // 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, verifyCode, eMFAType::Register);
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, code, eMFAType::Register);
     if(!isSuccess) {
         result.setResult(-1, errMsg);
         co_return result;
@@ -302,7 +302,7 @@ Task<HttpResult> AuthService::RegisterByPhone(
         const std::string &username, 
         const std::string &password, 
         const std::string &phoneNumber, 
-        const std::string &verifyCode, 
+        const std::string &code, 
         const UserPrivileges &privilege, 
         const bool &isMale, 
         const std::string &nickname) {
@@ -314,7 +314,7 @@ Task<HttpResult> AuthService::RegisterByPhone(
     HttpResult result;
 
     // 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, verifyCode, eMFAType::Register);
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, code, eMFAType::Register);
     if(!isSuccess) {
         result.setResult(-1, errMsg);
         co_return result;
@@ -460,4 +460,182 @@ Task<HttpResult> AuthService::RegisterByPhone(
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::Register(drogon_model::UEAdminAPI::User &user) {
     throw std::runtime_error("Not implemented");
+}
+
+drogon::Task<bool> AuthService::CheckTokenStatus(const int &userId, const int &status, const bool &isFlashToken) {
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<UserFlashtoken> mapperTokens(dbClientPtr);
+
+    bool hasException = false;
+    UserFlashtoken token;
+    try{
+        token = mapperTokens.findByPrimaryKey(userId);
+    }catch (const UnexpectedRows &e) {
+        LOG_ERROR << "查询用户token失败:" <<e.what();
+        hasException = true;
+    }
+
+    if(hasException)
+        co_return false;
+
+    if(isFlashToken)
+        if(token.getValueOfStatus() != status)
+            co_return false;
+    else
+        if(token.getValueOfStatusForToken() != status)
+            co_return false;
+
+    co_return true;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::string &userName, const std::string &pwd)
+{
+    HttpResult result;
+
+    if (userName.empty() || pwd.empty()) {
+        result.setResult(-1, "缺少用户名或密码");
+        co_return result;
+    }
+
+    auto dbClientPtr = drogon::app().getDbClient();
+
+    Mapper<User> mapperUsers(dbClientPtr);
+    auto targetUser = mapperUsers.findFutureOne(Criteria(User::Cols::_name, CompareOperator::EQ, userName)).get();
+
+    auto hash = targetUser.getPasswordHash();
+    auto salt = targetUser.getPasswordSalt();
+    if(!hash || !salt){
+        result.setResult(-1, "用户没有设置密码");
+        co_return result;
+    }
+
+    if(!VerifyPasswordHash(pwd, hash, salt)){
+        result.setResult(-1, "用户名或密码错误");
+        co_return result;
+    }
+
+    // 随机生成数字作为状态
+    int status = RandomGenerator::getInt(1, INT_MAX);
+    string flashToken = CreateFlashToken(targetUser.getValueOfId(), status);
+    // 更新状态到数据库
+    Mapper<UserFlashtoken> mapperUserFlashtoken(dbClientPtr);
+    UserFlashtoken flashTokenRow;
+    // 是否需要新建行
+    bool isNeedNewCreate = false;
+    try {
+        flashTokenRow = targetUser.getUser_flashtoken(dbClientPtr);
+    } catch (UnexpectedRows& e){
+        // 此外还有发现多个匹配行的错误
+        if(strcmp(e.what(), "0 rows found") != 0){
+            throw e;
+        }
+        isNeedNewCreate = true;
+    }
+
+    // 如果需要新建
+    if (isNeedNewCreate) {
+        UserFlashtoken newFlashtoken;
+        newFlashtoken.setUserId(targetUser.getValueOfId());
+        newFlashtoken.setStatus(status);
+
+        try {
+            auto ret = mapperUserFlashtoken.insertFuture(newFlashtoken).get();
+        }
+        catch (std::runtime_error& e){
+            // TODO: 尚不清楚他会抛出什么错误
+            LOG_ERROR << "新建flashtoken插入时出错!";
+            throw e;
+        }
+    }
+    // 如果新建了行, 就不需要修改了
+    else {
+        flashTokenRow.setStatus(status);
+        auto ret = mapperUserFlashtoken.updateFuture(flashTokenRow).get();
+        if (ret != 1) {
+            result.setResult(-1, "更新状态失败");
+            co_return result;
+        }
+    }
+
+    auto token = CreateToken(targetUser.getValueOfId(), status);
+
+    result.jsondata["flashToken"] = flashToken;
+    result.jsondata["token"] = token;
+    result.setResult(0, "登录成功");
+
+    co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std::string &target, const std::string &targetDBColName, const std::string &code) {
+    // 依赖
+    auto _mfaService = MFAService::Instance();
+
+    HttpResult result;
+
+    // 检查验证码
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, code, eMFAType::Login);
+    if(!isSuccess) {
+        LOG_ERROR << errMsg;
+        result.setResult(-1, "验证码错误");
+        co_return result;
+    }
+
+    // 获取dbClient并创建mapper, 固定用法
+    auto dbClientPtr = drogon::app().getDbClient();
+    drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
+    drogon::orm::Mapper<UserFlashtoken> mapperFlashToken(dbClientPtr);
+
+    // 查找用户
+    User targetUser;
+    try{
+        targetUser = mapperUsers.findFutureOne(Criteria(targetDBColName, CompareOperator::EQ, target)).get();
+    }
+    // 没找到会抛出异常
+    catch (UnexpectedRows& e){
+        LOG_ERROR << "邮箱验证码登录查询用户时出错!";
+        result.setResult(-1, "用户不存在");
+        co_return result;
+    }
+
+    // 根据刚找到的用户的关系从数据库获取对应的user_flash_token的记录
+    // 如果没找到则创建一条新的FlashToken
+    UserFlashtoken flashtoken;
+    try{
+        flashtoken = targetUser.getUser_flashtoken(dbClientPtr);
+    }
+    catch (UnexpectedRows& e){
+        // 没找到则创建
+        flashtoken.setUserId(targetUser.getValueOfId());
+        mapperFlashToken.insert(flashtoken);
+    }
+
+    // 创建新的FlashToken
+    // 生成随机数作为status, status用于标记最新的token 
+    //(虽说这样是抛弃了JWT无状态的优点, 但也只是存了一个int数, 开销不大, 免去了要处理同时有多个FlashToken可用的问题的麻烦)
+    int status = RandomGenerator::getInt(1, INT_MAX);
+    string flashToken = CreateFlashToken(targetUser.getValueOfId(), status);
+    // 更新状态到数据库
+    flashtoken.setStatus(status);
+    auto ret = mapperFlashToken.update(flashtoken);
+    if (ret != 1) {
+        result.setResult(-1, "更新状态失败");
+        co_return result;
+    }
+
+    // Token还未实际使用status状态变量, 仅FlashToken在使用, 所以这里的status仅占位
+    string token = CreateToken(targetUser.getValueOfId(), status);
+
+    result.jsondata["flashToken"] = flashToken;
+    result.jsondata["token"] = token;
+    result.setResult(0, "登录成功");
+
+    co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByEmail(const std::string &email, const std::string &code){
+    co_return co_await LoginByOther(email, User::Cols::_email, code);
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPhone(const std::string &phone, const std::string &code) {
+    co_return co_await LoginByOther(phone, User::Cols::_telephone_number, code);
 }

@@ -25,9 +25,9 @@ class Login : public drogon::HttpController<Login>
     // METHOD_ADD(Login::get, "/{2}/{1}", Get); // path is /Login/{arg2}/{arg1}
     // METHOD_ADD(Login::your_method_name, "/{1}/{2}/list", Get); // path is /Login/{arg1}/{arg2}/list
     // ADD_METHOD_TO(Login::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
-    ADD_METHOD_TO(Login::LoginByPwd, "/user/login/pwd?userName={1}&passWord={2}", Post);
-    ADD_METHOD_TO(Login::LoginByEmail, "/user/login/email?email={1}&verifyCode={2}", Post);
-    ADD_METHOD_TO(Login::LoginByPhone, "/user/login/phone?phone={1}&verifyCode={2}", Post);
+    ADD_METHOD_TO(Login::LoginByPwd, "/user/login/pwd?userName={1}&passWord={2}", Get);
+    ADD_METHOD_TO(Login::LoginByEmail, "/user/login/email?email={1}&code={2}", Get);
+    ADD_METHOD_TO(Login::LoginByPhone, "/user/login/phone?phone={1}&code={2}", Get);
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
@@ -53,21 +53,21 @@ class Login : public drogon::HttpController<Login>
     /// @param targetDBColName 目标在数据库的列名, 建议通过orm对象获取, 如User::Cols::_email
     /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return 
-    Task<HttpResponsePtr> LoginByOther(HttpRequestPtr req, std::string target, std::string targetDBColName, std::string verifyCode);
+    Task<HttpResponsePtr> LoginByOther(HttpRequestPtr req, std::string target, std::string targetDBColName, std::string code);
 
     /// @brief 通过邮箱验证码登录
     /// @param req 固定格式, 包含各种请求参数
     /// @param email 邮箱
     /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
-    Task<HttpResponsePtr> LoginByEmail(HttpRequestPtr req, std::string email, std::string verifyCode);
+    Task<HttpResponsePtr> LoginByEmail(HttpRequestPtr req, std::string email, std::string code);
 
     /// @brief 通过手机验证码登录
     /// @param req 固定格式, 包含各种请求参数
     /// @param phone 手机号
     /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
-    Task<HttpResponsePtr> LoginByPhone(HttpRequestPtr req, std::string phone, std::string verifyCode);
+    Task<HttpResponsePtr> LoginByPhone(HttpRequestPtr req, std::string phone, std::string code);
 
     // Task<HttpResponsePtr> VerifyToken(HttpRequestPtr req, std::string token);
 

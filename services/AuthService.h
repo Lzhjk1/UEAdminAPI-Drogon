@@ -49,8 +49,8 @@ public:
 
     /// @brief 从Token解析用户ID, Token不合法或过期失效时返回-1
     /// @param token Token
-    /// @return 用户Id, Token不合法或过期失效时返回 -1
-    int CheckTokenAndParseUserId(const std::string &token);
+    /// @return 元组[用户Id, 状态码, 是否为flashToken], token失效过期时id为-1, 仍会正常获取tokenType
+    std::tuple<int, int, bool> CheckTokenAndParseUserId(const std::string &token);
 
     /// @brief 邮箱注册用户
     /// @param username 用户名
@@ -83,4 +83,40 @@ public:
 
     //
     drogon::Task<UEAdminAPI::utils::HttpResult> Register(drogon_model::UEAdminAPI::User &user);
+
+    // 检查指定用户的token的Status, 返回true表示有效, false表示无效
+    drogon::Task<bool> CheckTokenStatus(const int &userId, const int &status, const bool &isFlashToken = false);
+
+    /// @brief 通过密码登录
+    /// @param userName 用户名
+    /// @param pwd 密码
+    /// @return 成功返回示例为:
+    /// {
+    ///     "code": 200,
+    ///     "data": {
+    ///         "token": "token",
+    ///         "flashToken": "flashToken"
+    ///     }
+    ///     "msg": "success"
+    /// }
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByPwd(const std::string &userName, const std::string &pwd);
+
+    /// @brief 通过其他方式, 如邮箱, 手机验证码登录
+    /// @param target 目标, 如邮箱, 手机号
+    /// @param targetDBColName 目标在数据库的列名, 建议通过orm对象获取, 如User::Cols::_email
+    /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
+    /// @return
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByOther(const std::string &target, const std::string &targetDBColName, const std::string &verifyCode);
+
+    /// @brief 通过邮箱验证码登录
+    /// @param email 邮箱
+    /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
+    /// @return
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByEmail(const std::string &email, const std::string &verifyCode);
+
+    /// @brief 通过手机验证码登录
+    /// @param phone 手机号
+    /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
+    /// @return
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByPhone(const std::string &phone, const std::string &verifyCode);
 };
