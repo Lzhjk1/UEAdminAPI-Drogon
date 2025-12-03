@@ -15,13 +15,15 @@ public:
     // 第三方登录回调
     ADD_METHOD_TO(ThirdPartyLogin::callback, "/api/third/{1}?code={2}&state={3}", Get);
     // 验证第三方登录
-    ADD_METHOD_TO(ThirdPartyLogin::verifyLogin, "/api/third/verify?platform={1}&code={2}&verifyCode={3}", Get);
+    ADD_METHOD_TO(ThirdPartyLogin::verifyLogin, "/api/third/login/check?platform={1}&code={2}&verifyCode={3}", Get);
+    // 第三方绑定已有账号
+    ADD_METHOD_TO(ThirdPartyLogin::bindAccount, "/api/third/bind?platform={1}&code={2}&verifyCode={3}", Get);
     METHOD_LIST_END
 
     // GET
     // 获取第三方登录URL
     Task<HttpResponsePtr> getLoginUrl(HttpRequestPtr req,
-		                            const std::string platform) const;
+		                            const std::string platform);
 
     // GET
     // 第三方登录回调
@@ -30,12 +32,14 @@ public:
     Task<HttpResponsePtr> callback(HttpRequestPtr req,
 		                            const std::string platform,
 		                            const std::string code,
-		                            const std::string state) const;
+		                            const std::string state);
 
-    // POST, Not Implemented
+    // Get
     // 绑定已有账号
-    // 
-    Task<HttpResponsePtr> bindAccount(HttpRequestPtr req);
+    Task<HttpResponsePtr> bindAccount(HttpRequestPtr req,
+		                            const std::string platform,
+		                            const std::string code,
+		                            const std::string verifyCode);
 
     // GET
 	// 验证第三方登录
@@ -43,17 +47,16 @@ public:
 	Task<HttpResponsePtr> verifyLogin(HttpRequestPtr req,
 		                            const std::string platform,
 		                            const std::string code,
-		                            const std::string verifyCode) const;
+		                            const std::string verifyCode);
 
     //
     Task<HttpResponsePtr> createUserFromThirdParty(HttpRequestPtr req,
 		                            const std::string platform,
 		                            const std::string code,
-		                            const std::string verifyCode) const;
+		                            const std::string verifyCode);
 
+                                    
 
-private:
-    Services::ThirdPartyPlatform getPlatformFromString(const std::string& platform) const;
 };
 
 } // namespace Controllers

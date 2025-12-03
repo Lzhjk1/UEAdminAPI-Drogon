@@ -15,7 +15,8 @@
 - 验证第三方登陆是否成功的接口必须要独立, 不然一个没绑定过的第三方账号就会直接注册一个账号, 这样会失去绑定已有账号的机会
 - 跟loginvalue相关的getAccessToken这样的get, set函数风格我觉得不好, getset应该属于loginvalue, 而不是platform, 也就是调用方式应为loginvalue->getAccessToken()这样,
 - 清理头文件中的 std 命名空间引用, 这会导致极大的重名风险且不易察觉 ✅
-- Login控制器的实现都移到了AuthService里, 方便重用, 已经测试无问题 ✅
+- Login控制器的实现都移到了AuthService里, 方便重用, 已经测试无问题 
+- 可以尝试写一个await future类型的适配器, 用于将orm的那些数据库操作转换为异步操作
 
 # 统一定义
 - 密码登录 ✅
