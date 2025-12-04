@@ -451,7 +451,7 @@ drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<T
     ss << "/sns/oauth2/access_token"
        << "?appid=" << clientId
        << "&secret=" << clientSecret
-       << "&code=" << value->code
+       << "&code=" << value->authorizationCode
        << "&grant_type=authorization_code";
 
     // 发送请求
