@@ -28,6 +28,11 @@ std::string DataFormatUtil::toLowerCase(const std::string &str) {
     return result;
 }
 
+bool DataFormatUtil::checkUserName(const std::string &userName) {
+    static const std::regex pattern("^[a-zA-Z][a-zA-Z0-9_]{5,19}$");
+    return std::regex_match(userName, pattern);
+}
+
 std::string DataFormatUtil::encryptPwd(const std::string& userName,const std::string& userPwd){
     // std::stringstream ss;
     // ss << userName << "|" << "uesoft" << "|" << userPwd;

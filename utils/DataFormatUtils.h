@@ -69,6 +69,13 @@ namespace UEAdminAPI {
 
         // 转换字符串为小写
         static std::string toLowerCase(const std::string &str);
+
+        /**
+         * 检查用户名格式是否有效, 只允许字母开头, 长度在6-20之间, 允许字母数字下划线
+         * @param userName 待检查的用户名字符串
+         * @return 如果用户名格式符合要求返回true，否则返回false
+         */
+        static bool checkUserName(const std::string &userName);
     };
 
 }
