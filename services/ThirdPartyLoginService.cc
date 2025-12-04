@@ -968,5 +968,47 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
     co_return result;
 }
 
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::LoginWithThirdParty(const std::string &platform, const std::string &code, const std::string &verifyCode) {
+    UEAdminAPI::utils::HttpResult result;
+    
+    // 1. 验证第三方登录
+    result = co_await VerifyLogin(platform, code, verifyCode);
+    if (result.code != 0) {
+        co_return result;
+    }
+
+    // 2. 检查是否已绑定
+    if (!result.jsondata["allready_bind"].asBool()) {
+        result.setResult(-1, "该第三方账号未绑定任何用户");
+        co_return result;
+    }
+
+    // 3. 获取LoginValue
+    auto platformService = co_await getPlatform(platform);
+    // 这里不需要再检查platformService是否存在, VerifyLogin已经检查过了
+    auto loginValue = co_await platformService->getLoginValue(code);
+    
+    // 4. 查找绑定的UserThirdPartyInfo
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
+    UserThirdPartyInfo info;
+    try {
+        info = mapperThirdPartyInfo.findOne(
+            Criteria(UserThirdPartyInfo::Cols::_open_id, CompareOperator::EQ, loginValue->openId) &&
+            Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform())));
+    } catch (const drogon::orm::UnexpectedRows &e) {
+        // 理论上 VerifyLogin 返回 allready_bind=true 时这里一定能找到
+        result.setResult(-1, "内部错误");
+        LOG_ERROR << "内部数据不一致, 提示已绑定但找不到对应的数据库记录";
+        co_return result;
+    }
+
+    // 5. 调用AuthService完成登录
+    auto authService = AuthService::Instance();
+    result = co_await authService->LoginByUserId(info.getValueOfUserId());
+    
+    co_return result;
+}
+
 } // namespace Services
 } // namespace UEAdminAPI
