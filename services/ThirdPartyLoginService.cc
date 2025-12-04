@@ -123,8 +123,8 @@ drogon::Task<bool> ThirdPartyLoginPlatformBase::verifyTheCode(const std::string&
 }
 
 drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> ThirdPartyLoginPlatformBase::createNewThirdLoginValue() {
-    std::unique_lock<std::shared_mutex> lock(mutex);
     co_await clearExpired();
+    std::unique_lock<std::shared_mutex> lock(mutex);
 
     std::string newCode;
     while (true) {
