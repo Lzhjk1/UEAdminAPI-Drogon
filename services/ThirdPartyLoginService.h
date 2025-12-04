@@ -18,6 +18,7 @@ namespace Services {
 // 第三方平台枚举
 // 相关函数: getPlatformFromString, ThirdPartyPlatformToString
 // 修改时需要一并修改
+// 目前跟数据库是相关的, 数据库插入时可以直接使用这个enum转为int之后的值
 enum class EnumThirdPartyPlatform {
     QQ = 1,
     WeChat = 2,

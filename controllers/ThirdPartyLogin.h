@@ -16,6 +16,8 @@ public:
     ADD_METHOD_TO(ThirdPartyLogin::callback, "/api/third/{1}?code={2}&state={3}", Get);
     // 验证第三方登录
     ADD_METHOD_TO(ThirdPartyLogin::verifyLogin, "/api/third/login/check?platform={1}&code={2}&verifyCode={3}", Get);
+    // 直接通过第三方平台登录
+    ADD_METHOD_TO(ThirdPartyLogin::loginWithThirdParty, "/api/third/login?platform={1}&code={2}&verifyCode={3}", Get);
     // 第三方绑定已有账号
     ADD_METHOD_TO(ThirdPartyLogin::bindAccount, "/api/third/bind?platform={1}&code={2}&verifyCode={3}", Get);
     METHOD_LIST_END
@@ -45,6 +47,13 @@ public:
 	// 验证第三方登录
     // 仅确认对应的code和verifyCode是否已经登陆
 	Task<HttpResponsePtr> verifyLogin(HttpRequestPtr req,
+		                            const std::string platform,
+		                            const std::string code,
+		                            const std::string verifyCode);
+
+    // GET
+    // 直接通过第三方平台登录
+    Task<HttpResponsePtr> loginWithThirdParty(HttpRequestPtr req,
 		                            const std::string platform,
 		                            const std::string code,
 		                            const std::string verifyCode);

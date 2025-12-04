@@ -10,10 +10,12 @@
 #include "services/AuthService.h"
 #include "services/MFAService.h"
 #include "services/GitLabService.h"
+#include "services/ThirdPartyLoginService.h"
 
 #include "models/UserFlashtoken.h"
 #include "models/User.h"
 #include "models/UserGitlabInfo.h"
+#include "models/UserThirdPartyInfo.h"
 
 #include <utils/EnumUserPrivileges.h>
 #include <utils/RandomGenerator.h>
@@ -21,6 +23,7 @@
 using namespace drogon_model::UEAdminAPI;
 using namespace drogon::orm;
 using namespace UEAdminAPI;
+using namespace UEAdminAPI::Services;
 using namespace UEAdminAPI::utils;
 
 AuthService::AuthService(const Json::Value &config) {
@@ -116,31 +119,43 @@ std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationS
     return token;
 }
 
-std::tuple<int, int, bool> AuthService::CheckTokenAndParseUserId(const std::string &token) {
+std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std::string &token) {
     // 解码并验证token
     auto decoded = jwt::decode(token);
     auto verifier = jwt::verify()
         .allow_algorithm(jwt::algorithm::hs512{_secret})
         .with_issuer(_jwtIssuer);
-    std::string tokenType = decoded.get_payload_claim("tokenType").as_string();
-    bool isFlashToken = tokenType == "flashToken";
+
+    std::string tokenType;
+    int status;
+    int32_t userId;
+    int isFlashToken;
+    try{
+        tokenType = decoded.get_payload_claim("tokenType").as_string();
+        if(tokenType != "token" && tokenType != "flashToken"){
+            LOG_ERROR << std::format("对于Token: {}, tokenType 既不是 token, 也不是 flashToken", token);
+            return std::make_tuple(false, -1, -1, -1);
+        }
+        isFlashToken = tokenType == "flashToken";
+        status = std::stoi(decoded.get_payload_claim("status").as_string());
+        userId = std::stoi(decoded.get_payload_claim("id").as_string());
+    }
+    catch (const std::exception &e) {
+        LOG_ERROR << std::format("对于Token: {}, 有缺失的 Claim: {}", token, e.what());
+        return std::make_tuple(false, -1, -1, -1);
+    }
     try {
-
-
-        verifier.verify(decoded);
+        verifier.verify(decoded); 
 
         // 获取用户ID
         auto userIdClaim = decoded.get_payload_claim("id");
-        std::string userIdStr = userIdClaim.as_string();
-        int status = decoded.get_payload_claim("status").as_integer();
-        int32_t userId = std::stoi(userIdStr);
 
-        return std::make_tuple(userId, status, isFlashToken);
+        return std::make_tuple(true, userId, status, isFlashToken);
     }
     catch (const std::exception &e) {
         LOG_ERROR << std::format("对于Token: {}, 验证失败: {}", token, e.what());
         LOG_ERROR << "Token验证失败: " << e.what();
-        return std::make_tuple(-1, 0, isFlashToken);
+        return std::make_tuple(false, -1, status, isFlashToken);
     }
 }
 
@@ -233,6 +248,174 @@ Task<HttpResult> AuthService::RegisterByPhone(
     std::string fakeEmail = std::format("{}@fake.com", username);
     // 执行
     co_return co_await ExecuteRegistrationTransaction(newUser, password, fakeEmail);
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyByEmail(
+    const std::string &username, 
+    const std::string &password, 
+    const std::string &email, 
+    const std::string &verifyCode, 
+    const std::string &third_platform_name, 
+    const std::string &third_code, 
+    const std::string &third_verifyCode, 
+    const UserPrivileges &privilege, 
+    const bool &isMale, 
+    const std::string &nickname) 
+{
+    // 依赖
+    auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
+    auto _mfaService = MFAService::Instance();
+
+    HttpResult result;
+    // 1. 检查验证码 (这里可以用 co_await 是因为 VerifyTheCode 返回的是 Task 或者 Awaitable)
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, verifyCode, eMFAType::Register);
+    if(!isSuccess) {
+        result.setResult(-1, errMsg);
+        co_return result;
+    }
+    // 2. 数据库查重
+    auto dbClientPtr = drogon::app().getDbClient();
+    drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
+    // 使用同步辅助函数
+    if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
+        result.setResult(-1, "用户名已存在");
+        co_return result;
+    }
+    if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_email, CompareOperator::EQ, email))) {
+        result.setResult(-1, "邮箱已存在");
+        co_return result;
+    }
+    // 3. 检查第三方平台验证码
+    result = co_await _thirdPartyLoginService->VerifyLogin(third_platform_name, third_code, third_verifyCode);
+    if(result.code != 0) {
+        co_return result;
+    }
+    // 4. 检查是否已绑定
+    if(result.jsondata["allready_bind"].asBool()) {
+        result.setResult(-1, "该邮箱已绑定过账号");
+        co_return result;
+    }
+    // 4. 组装对象
+    auto newUser = User();
+    newUser.setName(username);
+    auto [passwordHash, passwordSalt] = CreateStrPasswordHash(password);
+    newUser.setPasswordHash(passwordHash);
+    newUser.setPasswordSalt(passwordSalt);
+    newUser.setPrivilege(int(privilege));
+    newUser.setNickName(nickname.empty() ? username : nickname);
+    newUser.setIsMale(isMale);
+    newUser.setCreateAt(trantor::Date::now());
+    newUser.setEmail(email);
+    // 5. 执行
+    result = co_await ExecuteRegistrationTransaction(newUser, password, email);
+    if(result.code != 0) {
+        co_return result;
+    }
+    // 6. 构造第三方账号
+    auto newThirdPartyInfo = UserThirdPartyInfo();
+    auto [platform, loginValue] = co_await _thirdPartyLoginService->getCodeAndItsPlatform(third_code);
+    newThirdPartyInfo.setUserId(newUser.getValueOfId());
+    newThirdPartyInfo.setPlatformId(int(platform));
+    newThirdPartyInfo.setOpenId(loginValue->openId);
+    newThirdPartyInfo.setAccessToken(loginValue->accessToken);
+    newThirdPartyInfo.setNickName(loginValue->nickName);
+    newThirdPartyInfo.setAvatarImgUrl(loginValue->avatarImgUrl);
+    // 7. 插入
+    auto mapperThirdPartyInfo = drogon::orm::Mapper<UserThirdPartyInfo>(dbClientPtr);
+    try{
+        mapperThirdPartyInfo.insert(newThirdPartyInfo);
+    }catch (const drogon::orm::UnexpectedRows &e) {
+        result.setResult(-1, "插入第三方账号失败, 但账号已创建, 可之后再绑定");
+        result.jsondata["userCreatedButThirdPartyNotBind"] = true;
+        co_return result;
+    }
+    
+    co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyByPhone(
+    const std::string &username, 
+    const std::string &password, 
+    const std::string &phoneNumber, 
+    const std::string &verifyCode, 
+    const std::string &third_platform_name, 
+    const std::string &third_code, 
+    const std::string &third_verifyCode, 
+    const UserPrivileges &privilege, 
+    const bool &isMale, 
+    const std::string &nickname) 
+{
+    // 依赖
+    auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
+    auto _mfaService = MFAService::Instance();
+
+    HttpResult result;
+    // 1. 检查验证码
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, verifyCode, eMFAType::Register);
+    if(!isSuccess) {
+        result.setResult(-1, errMsg);
+        co_return result;
+    }
+    // 2. 数据库查重
+    auto dbClientPtr = drogon::app().getDbClient();
+    drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
+    // 使用同步辅助函数
+    if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
+        result.setResult(-1, "用户名已存在");
+        co_return result;
+    }
+    if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_telephone_number, CompareOperator::EQ, phoneNumber))) {
+        result.setResult(-1, "手机号已存在");
+        co_return result;
+    }
+    // 3. 检查第三方平台验证码
+    result = co_await _thirdPartyLoginService->VerifyLogin(third_platform_name, third_code, third_verifyCode);
+    if(result.code != 0) {
+        co_return result;
+    }
+    // 4. 检查是否已绑定
+    if(result.jsondata["allready_bind"].asBool()) {
+        result.setResult(-1, "该第三方账号已绑定过账号");
+        co_return result;
+    }
+    // 4. 组装对象
+    auto newUser = User();
+    newUser.setName(username);
+    auto [passwordHash, passwordSalt] = CreateStrPasswordHash(password);
+    newUser.setPasswordHash(passwordHash);
+    newUser.setPasswordSalt(passwordSalt);
+    newUser.setPrivilege(int(privilege));
+    newUser.setNickName(nickname.empty() ? username : nickname);
+    newUser.setIsMale(isMale);
+    newUser.setCreateAt(trantor::Date::now());
+    newUser.setTelephoneNumber(phoneNumber);
+    std::string fakeEmail = std::format("{}@fake.com", username);
+
+    // 5. 执行
+    result = co_await ExecuteRegistrationTransaction(newUser, password, fakeEmail);
+    if(result.code != 0) {
+        co_return result;
+    }
+    // 6. 构造第三方账号
+    auto newThirdPartyInfo = UserThirdPartyInfo();
+    auto [platform, loginValue] = co_await _thirdPartyLoginService->getCodeAndItsPlatform(third_code);
+    newThirdPartyInfo.setUserId(newUser.getValueOfId());
+    newThirdPartyInfo.setPlatformId(int(platform));
+    newThirdPartyInfo.setOpenId(loginValue->openId);
+    newThirdPartyInfo.setAccessToken(loginValue->accessToken);
+    newThirdPartyInfo.setNickName(loginValue->nickName);
+    newThirdPartyInfo.setAvatarImgUrl(loginValue->avatarImgUrl);
+    // 7. 插入
+    auto mapperThirdPartyInfo = drogon::orm::Mapper<UserThirdPartyInfo>(dbClientPtr);
+    try{
+        mapperThirdPartyInfo.insert(newThirdPartyInfo);
+    }catch (const drogon::orm::UnexpectedRows &e) {
+        result.setResult(-1, "插入第三方账号失败, 但账号已创建, 可之后再绑定");
+        result.jsondata["userCreatedButThirdPartyNotBind"] = true;
+        co_return result;
+    }
+    
+    co_return result;
 }
 
 drogon::Task<bool> AuthService::CheckTokenStatus(const int &userId, const int &status, const bool &isFlashToken) {
@@ -399,6 +582,67 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
     string token = CreateToken(targetUser.getValueOfId(), status);
 
     result.jsondata["flashToken"] = flashToken;
+    result.jsondata["token"] = token;
+    result.setResult(0, "登录成功");
+
+    co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userId) {
+    HttpResult result;
+    
+    auto dbClientPtr = drogon::app().getDbClient();
+    drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
+    drogon::orm::Mapper<UserFlashtoken> mapperFlashToken(dbClientPtr);
+
+    bool isUserExist = false;
+    User targetUser;
+    try {
+        targetUser = mapperUsers.findByPrimaryKey(userId);
+        isUserExist = true;
+    } catch (const UnexpectedRows& e) {
+        result.setResult(-1, "用户不存在");
+    }
+    if(!isUserExist){
+        co_return result;
+    }
+
+    UserFlashtoken flashtoken;
+    bool isNeedNewCreate = false;
+    try {
+        flashtoken = targetUser.getUser_flashtoken(dbClientPtr);
+    } catch (UnexpectedRows& e) {
+        if(strcmp(e.what(), "0 rows found") != 0){
+            throw e;
+        }
+        isNeedNewCreate = true;
+    }
+
+    if(isNeedNewCreate){
+        flashtoken.setUserId(targetUser.getValueOfId());
+        flashtoken.setStatus(0); // 初始状态
+        try{
+            mapperFlashToken.insert(flashtoken);
+        }
+        catch (std::runtime_error& e){
+            LOG_ERROR << "LoginByUserId 新建flashtoken插入时出错!";
+            throw e;
+        }
+    }
+
+    int status = RandomGenerator::getInt(1, INT_MAX);
+    std::string flashTokenStr = CreateFlashToken(targetUser.getValueOfId(), status);
+    
+    flashtoken.setStatus(status);
+    auto ret = mapperFlashToken.update(flashtoken);
+    if (ret != 1) {
+        result.setResult(-1, "更新状态失败");
+        co_return result;
+    }
+
+    std::string token = CreateToken(targetUser.getValueOfId(), status);
+
+    result.jsondata["flashToken"] = flashTokenStr;
     result.jsondata["token"] = token;
     result.setResult(0, "登录成功");
 

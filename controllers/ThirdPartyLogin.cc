@@ -55,7 +55,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::bindAccount(HttpRequestPtr req,
                                     const std::string verifyCode) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
-    auto token = req->getHeader("Authorization");
+    auto token = req->getHeader("token");
     auto result = co_await _thirdPartyLoginService->BindAccount(token, platform, code, verifyCode);
     resp->setBody(result.toJsonString());
     co_return resp;
@@ -69,6 +69,18 @@ Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     auto result = co_await _thirdPartyLoginService->VerifyLogin(platform, code, verifyCode);
+    resp->setBody(result.toJsonString());
+    co_return resp;
+}
+
+Task<HttpResponsePtr> ThirdPartyLogin::loginWithThirdParty(HttpRequestPtr req,
+                                                const std::string platform,
+                                                const std::string code,
+                                                const std::string verifyCode) {
+    auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    auto result = co_await _thirdPartyLoginService->LoginWithThirdParty(platform, code, verifyCode);
     resp->setBody(result.toJsonString());
     co_return resp;
 }

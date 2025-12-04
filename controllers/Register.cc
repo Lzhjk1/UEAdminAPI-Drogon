@@ -22,7 +22,6 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     auto _mfaService = MFAService::Instance();
     auto _gitlabService = GitlabService::Instance();
 
-
 	auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     HttpResult result;
@@ -33,24 +32,20 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     PostParamMap paramMap;
     // 设置需要的参数
     paramMap.addParam("username", true)
-        .addParam("password", true)
+        .addParam("user_password", true)
         .addParam("privilege", false, "User")
         .addParam("nickname", false)
         .addParam("email", false)
-        .addParam("phone", false)
+        .addParam("tel", false)
         .addParam("isMale", false, "true")
-        .addParam("verifyCode", true);
+        .addParam("verifyCode", true)
+        // 同时第三方平台注册
+        .addParam("third_platform_name", false)
+        .addParam("third_code", false)
+        .addParam("third_verifyCode", false);
 
     paramMap.readParamsFromJson(*reqJson);
     std::vector<std::string> missingFields = paramMap.checkRequiredParams();
-
-    // 如果有缺失的必填项，返回错误
-    if (!missingFields.empty()) {
-        HttpResult result;
-        result.setResult(-1, "缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }));
-        resp->setBody(result.toJsonString());
-        co_return resp;
-    }
 
     // 通过检测email和phone字段来判断注册方式
     bool isEmailRegister = false;
@@ -61,27 +56,81 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         isEmailRegister = true;
     }
 
+    // 检测第三方平台注册参数是否设置
+    // 如果平台被指定, 则假定要同时注册第三方平台
+    // 那么另外的code和verifyCode也要同时给出
+    bool isWithThirdPlatform = false;
+    if(!paramMap.getParam("third_platform_name").empty()) {
+        isWithThirdPlatform = true;
+        if(paramMap.getParam("third_code").empty()) {
+           missingFields.push_back("third_code");
+        }
+        if(paramMap.getParam("third_verifyCode").empty()) {
+           missingFields.push_back("third_verifyCode");
+        }
+    }
+
+    // 如果有缺失的必填项，返回错误
+    if (!missingFields.empty()) {
+        HttpResult result;
+        result.setResult(-1, "缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }));
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
     if(isEmailRegister) {
-        result = co_await _authService->RegisterByEmail(
-            paramMap.getParam("username"), 
-            paramMap.getParam("password"), 
-            paramMap.getParam("email"), 
-            paramMap.getParam("verifyCode"),
-            stringToUserPrivileges(paramMap.getParam("privilege")),
-            paramMap.getParam("isMale") == "true",
-            paramMap.getParam("nickname")
-        );
+        if(isWithThirdPlatform){
+            _authService->RegisterWithThirdPartyByEmail(
+                paramMap.getParam("username"), 
+                paramMap.getParam("user_password"), 
+                paramMap.getParam("email"), 
+                paramMap.getParam("verifyCode"),
+                paramMap.getParam("third_platform_name"),
+                paramMap.getParam("third_code"),
+                paramMap.getParam("third_verifyCode"),
+                stringToUserPrivileges(paramMap.getParam("privilege")),
+                paramMap.getParam("isMale") == "true",
+                paramMap.getParam("nickname")
+            );
+        }
+        else{
+            result = co_await _authService->RegisterByEmail(
+                paramMap.getParam("username"), 
+                paramMap.getParam("user_password"), 
+                paramMap.getParam("email"), 
+                paramMap.getParam("verifyCode"),
+                stringToUserPrivileges(paramMap.getParam("privilege")),
+                paramMap.getParam("isMale") == "true",
+                paramMap.getParam("nickname")
+            );
+        }
     }
     else{
-        result = co_await _authService->RegisterByPhone(
-            paramMap.getParam("username"),
-            paramMap.getParam("password"),
-            paramMap.getParam("phone"),
-            paramMap.getParam("verifyCode"),
-            stringToUserPrivileges(paramMap.getParam("privilege")),
-            paramMap.getParam("isMale") == "true",
-            paramMap.getParam("nickname")   
-        );
+        if(isWithThirdPlatform){
+            _authService->RegisterWithThirdPartyByPhone(
+                paramMap.getParam("username"), 
+                paramMap.getParam("user_password"), 
+                paramMap.getParam("phone"), 
+                paramMap.getParam("verifyCode"),
+                paramMap.getParam("third_platform_name"),
+                paramMap.getParam("third_code"),
+                paramMap.getParam("third_verifyCode"),
+                stringToUserPrivileges(paramMap.getParam("privilege")),
+                paramMap.getParam("isMale") == "true",
+                paramMap.getParam("nickname")
+            );
+        }
+        else{
+            result = co_await _authService->RegisterByPhone(
+                paramMap.getParam("username"),
+                paramMap.getParam("user_password"),
+                paramMap.getParam("phone"),
+                paramMap.getParam("verifyCode"),
+                stringToUserPrivileges(paramMap.getParam("privilege")),
+                paramMap.getParam("isMale") == "true",
+                paramMap.getParam("nickname")   
+            );
+        }
     }
 
     resp->setBody(result.toJsonString());

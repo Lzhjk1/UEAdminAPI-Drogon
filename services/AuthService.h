@@ -49,8 +49,8 @@ public:
 
     /// @brief 从Token解析用户ID, Token不合法或过期失效时返回-1
     /// @param token Token
-    /// @return 元组[用户Id, 状态码, 是否为flashToken], token失效过期时id为-1, 仍会正常获取tokenType
-    std::tuple<int, int, bool> CheckTokenAndParseUserId(const std::string &token);
+    /// @return 元组[总体成功与否, 用户Id, 状态码, 是否为flashToken(int)], token失效过期时id为-1, 仍会正常获取tokenType, 如果tokentype也没有则会返回-1
+    std::tuple<bool, int, int, int> CheckTokenAndParseUserId(const std::string &token);
 
     /// @brief 邮箱注册用户
     /// @param username 用户名
@@ -81,34 +81,41 @@ public:
         const bool &isMale = true, 
         const std::string &nickname = "");
 
-    ///// @brief 附带第三方平台的邮箱注册
-    //drogon::Task<UEAdminAPI::utils::HttpResult> RegisterWithThirdPartyByEmail(
-    //    const std::string &username, 
-    //    const std::string &password, 
-    //    const std::string &email, 
-    //    const std::string &verifyCode, 
-    //    const UserPrivileges &privilege = UserPrivileges::User, 
-    //    const bool &isMale = true, 
-    //    const std::string &nickname,
-    //    const std::string &third_platform_name,
-    //    const std::string &third_code,
-    //    const std::string &third_verifyCode);
+    /// @brief 通过用户ID直接登录 (内部使用)
+    /// @param userId 用户ID
+    /// @return HttpResult 包含Token信息
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByUserId(int userId);
 
-    ////
+    /// @brief 附带第三方平台的邮箱注册
+    /// 目前在用户注册后, 才插入第三方平台信息, 所以可能出现用户创建成功但第三方平台信息未绑定的情况
+    /// 未做回滚处理, 若发生此情况, 会在返回信息写明, 并且jsondata["userCreatedButThirdPartyNotBind"]为true
+    drogon::Task<UEAdminAPI::utils::HttpResult> RegisterWithThirdPartyByEmail(
+       const std::string &username, 
+       const std::string &password, 
+       const std::string &email, 
+       const std::string &verifyCode, 
+       const std::string &third_platform_name,
+       const std::string &third_code,
+       const std::string &third_verifyCode,
+       const UserPrivileges &privilege = UserPrivileges::User, 
+       const bool &isMale = true,
+       const std::string &nickname = "");
 
-    ///// @brief 附带第三方平台的电话注册
-    //drogon::Task<UEAdminAPI::utils::HttpResult> RegisterWithThirdPartyByPhone(
-    //    const std::string &username, 
-    //    const std::string &password, 
-    //    const std::string &phoneNumber, 
-    //    const std::string &verifyCode, 
-    //    const UserPrivileges &privilege = UserPrivileges::User, 
-    //    const bool &isMale = true, 
-    //    const std::string &nickname,
-    //    const std::string &third_platform_name,
-    //    const std::string &third_code,
-    //    const std::string &third_verifyCode
-    //);
+    //
+
+    /// @brief 附带第三方平台的电话注册
+    drogon::Task<UEAdminAPI::utils::HttpResult> RegisterWithThirdPartyByPhone(
+       const std::string &username, 
+       const std::string &password, 
+       const std::string &phoneNumber, 
+       const std::string &verifyCode, 
+       const std::string &third_platform_name,
+       const std::string &third_code,
+       const std::string &third_verifyCode,
+       const UserPrivileges &privilege = UserPrivileges::User, 
+       const bool &isMale = true,
+       const std::string &nickname = ""
+    );
 
 
     // 检查指定用户的token的Status, 返回true表示有效, false表示无效

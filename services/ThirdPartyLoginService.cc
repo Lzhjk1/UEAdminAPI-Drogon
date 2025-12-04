@@ -758,7 +758,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::Callback(con
         co_return result;
     }
     if (!co_await platformService->callBack(code, state)) {
-        result.setResult(-1, "处理第三方登录回调失败");
+        result.setResult(-1, "处理第三方登录回调失败, 可能是登录操作超时");
         co_return result;
     }
     if (!co_await platformService->getLoginValue(state)) {
@@ -768,18 +768,17 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::Callback(con
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, const std::string &platform, const std::string &code, const std::string &verifyCode) {
+Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, const std::string &platform, const std::string &code, const std::string &verifyCode) {
     auto _authService = AuthService::Instance();
 
-    UEAdminAPI::utils::HttpResult result;
+    HttpResult result;
     
     if (platform.empty() || code.empty() || verifyCode.empty() || token.empty()) {
         result.setResult(-1, "缺少必要参数");
         co_return result;
     }
-    auto [userId, status, isFlashToken] = _authService->CheckTokenAndParseUserId(token);
-    bool isTokenValid = co_await _authService->CheckTokenStatus(userId, status, isFlashToken);
-    if (userId == -1 || !isTokenValid) {
+    auto [isSuccess, userId, status, isFlashToken] = _authService->CheckTokenAndParseUserId(token);
+    if (!isSuccess) {
         result.setResult(-1, "身份验证失败");
         co_return result;
     }
@@ -787,6 +786,18 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::BindAccount(
     Mapper<User> mapperUser(dbClientPtr);
     Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
     Mapper<ThirdPartyPlatforms> mapperThirdPartyPlatforms(dbClientPtr);
+
+    // 验证登录
+    result = co_await VerifyLogin(platform, code, verifyCode);
+    if(result.code != 0){
+        if(result.jsondata["allready_bind"] == true){
+            result.setResult(-1, "该平台已经绑定过账号");
+            co_return result;
+        }
+        result.setResult(-1, "第三方登陆验证失败");
+        co_return result;
+    }
+
     User targetUser;
     try {
         targetUser = mapperUser.findOne(Criteria(User::Cols::_id, CompareOperator::EQ, userId));
@@ -811,11 +822,11 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::BindAccount(
         result.setResult(-1, "该平台已经绑定过账号");
         co_return result;
     }
-    auto targetPlatform = mapperThirdPartyPlatforms.findOne(Criteria(ThirdPartyPlatforms::Cols::_platform_name, CompareOperator::EQ, platform));
+
     auto loginValue = co_await thirdPartyPlatform->getLoginValue(code);
     UserThirdPartyInfo thirdPartyInfo;
     thirdPartyInfo.setUserId(targetUser.getValueOfId());
-    thirdPartyInfo.setPlatformId(targetPlatform.getValueOfId());
+    thirdPartyInfo.setPlatformId(int(thirdPartyPlatform->getPlatform()));
     thirdPartyInfo.setAccessToken(loginValue->accessToken);
     thirdPartyInfo.setNickName(loginValue->nickName);
     thirdPartyInfo.setOpenId(loginValue->openId);
@@ -859,17 +870,21 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
     Mapper<ThirdPartyPlatforms> mapperThirdPartyPlatforms(dbClientPtr);
-    bool hasException = false;
+    bool isAllreadyBind = true;
     try {
-        auto targetPlatform = mapperThirdPartyPlatforms.findOne(Criteria(ThirdPartyPlatforms::Cols::_platform_name, CompareOperator::EQ, platform));
         mapperThirdPartyInfo.findOne(
             Criteria(UserThirdPartyInfo::Cols::_open_id, CompareOperator::EQ, loginValue->openId) &&
-            Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, targetPlatform.getValueOfId()));
+            Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform())));
     } catch (const drogon::orm::UnexpectedRows &e) {
-        hasException = true;
+        // 没找到或是找到多个, 后者不太可能, 所以不特殊处理了
+        // 没找到表示该平台未绑定过该账号
+        isAllreadyBind = false;
     }
+
+    // 这里返回成功并不是说这个第三方账号可以绑定, 而仅是表示code对应的那一次扫码登录完成了
+    // 后续需要根据isAllreadyBind来判断是否需要创建用户
     result.setResult(0, "验证成功");
-    result.jsondata["allready_bind"] = !hasException;
+    result.jsondata["allready_bind"] = isAllreadyBind;
     co_return result;
 }
 
@@ -944,10 +959,9 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
         result.setResult(-1, "创建用户失败");
         co_return result;
     }
-    auto targetPlatform = mapperThirdPartyPlatforms.findOne(Criteria(ThirdPartyPlatforms::Cols::_platform_name, CompareOperator::EQ, platform));
     UserThirdPartyInfo thirdPartyInfo;
     thirdPartyInfo.setUserId(user.getValueOfId());
-    thirdPartyInfo.setPlatformId(targetPlatform.getValueOfId());
+    thirdPartyInfo.setPlatformId(int(platformService->getPlatform()));
     thirdPartyInfo.setOpenId(loginValue->openId);
     thirdPartyInfo.setAccessToken(loginValue->accessToken);
     thirdPartyInfo.setNickName(loginValue->nickName);

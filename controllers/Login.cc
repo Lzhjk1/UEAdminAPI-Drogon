@@ -1,6 +1,9 @@
 #include "Login.h"
 #include "utils/HttpResult.h"
+#include "utils/DataFormatUtils.h"
+
 #include "services/AuthService.h"
+
 
 using namespace UEAdminAPI;
 using namespace UEAdminAPI::utils;
@@ -64,6 +67,40 @@ Task<HttpResponsePtr> Login::LoginByPhone(HttpRequestPtr req, std::string phone,
     
     resp->setBody(result.toJsonString());
     resp->setStatusCode(result.code == 0 ? k200OK : k500InternalServerError);
+    
+    co_return resp;
+}
+
+Task<HttpResponsePtr> Login::VerifyToken(HttpRequestPtr req, std::string token) {
+    // 依赖
+    auto _authService = AuthService::Instance();
+    
+    auto resp = HttpResponse::newHttpResponse();\
+    auto result = HttpResult();
+
+    // 检查参数
+    if(!DataFormatUtil::isJwtString(token)){
+        result.setResult(1, "invalid token");
+        resp->setBody(result.toJsonString());
+        resp->setStatusCode(k400BadRequest);
+        co_return resp;
+    }
+    
+    auto [isSuccess, userId, status, isFlashToken] = _authService->CheckTokenAndParseUserId(token);
+    // 如果tokenType为-1, 则说明token失效过期, 仍会正常获取tokenType
+    result.jsondata["userId"] = userId;
+    result.jsondata["status"] = status;
+    result.jsondata["tokenType"] = isFlashToken == -1 ? "unset" : isFlashToken == 1 ? "flashToken" : "token";
+
+    if(!isSuccess){
+        result.setResult(-1, "Token验证失败");
+        resp->setBody(result.toJsonString());
+        resp->setStatusCode(k400BadRequest);
+        co_return resp;
+    }
+
+    result.setResult(0, "Token验证成功");
+    resp->setBody(result.toJsonString());
     
     co_return resp;
 }
