@@ -88,7 +88,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::loginWithThirdParty(HttpRequestPtr req,
 Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr req, const std::string platform, const std::string code, const std::string verifyCode) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
-    auto result = co_await _thirdPartyLoginService->CreateUserFromThirdParty(platform, code, verifyCode);
+    auto result = co_await _thirdPartyLoginService->CreateUserFromThirdPartyAndLogin(platform, code, verifyCode);
     resp->setBody(result.toJsonString());
     co_return resp;
 }

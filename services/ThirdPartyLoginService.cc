@@ -888,7 +888,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFromThirdParty(const std::string &platform, const std::string &code, const std::string &verifyCode) {
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFromThirdPartyAndLogin(const std::string &platform, const std::string &code, const std::string &verifyCode) {
     auto _authService = AuthService::Instance();
 
     UEAdminAPI::utils::HttpResult result;
@@ -960,7 +960,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
         co_return result;
     }
     UserThirdPartyInfo thirdPartyInfo;
-    thirdPartyInfo.setUserId(user.getValueOfId());
+    thirdPartyInfo.setUserId(user.getValueOfId()); 
     thirdPartyInfo.setPlatformId(int(platformService->getPlatform()));
     thirdPartyInfo.setOpenId(loginValue->openId);
     thirdPartyInfo.setAccessToken(loginValue->accessToken);
@@ -977,8 +977,10 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
         result.setResult(-1, "创建第三方登录信息失败");
         co_return result;
     }
-    result.jsondata["username"] = user.getValueOfName();
-    result.jsondata["userId"] = user.getValueOfId();
+
+    // 登录
+    result = co_await _authService->LoginByUserId(user.getValueOfId());
+    
     co_return result;
 }
 
