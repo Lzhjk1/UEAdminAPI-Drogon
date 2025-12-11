@@ -28,7 +28,9 @@ class Login : public drogon::HttpController<Login>
     ADD_METHOD_TO(Login::LoginByPwd, "/user/login/pwd?userName={1}&passWord={2}", Get);
     ADD_METHOD_TO(Login::LoginByEmail, "/user/login/email?email={1}&code={2}", Get);
     ADD_METHOD_TO(Login::LoginByPhone, "/user/login/phone?phone={1}&code={2}", Get);
+    ADD_METHOD_TO(Login::LoginByFlashToken, "/user/login/flashtoken?flashToken={1}", Get);
     ADD_METHOD_TO(Login::VerifyToken, "/user/token/verify?token={1}", Get);
+    ADD_METHOD_TO(Login::GetSelfInfo, "/user/self", Get);
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
@@ -37,15 +39,6 @@ class Login : public drogon::HttpController<Login>
 
 
     /// @brief 通过密码登录
-    /// @return 成功返回示例为 (相比邱, FlashToken没有id):
-    /// {
-    ///     "code": 200,
-    ///     "data": {
-    ///         "token": "token",
-    ///         "flashToken": "flashToken"
-    ///     }
-    ///     "msg": "success"
-    /// }
     Task<HttpResponsePtr> LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd);
 
     /// @brief 通过其他方式, 如邮箱, 手机验证码登录
@@ -70,11 +63,15 @@ class Login : public drogon::HttpController<Login>
     /// @return
     Task<HttpResponsePtr> LoginByPhone(HttpRequestPtr req, std::string phone, std::string code);
 
+    Task<HttpResponsePtr> LoginByFlashToken(HttpRequestPtr req, std::string flashToken);
+
     /// @brief 验证Token是否有效, 同时返回Token的相关信息
     /// @param req 
     /// @param token 要验证的Token
     /// @return 
     Task<HttpResponsePtr> VerifyToken(HttpRequestPtr req, std::string token);
+
+    Task<HttpResponsePtr> GetSelfInfo(HttpRequestPtr req);
 
 
 };

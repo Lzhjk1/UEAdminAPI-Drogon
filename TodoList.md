@@ -11,7 +11,6 @@
 - 准备写第三方登陆callback之后, 根据第三方账号创建用户的接口
 - ✅ Token的Status可能需要两个, 因为除了Token还有FlashToken Token的status已加但还没使用
 - ✅ CheckToken函数没有区分Token和FlashToken, 也没有检查status, 以后要区分一下 已在AuthService修改CheckTokenAndParseUserId函数并添加函数CheckTokenStatus
-- 新修改的接口还没有测试, 之后记得测试
 - ✅ 验证第三方登陆是否成功的接口必须要独立, 不然一个没绑定过的第三方账号就会直接注册一个账号, 这样会失去绑定已有账号的机会
 - 跟loginvalue相关的getAccessToken这样的get, set函数风格我觉得不好, getset应该属于loginvalue, 而不是platform, 也就是调用方式应为loginvalue->getAccessToken()这样,
 - ✅ 清理头文件中的 std 命名空间引用, 这会导致极大的重名风险且不易察觉
@@ -20,8 +19,15 @@
 - ✅ 已经写好附带第三方平台登录的注册接口, 但是还没有测试
 - 需要有刷新Gitlab Impersonation Token的机制
 - 需要有刷新第三方平台Access Token的机制 (其实暂时没必要, 因为每次登录都要经过的第三方登陆步骤都会重新获取AccessToken) 🟦
-- 目前数据库里有一个表记录了第三方平台的id和对应的名字, 但是在代码里, 我是直接用枚举类型来表示平台的, 之后有机会可以改掉
+- 💥目前数据库里有一个表记录了第三方平台的id和对应的名字, 但是在代码里, 我是直接用枚举类型来表示平台的, 之后有机会可以改掉
 - "Register控制器新增的可直接通过完成了第三方登陆的code对来注册账号" 这个功能可能不实用, 因为要发送多一次请求, 应该整合在第三方登陆那一边才对
+- 新增一个刷新Token的接口, 也可以说是通过FlashToken登录的接口, 还未测试
+- ✅邱在PDMS的uesdk的UserManager::thirdLoginCheck需要修改
+- pdms处Api::User::loginQQConfirm和微信的函数需要修改
+- 缺少第三方解绑接口, /user/third/unbind
+- 缺少更新用户信息接口, /user/update, , 需要header中的Token
+- ✅缺少获取当前登录用户信息接口, /user/get/self, 需要header中的Token
+- 缺少删除用户接口, /user/delete, 参数为1.邮箱或手机 2.验证码, 需要header中的Token
 
 # 客户端调用流程(如需要多步调用)
 - 已绑定第三方的账号, 通过第三方登陆:

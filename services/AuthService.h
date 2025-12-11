@@ -154,6 +154,10 @@ public:
     /// @return
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginByPhone(const std::string &phone, const std::string &verifyCode);
 
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByFlashToken(const std::string &flashToken);
+
+    drogon::Task<UEAdminAPI::utils::HttpResult> GetSelfInfo(const std::string &token);
+
 private:
     /**
      * @brief 核心注册事务处理：Gitlab创建 -> 数据库插入 -> 异常回滚

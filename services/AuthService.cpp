@@ -16,9 +16,11 @@
 #include "models/User.h"
 #include "models/UserGitlabInfo.h"
 #include "models/UserThirdPartyInfo.h"
+#include "models/ThirdpartyPlatforms.h"
 
 #include <utils/EnumUserPrivileges.h>
 #include <utils/RandomGenerator.h>
+#include <utils/DataFormatUtils.h>
 
 using namespace drogon_model::UEAdminAPI;
 using namespace drogon::orm;
@@ -517,6 +519,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::s
 
     result.jsondata["flashToken"] = flashToken;
     result.jsondata["token"] = token;
+    result.jsondata["id"] = targetUser.getValueOfId();
     result.setResult(0, "登录成功");
 
     co_return result;
@@ -567,7 +570,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
 
     // 创建新的FlashToken
     // 生成随机数作为status, status用于标记最新的token 
-    //(虽说这样是抛弃了JWT无状态的优点, 但也只是存了一个int数, 开销不大, 免去了要处理同时有多个FlashToken可用的问题的麻烦)
+    // (虽说这样是抛弃了JWT无状态的优点, 但也只是存了一个int数, 开销不大, 免去了要处理同时有多个FlashToken可用的问题的麻烦)
     int status = RandomGenerator::getInt(1, INT_MAX);
     string flashToken = CreateFlashToken(targetUser.getValueOfId(), status);
     // 更新状态到数据库
@@ -583,6 +586,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
 
     result.jsondata["flashToken"] = flashToken;
     result.jsondata["token"] = token;
+    result.jsondata["id"] = targetUser.getValueOfId();
     result.setResult(0, "登录成功");
 
     co_return result;
@@ -644,6 +648,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userI
 
     result.jsondata["flashToken"] = flashTokenStr;
     result.jsondata["token"] = token;
+    result.jsondata["id"] = targetUser.getValueOfId();
     result.setResult(0, "登录成功");
 
     co_return result;
@@ -655,6 +660,111 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByEmail(const std:
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPhone(const std::string &phone, const std::string &code) {
     co_return co_await LoginByOther(phone, User::Cols::_telephone_number, code);
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByFlashToken(const std::string &flashToken) {
+    HttpResult result;
+
+    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(flashToken);
+    if(isFlashToken != 1){
+        result.setResult(-1, "不是FlashToken");
+        co_return result;
+    }
+    if(!isSuccess || userId == -1){
+        result.setResult(-1, "FlashToken验证失败");
+        co_return result;
+    }
+
+    bool valid = co_await CheckTokenStatus(userId, status, true);
+    if(!valid){
+        result.setResult(-1, "FlashToken已失效");
+        co_return result;
+    }
+
+    std::string token = CreateToken(userId, status);
+    result.jsondata["token"] = token;
+    result.jsondata["flashToken"] = flashToken;
+    result.jsondata["id"] = userId;
+    result.setResult(0, "刷新成功");
+    co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::string &token) {
+    HttpResult result;
+
+    if(token.empty()){
+        result.setResult(-1, "缺少必要参数");
+        co_return result;
+    }
+
+    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
+    if(!isSuccess || userId == -1){
+        result.setResult(-1, "身份验证失败");
+        co_return result;
+    }
+
+    bool valid = co_await CheckTokenStatus(userId, status, isFlashToken == 1);
+    if(!valid){
+        result.setResult(-1, "Token已失效");
+        co_return result;
+    }
+
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<User> mapperUser(dbClientPtr);
+
+    User user;
+    try {
+        user = mapperUser.findByPrimaryKey(userId);
+    } catch (const UnexpectedRows &e) {
+        result.setResult(-1, "数据库错误");
+        co_return result;
+    }
+
+    result.jsondata["id"] = user.getValueOfId();
+    result.jsondata["userName"] = user.getValueOfName();
+    result.jsondata["userNick"] = user.getValueOfNickName();
+    if(user.getTelephoneNumber()){
+        result.jsondata["tel"] = user.getValueOfTelephoneNumber();
+    } else {
+        result.jsondata["tel"] = "";
+    }
+    result.jsondata["created_at"] = user.getValueOfCreateAt().toFormattedStringLocal(false);
+    if(user.getIsMale()){
+        result.jsondata["sex"] = user.getValueOfIsMale() ? "man" : "woman";
+    } else {
+        result.jsondata["sex"] = Json::nullValue;
+    }
+
+    result.jsondata["configured_third_platform_name"] = Json::Value(Json::arrayValue);
+    try {
+        auto pairs = user.getThird_party_platforms(dbClientPtr);
+        for(const auto &p : pairs){
+            const auto &platform = p.first;
+            const auto &info = p.second;
+            Json::Value temp(Json::objectValue);
+            temp["third_platform_name"] = platform.getValueOfPlatformName();
+            temp["nickName"] = info.getValueOfNickName();
+            temp["headImageUrl"] = info.getValueOfAvatarImgUrl();
+            result.jsondata["configured_third_platform_name"].append(temp);
+        }
+    } catch (...) {
+    }
+
+    std::string gitlabToken = "";
+    try {
+        auto gitInfo = user.getUser_gitlab_info(dbClientPtr);
+        gitlabToken = gitInfo.getValueOfGitlabImpersonationToken();
+    } catch (...) {
+    }
+    result.jsondata["gitlab_token"] = gitlabToken;
+
+    result.jsondata["email"] = Json::Value(Json::arrayValue);
+    if(user.getEmail()){
+        result.jsondata["email"].append(user.getValueOfEmail());
+    }
+
+    result.setResult(0, "success");
+    co_return result;
 }
 
 Task<HttpResult> AuthService::ExecuteRegistrationTransaction(

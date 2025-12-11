@@ -5,3 +5,4 @@
 3. 各步骤之间请保留空行，避免内容过于紧凑，以提升可读性。
 4. 在 .cc/.cpp 文件中可大方使用 `using namespace`，避免冗长的 `drogon::orm::User::Cols::` 等前缀，以提升可读性；相反，在 .h 文件中应尽量避免使用 `using namespace`。
 5. 所有服务单例（如 `auto _authService = AuthService::Instance();`）请在函数开头统一获取，置于最前。
+6. 在controllers下的接口中, 不包含具体代码, 而是在对应的服务类中实现, 并在接口中调用服务类的方法, controller只做参数读取, 比如POST参数(统一使用PostParamMap类读取), 还有需要授权的接口要从header中读取token.

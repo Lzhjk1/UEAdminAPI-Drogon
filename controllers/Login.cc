@@ -71,6 +71,20 @@ Task<HttpResponsePtr> Login::LoginByPhone(HttpRequestPtr req, std::string phone,
     co_return resp;
 }
 
+Task<HttpResponsePtr> Login::LoginByFlashToken(HttpRequestPtr req, std::string flashToken) {
+    auto _authService = AuthService::Instance();
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+
+    HttpResult result = co_await _authService->LoginByFlashToken(flashToken);
+
+    resp->setBody(result.toJsonString());
+    resp->setStatusCode(result.code == 0 ? k200OK : k500InternalServerError);
+
+    co_return resp;
+}
+
 Task<HttpResponsePtr> Login::VerifyToken(HttpRequestPtr req, std::string token) {
     // 依赖
     auto _authService = AuthService::Instance();
@@ -102,5 +116,20 @@ Task<HttpResponsePtr> Login::VerifyToken(HttpRequestPtr req, std::string token) 
     result.setResult(0, "Token验证成功");
     resp->setBody(result.toJsonString());
     
+    co_return resp;
+}
+
+Task<HttpResponsePtr> Login::GetSelfInfo(HttpRequestPtr req) {
+    auto _authService = AuthService::Instance();
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+
+    auto token = req->getHeader("token");
+    HttpResult result = co_await _authService->GetSelfInfo(token);
+
+    resp->setBody(result.toJsonString());
+    resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);
+
     co_return resp;
 }
