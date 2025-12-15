@@ -458,7 +458,15 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::s
     auto dbClientPtr = drogon::app().getDbClient();
 
     Mapper<User> mapperUsers(dbClientPtr);
-    auto targetUser = mapperUsers.findFutureOne(Criteria(User::Cols::_name, CompareOperator::EQ, userName)).get();
+
+    User targetUser;
+    try{
+        targetUser = mapperUsers.findFutureOne(Criteria(User::Cols::_name, CompareOperator::EQ, userName)).get();
+    }catch (const UnexpectedRows &e) {
+        LOG_ERROR << "查询用户失败:" << e.what();
+        result.setResult(-1, "用户名或密码错误");
+        co_return result;
+    }
 
     auto hash = targetUser.getPasswordHash();
     auto salt = targetUser.getPasswordSalt();
