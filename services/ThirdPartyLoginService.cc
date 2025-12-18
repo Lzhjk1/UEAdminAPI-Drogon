@@ -14,6 +14,9 @@
 #include "models/UserThirdpartyInfo.h"
 #include <drogon/orm/Mapper.h>
 #include "services/AuthService.h"
+#include "services/MFAService.h"
+#include "utils/MFA/MFA_Channels.h"
+#include "utils/MFA/MFACodePair.h"
 
 using namespace drogon;
 using namespace drogon::orm;
@@ -37,7 +40,7 @@ ThirdPartyLoginValue::ThirdPartyLoginValue(const std::string& code, const std::s
 }
 
 // ThirdPartyLoginPlatformBase 实现
-ThirdPartyLoginPlatformBase::ThirdPartyLoginPlatformBase(const Json::Value& config, const EnumThirdPartyPlatform& platform)
+ThirdPartyLoginPlatformBase::ThirdPartyLoginPlatformBase(const Json::Value& config, const UEAdminAPI::utils::EnumThirdPartyPlatform& platform)
     : platform(platform) {
     // 检查并获取配置
     auto [serverHost, clientId, clientSecret] = checkAndGetPlatformConfig(platform, config);
@@ -53,7 +56,7 @@ ThirdPartyLoginPlatformBase::ThirdPartyLoginPlatformBase(const Json::Value& conf
 }
 
 std::tuple<std::string, std::string, std::string> 
-ThirdPartyLoginPlatformBase::checkAndGetPlatformConfig(const EnumThirdPartyPlatform& platform, const Json::Value& config) {
+ThirdPartyLoginPlatformBase::checkAndGetPlatformConfig(const UEAdminAPI::utils::EnumThirdPartyPlatform& platform, const Json::Value& config) {
     // 检查配置
     bool isNecessaryConfigsNotSet = false;
     std::string platformName = ThirdPartyPlatformToString(platform);
@@ -119,7 +122,7 @@ drogon::Task<bool> ThirdPartyLoginPlatformBase::verifyTheCode(const std::string&
         co_return false;
     }
 
-    co_return value->verifyCode == verifyCode && !value->authorizationCode.empty();
+    co_return value->verifyCode == verifyCode && !value->authorizationCode.empty() && !value->consumed;
 }
 
 drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> ThirdPartyLoginPlatformBase::createNewThirdLoginValue() {
@@ -151,6 +154,18 @@ drogon::Task<void> ThirdPartyLoginPlatformBase::clearExpired() {
                           return value->isExpired();
                       }),
         loginValues.end());
+    co_return;
+}
+
+drogon::Task<void> ThirdPartyLoginPlatformBase::consumeLoginValue(const std::string& code) {
+    std::unique_lock<std::shared_mutex> lock(mutex);
+    auto it = std::find_if(loginValues.begin(), loginValues.end(),
+                          [&code](const std::shared_ptr<ThirdPartyLoginValue>& value) {
+                              return value->code == code;
+                          });
+    if (it != loginValues.end()) {
+        (*it)->consumed = true;
+    }
     co_return;
 }
 
@@ -671,7 +686,7 @@ ThirdPartyLoginService::ThirdPartyLoginService(const Json::Value& config) {
     platforms[EnumThirdPartyPlatform::WeChat] = std::make_unique<ThirdPartyLoginPlatform_WeChat>(config);
 }
 
-drogon::Task<IThirdPartyLoginPlatform*> ThirdPartyLoginService::getPlatform(EnumThirdPartyPlatform platform) {
+drogon::Task<IThirdPartyLoginPlatform*> ThirdPartyLoginService::getPlatform(UEAdminAPI::utils::EnumThirdPartyPlatform platform) {
     std::lock_guard<std::mutex> lock(mutex);
     auto it = platforms.find(platform);
     co_return it != platforms.end() ? it->second.get() : nullptr;
@@ -679,23 +694,10 @@ drogon::Task<IThirdPartyLoginPlatform*> ThirdPartyLoginService::getPlatform(Enum
 
 drogon::Task<IThirdPartyLoginPlatform*> ThirdPartyLoginService::getPlatform(const std::string& platform){
     // 转换为小写
-    co_return co_await getPlatform(getPlatformEnumFormStr(platform));
+    co_return co_await getPlatform(getPlatformFromString(platform));
 }
 
-EnumThirdPartyPlatform ThirdPartyLoginService::getPlatformEnumFormStr(const std::string &platform) {
-    // 转换为小写
-    std::string platformLower = DataFormatUtil::toLowerCase(platform);
-    
-    if (platformLower == "qq") {
-        return Services::EnumThirdPartyPlatform::QQ;
-    } else if (platformLower == "wechat") {
-        return Services::EnumThirdPartyPlatform::WeChat;
-    } else {
-        return Services::EnumThirdPartyPlatform::None;
-    }
-}
-
-drogon::Task<std::tuple<EnumThirdPartyPlatform, std::shared_ptr<ThirdPartyLoginValue>>> ThirdPartyLoginService::getCodeAndItsPlatform(const std::string &code) {
+drogon::Task<std::tuple<UEAdminAPI::utils::EnumThirdPartyPlatform, std::shared_ptr<ThirdPartyLoginValue>>> ThirdPartyLoginService::getCodeAndItsPlatform(const std::string &code) {
     std::lock_guard<std::mutex> lock(mutex);
     for(const auto& platform: platforms) {
         auto value = co_await platform.second->getLoginValue(code);
@@ -706,7 +708,7 @@ drogon::Task<std::tuple<EnumThirdPartyPlatform, std::shared_ptr<ThirdPartyLoginV
     }
 }
 
-drogon::Task<void> ThirdPartyLoginService::deletePlatform(EnumThirdPartyPlatform platform) {
+drogon::Task<void> ThirdPartyLoginService::deletePlatform(UEAdminAPI::utils::EnumThirdPartyPlatform platform) {
     std::lock_guard<std::mutex> lock(mutex);
     platforms.erase(platform);
     co_return;
@@ -719,16 +721,7 @@ drogon::Task<void> ThirdPartyLoginService::clearExpired() {
     co_return;
 }
 
-std::string ThirdPartyPlatformToString(EnumThirdPartyPlatform platform, bool isLowerCase) {
-    switch (platform) {
-        case EnumThirdPartyPlatform::QQ:
-            return isLowerCase ? "qq" : "QQ";
-        case EnumThirdPartyPlatform::WeChat:
-            return isLowerCase ? "wechat" : "WeChat";
-        default:
-            return "";
-    }
-}
+
 
 drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(const std::string &platform) {
     auto platformService = co_await getPlatform(platform);
@@ -838,10 +831,13 @@ Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, c
         co_return result;
     }
     result.setResult(0, "绑定成功");
+    co_await thirdPartyPlatform->consumeLoginValue(code);
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(const std::string &platform, const std::string &code, const std::string &verifyCode) {
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(const std::string &platform, const std::string &code, const std::string &verifyCode, bool onlyCheck) {
+    auto _authService = AuthService::Instance();
+    
     UEAdminAPI::utils::HttpResult result;
 
     auto platformService = co_await getPlatform(platform);
@@ -871,8 +867,9 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
     Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
     Mapper<ThirdPartyPlatforms> mapperThirdPartyPlatforms(dbClientPtr);
     bool isAllreadyBind = true;
+    UserThirdPartyInfo thirdPartyInfo;
     try {
-        mapperThirdPartyInfo.findOne(
+        thirdPartyInfo = mapperThirdPartyInfo.findOne(
             Criteria(UserThirdPartyInfo::Cols::_open_id, CompareOperator::EQ, loginValue->openId) &&
             Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform())));
     } catch (const drogon::orm::UnexpectedRows &e) {
@@ -885,6 +882,23 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
     // 后续需要根据isAllreadyBind来判断是否需要创建用户
     result.setResult(0, "验证成功");
     result.jsondata["allready_bind"] = isAllreadyBind;
+
+    // 如果只是确认登录, 则直接返回
+    if (onlyCheck) {
+        co_return result;
+    }
+
+    // 如果不是确认登录, 则需要根据isAllreadyBind来判断是否需要已经绑定
+    // 如果绑定则登录, 否则返回提示信息
+    if (!isAllreadyBind) {
+        result.setResult(-1, "该平台未绑定过该账号");
+        co_return result;
+    }
+
+    // 如果绑定了, 则登录
+    result = co_await _authService->LoginByUserId(thirdPartyInfo.getValueOfUserId());
+    co_await platformService->consumeLoginValue(code);
+
     co_return result;
 }
 
@@ -980,6 +994,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
 
     // 登录
     result = co_await _authService->LoginByUserId(user.getValueOfId());
+    co_await platformService->consumeLoginValue(code);
     
     co_return result;
 }
@@ -1022,7 +1037,122 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::LoginWithThi
     // 5. 调用AuthService完成登录
     auto authService = AuthService::Instance();
     result = co_await authService->LoginByUserId(info.getValueOfUserId());
+    co_await platformService->consumeLoginValue(code);
     
+    co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccount(const std::string &token, const std::string &platform, const std::string &target, const std::string &verifyCode) {
+    auto _authService = AuthService::Instance();
+    auto _mfaService = MFAService::Instance();
+
+    UEAdminAPI::utils::HttpResult result;
+
+    if (platform.empty()) {
+        result.setResult(-1, "缺少参数 platform");
+        co_return result;
+    }
+    if (target.empty()) {
+        result.setResult(-1, "缺少参数 target");
+        co_return result;
+    }
+    if (token.empty()) {
+        result.setResult(-1, "缺少参数 token");
+        co_return result;
+    }
+    if (verifyCode.empty()) {
+        result.setResult(-1, "缺少参数 verifyCode");
+        co_return result;
+    }
+
+    auto [isSuccess, userId, status, isFlashToken] = _authService->CheckTokenAndParseUserId(token);
+    if (!isSuccess || userId == -1) {
+        result.setResult(-1, "身份验证失败");
+        co_return result;
+    }
+    bool valid = co_await _authService->CheckTokenStatus(userId, status, isFlashToken == 1);
+    if (!valid) {
+        result.setResult(-1, "Token已失效");
+        co_return result;
+    }
+
+    auto platformService = co_await getPlatform(platform);
+    if (!platformService) {
+        result.setResult(-1, "不支持的第三方平台");
+        co_return result;
+    }
+
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<User> mapperUser(dbClientPtr);
+    Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
+    // 获取用户信息以推断默认目标
+    User user;
+    try {
+        user = mapperUser.findByPrimaryKey(userId);
+    } catch (const drogon::orm::UnexpectedRows &e) {
+        result.setResult(-1, "数据库错误");
+        co_return result;
+    }
+
+    std::string realTarget = target;
+    if (realTarget.empty()) {
+        if (user.getEmail()) {
+            realTarget = user.getValueOfEmail();
+        } else if (user.getTelephoneNumber()) {
+            realTarget = user.getValueOfTelephoneNumber();
+        } else {
+            result.setResult(-1, "无法确定MFA目标，请提供target");
+            co_return result;
+        }
+    }
+
+    auto chType = MFAChannelBase::DetermineChannelType(realTarget);
+    if (chType == eChannelType::Email) {
+        if (!user.getEmail() || user.getValueOfEmail() != realTarget) {
+            result.setResult(-1, "目标未绑定到当前用户");
+            co_return result;
+        }
+    } else if (chType == eChannelType::SMS) {
+        auto [cc, pn] = CodePairBase::SMSCodePair::ParsePhoneNumber(realTarget);
+        if (!user.getTelephoneNumber() || user.getValueOfTelephoneNumber() != pn) {
+            result.setResult(-1, "目标未绑定到当前用户");
+            co_return result;
+        }
+    } else {
+        result.setResult(-1, "无法判断渠道类型");
+        co_return result;
+    }
+
+    auto [ok, msg] = co_await _mfaService->VerifyTheCode(realTarget, verifyCode, eMFAType::ThirdPartyBind);
+    if (!ok) {
+        result.setResult(-1, msg.empty() ? "验证码错误" : msg);
+        co_return result;
+    }
+
+    bool notBound = false;
+    try {
+        // 检查是否存在绑定记录
+        auto info = mapperThirdPartyInfo.findOne(
+            Criteria(UserThirdPartyInfo::Cols::_user_id, CompareOperator::EQ, userId) &&
+            Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform()))
+        );
+        // 删除绑定记录
+        mapperThirdPartyInfo.deleteOne(info);
+    } catch (const drogon::orm::UnexpectedRows &e) {
+        if (std::string(e.what()) == "0 rows found") {
+            notBound = true;
+        } else {
+            result.setResult(-1, "内部错误");
+            co_return result;
+        }
+    }
+
+    if (notBound) {
+        result.setResult(-1, "该平台未绑定账号");
+        co_return result;
+    }
+
+    result.setResult(0, "解绑成功");
     co_return result;
 }
 

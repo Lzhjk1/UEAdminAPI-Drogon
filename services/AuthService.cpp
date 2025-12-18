@@ -10,6 +10,8 @@
 #include "services/AuthService.h"
 #include "services/MFAService.h"
 #include "services/GitLabService.h"
+#include "utils/MFA/MFA_Channels.h"
+#include "utils/MFA/MFACodePair.h"
 #include "services/ThirdPartyLoginService.h"
 
 #include "models/UserFlashtoken.h"
@@ -21,6 +23,8 @@
 #include <utils/EnumUserPrivileges.h>
 #include <utils/RandomGenerator.h>
 #include <utils/DataFormatUtils.h>
+#include <numeric>
+#include <utils/PostParamMap.h>
 
 using namespace drogon_model::UEAdminAPI;
 using namespace drogon::orm;
@@ -121,18 +125,82 @@ std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationS
     return token;
 }
 
-std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std::string &token) {
-    // 解码并验证token
-    auto decoded = jwt::decode(token);
-    auto verifier = jwt::verify()
-        .allow_algorithm(jwt::algorithm::hs512{_secret})
-        .with_issuer(_jwtIssuer);
+drogon::Task<std::tuple<std::string, std::string, int>> AuthService::NewTokenPair(int userId) {
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<UserFlashtoken> mapper(dbClientPtr);
 
+    int status = RandomGenerator::getInt(1, INT_MAX);
+
+    UserFlashtoken row;
+    bool needInsert = false;
+    try {
+        row = mapper.findByPrimaryKey(userId);
+    } catch (const UnexpectedRows &e) {
+        needInsert = true;
+    }
+
+    std::string flashToken = CreateFlashToken(userId, status);
+    std::string token = CreateToken(userId, status);
+
+    if (needInsert) {
+        UserFlashtoken newRow;
+        newRow.setUserId(userId);
+        newRow.setStatus(status);
+        newRow.setStatusForToken(status);
+        mapper.insert(newRow);
+    } else {
+        row.setStatus(status);
+        row.setStatusForToken(status);
+        auto ret = mapper.update(row);
+        if (ret != 1) {
+            co_return std::make_tuple(std::string(), std::string(), -1);
+        }
+    }
+
+    co_return std::make_tuple(token, flashToken, status);
+}
+
+drogon::Task<std::tuple<std::string, int>> AuthService::NewToken(int userId, int status) {
+    if(status == -1){
+        status = RandomGenerator::getInt(1, INT_MAX);
+    }
+
+    //auto dbClientPtr = drogon::app().getDbClient();
+    //Mapper<UserFlashtoken> mapper(dbClientPtr);
+
+    //UserFlashtoken row;
+    //bool needInsert = false;
+    //try {
+    //    row = mapper.findByPrimaryKey(userId);
+    //} catch (const UnexpectedRows &e) {
+    //    needInsert = true;
+    //}
+
+    //if (needInsert) {
+    //    UserFlashtoken newRow;
+    //    newRow.setUserId(userId);
+    //    newRow.setStatusForToken(status);
+    //    mapper.insert(newRow);
+    //} else {
+    //    row.setStatusForToken(status);
+    //    (void)mapper.update(row);
+    //}
+
+    std::string token = CreateToken(userId, status);
+    co_return std::make_tuple(token, status);
+}
+
+std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std::string &token) {
     std::string tokenType;
     int status;
     int32_t userId;
     int isFlashToken;
     try{
+        // 解码并验证token
+        auto decoded = jwt::decode(token);
+        auto verifier = jwt::verify()
+            .allow_algorithm(jwt::algorithm::hs512{_secret})
+            .with_issuer(_jwtIssuer);
         tokenType = decoded.get_payload_claim("tokenType").as_string();
         if(tokenType != "token" && tokenType != "flashToken"){
             LOG_ERROR << std::format("对于Token: {}, tokenType 既不是 token, 也不是 flashToken", token);
@@ -141,23 +209,16 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
         isFlashToken = tokenType == "flashToken";
         status = std::stoi(decoded.get_payload_claim("status").as_string());
         userId = std::stoi(decoded.get_payload_claim("id").as_string());
+        return std::make_tuple(true, userId, status, isFlashToken);
     }
     catch (const std::exception &e) {
         LOG_ERROR << std::format("对于Token: {}, 有缺失的 Claim: {}", token, e.what());
         return std::make_tuple(false, -1, -1, -1);
     }
-    try {
-        verifier.verify(decoded); 
-
-        // 获取用户ID
-        auto userIdClaim = decoded.get_payload_claim("id");
-
-        return std::make_tuple(true, userId, status, isFlashToken);
-    }
-    catch (const std::exception &e) {
-        LOG_ERROR << std::format("对于Token: {}, 验证失败: {}", token, e.what());
-        LOG_ERROR << "Token验证失败: " << e.what();
-        return std::make_tuple(false, -1, status, isFlashToken);
+    // token格式不正确
+    catch (const std::invalid_argument &e) {
+        LOG_ERROR << std::format("对于Token: {}, 格式错误: {}", token, e.what());
+        return std::make_tuple(false, -1, -1, -1);
     }
 }
 
@@ -436,12 +497,14 @@ drogon::Task<bool> AuthService::CheckTokenStatus(const int &userId, const int &s
     if(hasException)
         co_return false;
 
-    if(isFlashToken)
-        if(token.getValueOfStatus() != status)
+    if (isFlashToken) {
+        if (token.getValueOfStatus() != status)
             co_return false;
-    else
-        if(token.getValueOfStatusForToken() != status)
+    }
+    else {
+        if (token.getValueOfStatusForToken() != status)
             co_return false;
+    }
 
     co_return true;
 }
@@ -480,50 +543,11 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::s
         co_return result;
     }
 
-    // 随机生成数字作为状态
-    int status = RandomGenerator::getInt(1, INT_MAX);
-    string flashToken = CreateFlashToken(targetUser.getValueOfId(), status);
-    // 更新状态到数据库
-    Mapper<UserFlashtoken> mapperUserFlashtoken(dbClientPtr);
-    UserFlashtoken flashTokenRow;
-    // 是否需要新建行
-    bool isNeedNewCreate = false;
-    try {
-        flashTokenRow = targetUser.getUser_flashtoken(dbClientPtr);
-    } catch (UnexpectedRows& e){
-        // 此外还有发现多个匹配行的错误
-        if(strcmp(e.what(), "0 rows found") != 0){
-            throw e;
-        }
-        isNeedNewCreate = true;
+    auto [token, flashToken, status] = co_await NewTokenPair(targetUser.getValueOfId());
+    if (status == -1) {
+        result.setResult(-1, "更新状态失败");
+        co_return result;
     }
-
-    // 如果需要新建
-    if (isNeedNewCreate) {
-        UserFlashtoken newFlashtoken;
-        newFlashtoken.setUserId(targetUser.getValueOfId());
-        newFlashtoken.setStatus(status);
-
-        try {
-            auto ret = mapperUserFlashtoken.insertFuture(newFlashtoken).get();
-        }
-        catch (std::runtime_error& e){
-            // TODO: 尚不清楚他会抛出什么错误
-            LOG_ERROR << "新建flashtoken插入时出错!";
-            throw e;
-        }
-    }
-    // 如果新建了行, 就不需要修改了
-    else {
-        flashTokenRow.setStatus(status);
-        auto ret = mapperUserFlashtoken.updateFuture(flashTokenRow).get();
-        if (ret != 1) {
-            result.setResult(-1, "更新状态失败");
-            co_return result;
-        }
-    }
-
-    auto token = CreateToken(targetUser.getValueOfId(), status);
 
     result.jsondata["flashToken"] = flashToken;
     result.jsondata["token"] = token;
@@ -547,10 +571,8 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
         co_return result;
     }
 
-    // 获取dbClient并创建mapper, 固定用法
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
-    drogon::orm::Mapper<UserFlashtoken> mapperFlashToken(dbClientPtr);
 
     // 查找用户
     User targetUser;
@@ -564,36 +586,14 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
         co_return result;
     }
 
-    // 根据刚找到的用户的关系从数据库获取对应的user_flash_token的记录
-    // 如果没找到则创建一条新的FlashToken
-    UserFlashtoken flashtoken;
-    try{
-        flashtoken = targetUser.getUser_flashtoken(dbClientPtr);
-    }
-    catch (UnexpectedRows& e){
-        // 没找到则创建
-        flashtoken.setUserId(targetUser.getValueOfId());
-        mapperFlashToken.insert(flashtoken);
-    }
-
-    // 创建新的FlashToken
-    // 生成随机数作为status, status用于标记最新的token 
-    // (虽说这样是抛弃了JWT无状态的优点, 但也只是存了一个int数, 开销不大, 免去了要处理同时有多个FlashToken可用的问题的麻烦)
-    int status = RandomGenerator::getInt(1, INT_MAX);
-    string flashToken = CreateFlashToken(targetUser.getValueOfId(), status);
-    // 更新状态到数据库
-    flashtoken.setStatus(status);
-    auto ret = mapperFlashToken.update(flashtoken);
-    if (ret != 1) {
+    auto [token2, flashToken2, status2] = co_await NewTokenPair(targetUser.getValueOfId());
+    if (status2 == -1) {
         result.setResult(-1, "更新状态失败");
         co_return result;
     }
 
-    // Token还未实际使用status状态变量, 仅FlashToken在使用, 所以这里的status仅占位
-    string token = CreateToken(targetUser.getValueOfId(), status);
-
-    result.jsondata["flashToken"] = flashToken;
-    result.jsondata["token"] = token;
+    result.jsondata["flashToken"] = flashToken2;
+    result.jsondata["token"] = token2;
     result.jsondata["id"] = targetUser.getValueOfId();
     result.setResult(0, "登录成功");
 
@@ -619,42 +619,13 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userI
         co_return result;
     }
 
-    UserFlashtoken flashtoken;
-    bool isNeedNewCreate = false;
-    try {
-        flashtoken = targetUser.getUser_flashtoken(dbClientPtr);
-    } catch (UnexpectedRows& e) {
-        if(strcmp(e.what(), "0 rows found") != 0){
-            throw e;
-        }
-        isNeedNewCreate = true;
-    }
-
-    if(isNeedNewCreate){
-        flashtoken.setUserId(targetUser.getValueOfId());
-        flashtoken.setStatus(0); // 初始状态
-        try{
-            mapperFlashToken.insert(flashtoken);
-        }
-        catch (std::runtime_error& e){
-            LOG_ERROR << "LoginByUserId 新建flashtoken插入时出错!";
-            throw e;
-        }
-    }
-
-    int status = RandomGenerator::getInt(1, INT_MAX);
-    std::string flashTokenStr = CreateFlashToken(targetUser.getValueOfId(), status);
-    
-    flashtoken.setStatus(status);
-    auto ret = mapperFlashToken.update(flashtoken);
-    if (ret != 1) {
+    auto [token, flashToken, status] = co_await NewTokenPair(targetUser.getValueOfId());
+    if (status == -1) {
         result.setResult(-1, "更新状态失败");
         co_return result;
     }
 
-    std::string token = CreateToken(targetUser.getValueOfId(), status);
-
-    result.jsondata["flashToken"] = flashTokenStr;
+    result.jsondata["flashToken"] = flashToken;
     result.jsondata["token"] = token;
     result.jsondata["id"] = targetUser.getValueOfId();
     result.setResult(0, "登录成功");
@@ -689,7 +660,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByFlashToken(const
         co_return result;
     }
 
-    std::string token = CreateToken(userId, status);
+    auto [token, _] = co_await NewToken(userId);
     result.jsondata["token"] = token;
     result.jsondata["flashToken"] = flashToken;
     result.jsondata["id"] = userId;
@@ -870,4 +841,275 @@ Task<bool> AuthService::CheckIfExist(drogon::orm::Mapper<User> &mapper, const dr
     } catch (...) {
         co_return false;
     }
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
+    const std::string &token,
+    const UEAdminAPI::PostParamMap &pm)
+{
+    auto _mfaService = MFAService::Instance();
+    UEAdminAPI::utils::HttpResult result;
+
+    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
+    if (!isSuccess || userId == -1) {
+        result.setResult(-1, "身份验证失败");
+        co_return result;
+    }
+    bool valid = co_await CheckTokenStatus(userId, status, isFlashToken == 1);
+    if (!valid) {
+        result.setResult(-1, "Token已失效");
+        co_return result;
+    }
+
+    auto [mfaOk, mfaErr] = co_await VerifyUserTargetMFA(pm.getParam("target"), pm.getParam("verifyCode"), userId, eMFAType::ModifyUser);
+    if (!mfaOk) {
+        result.setResult(-1, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
+        co_return result;
+    }
+
+    bool isModified = false;
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<User> mapperUser(dbClientPtr);
+    User user;
+    try {
+        user = mapperUser.findByPrimaryKey(userId);
+    } catch (const UnexpectedRows &) {
+        result.setResult(-1, "用户不存在");
+        co_return result;
+    }
+
+    if (pm.hasParam("email") && pm.hasParam("tel")) {
+        isModified = true;
+        result.setResult(-1, "电话或邮箱不能同时修改");
+        co_return result;
+    }
+    bool isEmailOrPhoneModified = pm.hasParam("email");
+    if (pm.hasParam("email") || pm.hasParam("tel")) {
+        isModified = true;
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(isEmailOrPhoneModified ? pm.getParam("email") : pm.getParam("tel"), pm.getParam("newEmailOrPhoneVerifyCode"), isEmailOrPhoneModified ? eMFAType::EmailBind : eMFAType::PhoneChange);
+        if (!mfaOk) {
+            result.setResult(-1, mfaErr.empty() ? std::string("新邮箱或电话验证码错误") : mfaErr);
+            co_return result;
+        }
+        if(isEmailOrPhoneModified) {
+            user.setEmail(pm.getParam("email"));
+        } else {
+            user.setTelephoneNumber(pm.getParam("tel"));
+        }
+    }
+
+    if (pm.hasParam("username")) {
+        isModified = true;
+        const auto newName = pm.getParam("username");
+        if (!DataFormatUtil::checkUserName(newName)) {
+            result.setResult(-1, "用户名格式不合法");
+            co_return result;
+        }
+        try {
+            mapperUser.findOne(Criteria(User::Cols::_name, CompareOperator::EQ, newName) &&
+                               Criteria(User::Cols::_id, CompareOperator::NE, userId));
+            result.setResult(-1, "用户名已存在");
+            co_return result;
+        } catch (...) {}
+        user.setName(newName);
+    }
+
+    if (pm.hasParam("nickname")) {
+        isModified = true;
+        user.setNickName(pm.getParam("nickname"));
+    }
+
+    if (pm.hasParam("isMale")) {
+        isModified = true;
+        const auto v = pm.getParam("isMale");
+        bool male = (DataFormatUtil::toLowerCase(v) == std::string("true"));
+        user.setIsMale(male);
+    }
+
+    if (pm.hasParam("user_password")) {
+        isModified = true;
+        auto [hash, salt] = CreateStrPasswordHash(pm.getParam("user_password"));
+        user.setPasswordHash(hash);
+        user.setPasswordSalt(salt);
+    }
+
+    if (!isModified) {
+        result.setResult(-1, "没有修改项");
+        co_return result;
+    }
+
+    auto ret = mapperUser.update(user);
+    if (ret != 1) {
+        result.setResult(-1, "更新失败");
+        co_return result;
+    }
+
+    result.setResult(0, "更新成功");
+    co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
+    const std::string &token,
+    const std::string &target,
+    const std::string &verifyCode) {
+    auto _mfaService = MFAService::Instance();
+    auto _gitlabService = UEAdminAPI::GitlabService::Instance();
+    UEAdminAPI::utils::HttpResult result;
+    std::vector<std::string> missing;
+    if (token.empty()) missing.push_back("token");
+    if (target.empty()) missing.push_back("target");
+    if (verifyCode.empty()) missing.push_back("verifyCode");
+    if (!missing.empty()) {
+        std::string msg = "缺少必填项: " + std::accumulate(missing.begin(), missing.end(), std::string(), [](const std::string& a, const std::string& b){ return a.empty() ? b : a + ", " + b; });
+        result.setResult(-1, msg);
+        co_return result;
+    }
+
+    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
+    if (!isSuccess || userId == -1) {
+        result.setResult(-1, "身份验证失败");
+        co_return result;
+    }
+    bool valid = co_await CheckTokenStatus(userId, status, isFlashToken == 1);
+    if (!valid) {
+        result.setResult(-1, "Token已失效");
+        co_return result;
+    }
+
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<User> mapperUser(dbClientPtr);
+    User user;
+    try {
+        user = mapperUser.findByPrimaryKey(userId);
+    } catch (...) {
+        result.setResult(-1, "用户不存在");
+        co_return result;
+    }
+
+    auto chType2 = MFAChannelBase::DetermineChannelType(target);
+    if (chType2 == eChannelType::Email) {
+        if (!user.getEmail() || user.getValueOfEmail() != target) {
+            result.setResult(-1, "目标未绑定到当前用户");
+            co_return result;
+        }
+    } else if (chType2 == eChannelType::SMS) {
+        auto [cc, pn] = CodePairBase::SMSCodePair::ParsePhoneNumber(target);
+        if (!user.getTelephoneNumber() || user.getValueOfTelephoneNumber() != pn) {
+            result.setResult(-1, "目标未绑定到当前用户");
+            co_return result;
+        }
+    } else {
+        result.setResult(-1, "无法判断渠道类型");
+        co_return result;
+    }
+
+    auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(target, verifyCode, eMFAType::DeleteUser);
+    if (!mfaOk) {
+        result.setResult(-1, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
+        co_return result;
+    }
+
+    Mapper<UserThirdPartyInfo> mapperThird(dbClientPtr);
+    Mapper<UserGitlabInfo> mapperGit(dbClientPtr);
+    Mapper<UserFlashtoken> mapperToken(dbClientPtr);
+
+    // 同步删除 GitLab 用户
+    try {
+        auto gitInfo = mapperGit.findOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, userId));
+        auto gitlabId = gitInfo.getValueOfGitId();
+        if (gitlabId > 0) {
+            // 先尝试删除模拟令牌（若存在）
+            if (gitInfo.getGitlabImpersonationTokenId()) {
+                (void)_gitlabService->deleteImpersonationToken(static_cast<uint32_t>(gitlabId), static_cast<uint32_t>(gitInfo.getValueOfGitlabImpersonationTokenId()));
+            }
+            if (!_gitlabService->deleteUser(static_cast<uint32_t>(gitlabId))) {
+                result.setResult(-1, "删除 GitLab 用户失败");
+                co_return result;
+            }
+        }
+        // 远端删除成功后，删除本地 GitLab 关联信息
+        try {
+            mapperGit.deleteOne(gitInfo);
+        } catch (...) {}
+    } catch (...) {
+        // 未绑定 GitLab 或查询失败，忽略远端删除
+    }
+
+    try {
+        mapperThird.deleteBy(Criteria(UserThirdPartyInfo::Cols::_user_id, CompareOperator::EQ, userId));
+    } catch (...) {
+    }
+    try {
+        mapperToken.deleteBy(Criteria(UserFlashtoken::Cols::_user_id, CompareOperator::EQ, userId));
+    } catch (...) {
+    }
+
+    bool deleted = false;
+    try {
+        auto user = mapperUser.findByPrimaryKey(userId);
+        mapperUser.deleteOne(user);
+        deleted = true;
+    } catch (...) {
+        deleted = false;
+    }
+
+    if (!deleted) {
+        result.setResult(-1, "删除失败");
+        co_return result;
+    }
+
+    result.setResult(0, "删除成功");
+    co_return result;
+}
+
+drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(
+    const std::string &target,
+    const std::string &verifyCode,
+    int userId,
+    eMFAType type) 
+{
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<User> mapperUser(dbClientPtr);
+    User user;
+    bool isUserFound = true;
+    try {
+        user = mapperUser.findByPrimaryKey(userId);
+    } catch (const UnexpectedRows &) {
+        isUserFound = false;
+    }
+    
+    if (!isUserFound) {
+        co_return std::make_tuple(false, std::string("用户不存在"));
+    }
+
+    co_return co_await VerifyUserTargetMFA(target, verifyCode, user, type);
+}
+
+drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(const std::string &target, const std::string &verifyCode, const drogon_model::UEAdminAPI::User &user, eMFAType type) {
+    auto _mfaService = MFAService::Instance();
+
+    if (target.empty() || verifyCode.empty() || user.getValueOfId() <= 0) {
+        co_return std::make_tuple(false, std::string("缺少必要参数"));
+    }
+
+    auto chType = MFAChannelBase::DetermineChannelType(target);
+    if (chType == eChannelType::Email) {
+        if (!user.getEmail() || user.getValueOfEmail() != target) {
+            co_return std::make_tuple(false, std::string("目标未绑定到当前用户"));
+        }
+    } else if (chType == eChannelType::SMS) {
+        auto [cc, pn] = CodePairBase::SMSCodePair::ParsePhoneNumber(target);
+        if (!user.getTelephoneNumber() || user.getValueOfTelephoneNumber() != pn) {
+            co_return std::make_tuple(false, std::string("目标未绑定到当前用户"));
+        }
+    } else {
+        co_return std::make_tuple(false, std::string("无法判断渠道类型"));
+    }
+
+    auto [ok, msg] = co_await _mfaService->VerifyTheCode(target, verifyCode, type);
+    if (!ok) {
+        co_return std::make_tuple(false, msg.empty() ? std::string("验证码错误") : msg);
+    }
+
+    co_return std::make_tuple(true, std::string());
 }

@@ -11,20 +11,10 @@
 #include <drogon/HttpAppFramework.h>
 #include <shared_mutex>
 #include "utils/HttpResult.h"
+#include "utils/EnumThirdPartyPlatform.h"
 
 namespace UEAdminAPI {
 namespace Services {
-
-// 第三方平台枚举
-// 相关函数: getPlatformFromString, ThirdPartyPlatformToString
-// 修改时需要一并修改
-// 目前跟数据库是相关的, 数据库插入时可以直接使用这个enum转为int之后的值
-enum class EnumThirdPartyPlatform {
-    QQ = 1,
-    WeChat = 2,
-    None    // 解析出错时使用的错误值, 不要把它与一个平台相对应
-};
-std::string ThirdPartyPlatformToString(EnumThirdPartyPlatform platform, bool isLowerCase = false);
 
 // 第三方登录值
 class ThirdPartyLoginValue {
@@ -44,6 +34,7 @@ public:
     std::string nickName;
     std::string avatarImgUrl;
     std::chrono::system_clock::time_point expireTime;
+    bool consumed = false;
 
     bool isExpired() const {
         return expireTime <= std::chrono::system_clock::now();
@@ -70,23 +61,25 @@ public:
     virtual drogon::Task<std::string> getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
     virtual drogon::Task<bool> callBack(const std::string& code, const std::string& state) = 0;
     virtual drogon::Task<std::string> saveInfoToDB(std::shared_ptr<ThirdPartyLoginValue> value) = 0;
+    virtual drogon::Task<void> consumeLoginValue(const std::string& code) = 0;
 
-    virtual EnumThirdPartyPlatform getPlatform() const = 0;
+    virtual UEAdminAPI::utils::EnumThirdPartyPlatform getPlatform() const = 0;
     virtual std::string getRedirectUrl() const = 0;
 };
 
 // 第三方登录平台基类
 class ThirdPartyLoginPlatformBase : public IThirdPartyLoginPlatform {
 public:
-    ThirdPartyLoginPlatformBase(const Json::Value& config, const EnumThirdPartyPlatform& platform);
+    ThirdPartyLoginPlatformBase(const Json::Value& config, const UEAdminAPI::utils::EnumThirdPartyPlatform& platform);
     virtual ~ThirdPartyLoginPlatformBase() = default;
 
     drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> getLoginValue(const std::string& code) override;
     drogon::Task<bool> verifyTheCode(const std::string& code, const std::string& verifyCode) override;
     drogon::Task<std::shared_ptr<ThirdPartyLoginValue>> createNewThirdLoginValue() override;
     drogon::Task<void> clearExpired() override;
+    drogon::Task<void> consumeLoginValue(const std::string& code) override;
 
-    EnumThirdPartyPlatform getPlatform() const override {
+    UEAdminAPI::utils::EnumThirdPartyPlatform getPlatform() const override {
         return platform;
     }
 
@@ -98,7 +91,7 @@ protected:
     std::string serverHost;
     std::string clientId;
     std::string clientSecret;
-    EnumThirdPartyPlatform platform;
+    UEAdminAPI::utils::EnumThirdPartyPlatform platform;
     std::string redirectUrl;
 
     std::shared_mutex mutex;
@@ -106,7 +99,7 @@ protected:
 
     drogon::HttpClientPtr httpClient;
 
-    std::tuple<std::string, std::string, std::string> checkAndGetPlatformConfig(const EnumThirdPartyPlatform& platform, const Json::Value& config);
+    std::tuple<std::string, std::string, std::string> checkAndGetPlatformConfig(const UEAdminAPI::utils::EnumThirdPartyPlatform& platform, const Json::Value& config);
 };
 
 // QQ第三方登录平台实现
@@ -146,28 +139,30 @@ class ThirdPartyLoginService : public SingletonWithInit<ThirdPartyLoginService> 
 public:
     ThirdPartyLoginService(const Json::Value& config);
 
-    drogon::Task<IThirdPartyLoginPlatform*> getPlatform(EnumThirdPartyPlatform platform);
+    drogon::Task<IThirdPartyLoginPlatform*> getPlatform(UEAdminAPI::utils::EnumThirdPartyPlatform platform);
     drogon::Task<IThirdPartyLoginPlatform*> getPlatform(const std::string& platform);
-    EnumThirdPartyPlatform getPlatformEnumFormStr(const std::string& platform);
+    
     // 不要使用!
     // 因为会在多个platform里搜索code, 而code是由各个platform自己生成, 所以存在重复可能.
     // 请使用platform自己的方法
-    drogon::Task<std::tuple<EnumThirdPartyPlatform, std::shared_ptr<ThirdPartyLoginValue>>> getCodeAndItsPlatform(const std::string& code);
-    drogon::Task<void> deletePlatform(EnumThirdPartyPlatform platform);
+    drogon::Task<std::tuple<UEAdminAPI::utils::EnumThirdPartyPlatform, std::shared_ptr<ThirdPartyLoginValue>>> getCodeAndItsPlatform(const std::string& code);
+    drogon::Task<void> deletePlatform(UEAdminAPI::utils::EnumThirdPartyPlatform platform);
     drogon::Task<void> clearExpired();
 
     drogon::Task<UEAdminAPI::utils::HttpResult> GetLoginUrl(const std::string &platform);
     drogon::Task<UEAdminAPI::utils::HttpResult> Callback(const std::string &platform, const std::string &code, const std::string &state);
     drogon::Task<UEAdminAPI::utils::HttpResult> BindAccount(const std::string &token, const std::string &platform, const std::string &code, const std::string &verifyCode);
-    drogon::Task<UEAdminAPI::utils::HttpResult> VerifyLogin(const std::string &platform, const std::string &code, const std::string &verifyCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> VerifyLogin(const std::string &platform, const std::string &code, const std::string &verifyCode, bool onlyCheck = true);
     drogon::Task<UEAdminAPI::utils::HttpResult> CreateUserFromThirdPartyAndLogin(const std::string &platform, const std::string &code, const std::string &verifyCode);
     
     // 直接通过第三方平台登录
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginWithThirdParty(const std::string &platform, const std::string &code, const std::string &verifyCode);
 
+    drogon::Task<UEAdminAPI::utils::HttpResult> UnbindAccount(const std::string &token, const std::string &platform, const std::string &target, const std::string &verifyCode);
+
 private:
     std::mutex mutex;
-    std::unordered_map<EnumThirdPartyPlatform, std::unique_ptr<IThirdPartyLoginPlatform>> platforms;
+    std::unordered_map<UEAdminAPI::utils::EnumThirdPartyPlatform, std::unique_ptr<IThirdPartyLoginPlatform>> platforms;
 };
 
 } // namespace Services

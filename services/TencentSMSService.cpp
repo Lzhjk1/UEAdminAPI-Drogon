@@ -3,6 +3,8 @@
 #include <format>
 #include <mutex>
 
+#include "utils/MFA/eMFA_Type.h"
+
 #include <tencentcloud/core/TencentCloud.h>
 #include <tencentcloud/core/profile/HttpProfile.h>
 #include <tencentcloud/core/profile/ClientProfile.h>
@@ -72,7 +74,7 @@ Task<bool> TencentSMSService::SendSms(const string &phoneNumber, eMFAType type, 
         std::lock_guard<std::mutex> lock(_clientMutex);
         req.SetSmsSdkAppId(_smsSdkAppId);
         req.SetSignName(_signName);
-        req.SetTemplateId(_templateIds[type]);
+        req.SetTemplateId(_templateIds[MFATypeToTencentSMSTemplateId(type)]);
         req.SetPhoneNumberSet({phoneNumber});
         req.SetTemplateParamSet(templateParams);
     }

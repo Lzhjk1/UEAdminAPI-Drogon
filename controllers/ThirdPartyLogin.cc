@@ -64,11 +64,12 @@ Task<HttpResponsePtr> ThirdPartyLogin::bindAccount(HttpRequestPtr req,
 Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
                                                 const std::string platform,
                                                 const std::string code,
-                                                const std::string verifyCode) {
+                                                const std::string verifyCode, 
+                                                bool onlyCheck) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
-    auto result = co_await _thirdPartyLoginService->VerifyLogin(platform, code, verifyCode);
+    auto result = co_await _thirdPartyLoginService->VerifyLogin(platform, code, verifyCode, onlyCheck);
     resp->setBody(result.toJsonString());
     co_return resp;
 }
@@ -90,6 +91,17 @@ Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr r
     auto resp = HttpResponse::newHttpResponse();
     auto result = co_await _thirdPartyLoginService->CreateUserFromThirdPartyAndLogin(platform, code, verifyCode);
     resp->setBody(result.toJsonString());
+    co_return resp;
+}
+
+Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req, const std::string platform, const std::string mfaTarget, const std::string verifyCode) {
+    auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
+    auto resp = HttpResponse::newHttpResponse();
+    HttpResult result;
+    auto token = req->getHeader("token");
+    result = co_await _thirdPartyLoginService->UnbindAccount(token, platform, mfaTarget, verifyCode);
+    resp->setBody(result.toJsonString());
+    resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);
     co_return resp;
 }
 

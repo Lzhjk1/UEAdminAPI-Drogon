@@ -6,7 +6,10 @@
 #include <iostream>
 #include <string>
 #include "utils/HttpResult.h"
+#include "utils/PostParamMap.h"
 #include <drogon/drogon.h>
+#include <unordered_map>
+#include "utils/MFA/eMFA_Type.h"
 
 class AuthService : public SingletonWithInit<AuthService> {
 private:
@@ -46,6 +49,12 @@ public:
     /// @param durationSeconds Token有效期, 单位为秒, 默认3天
     /// @return 
     std::string CreateFlashToken(int id, int status, uint64_t durationSeconds = 259200); // 3天 = 3 * 24 * 60 * 60
+
+    // 颁发一对 Token 与 FlashToken，并将 status 同步到数据库
+    drogon::Task<std::tuple<std::string, std::string, int>> NewTokenPair(int userId);
+
+    // 根据已有的 status 颁发 Token, 若未提供 status 则随机一个，并把 status 写入数据库
+    drogon::Task<std::tuple<std::string, int>> NewToken(int userId, int status = -1);
 
     /// @brief 从Token解析用户ID, Token不合法或过期失效时返回-1
     /// @param token Token
@@ -157,6 +166,31 @@ public:
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginByFlashToken(const std::string &flashToken);
 
     drogon::Task<UEAdminAPI::utils::HttpResult> GetSelfInfo(const std::string &token);
+
+    // 更新当前登录用户的信息（直接接收 PostParamMap）
+    drogon::Task<UEAdminAPI::utils::HttpResult> UpdateUserInfo(
+        const std::string &token,
+        const UEAdminAPI::PostParamMap &pm);
+
+    // 删除当前登录用户
+    drogon::Task<UEAdminAPI::utils::HttpResult> DeleteUser(
+        const std::string &token,
+        const std::string &target,
+        const std::string &verifyCode);
+
+    // 验证指定用户的绑定目标并校验MFA验证码
+    drogon::Task<std::tuple<bool, std::string>> VerifyUserTargetMFA(
+        const std::string &target,
+        const std::string &verifyCode,
+        int userId,
+        eMFAType type);
+    // 验证指定用户的绑定目标并校验MFA验证码
+    // 重载: 直接使用传入的user对象
+    drogon::Task<std::tuple<bool, std::string>> VerifyUserTargetMFA(
+        const std::string &target,
+        const std::string &verifyCode,
+        const drogon_model::UEAdminAPI::User &user,
+        eMFAType type);
 
 private:
     /**

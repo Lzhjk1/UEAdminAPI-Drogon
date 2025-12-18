@@ -1,4 +1,5 @@
 #include "MFA_Channels.h"
+#include <drogon/drogon.h>
 
 #define LOG_TAG "[MFAChannels]"
 
@@ -77,6 +78,12 @@ MFA_EmailChannel::MFA_EmailChannel(IEmailService *emailService)
     : MFAChannelBase(eChannelType::Email) 
 {
     _emailService = emailService;
+    
+    auto config = drogon::app().getCustomConfig();
+    _emailErrorMap.clear();
+    for (const auto& key : config["Email"]["ErrorPatterns"].getMemberNames()) {
+        _emailErrorMap[key] = config["Email"]["ErrorPatterns"][key].asString();
+    }
 }
 
 drogon::Task<std::pair<bool, std::string>> MFA_EmailChannel::SendCode(std::shared_ptr<ICodePair> codePair) {
@@ -96,10 +103,15 @@ drogon::Task<std::pair<bool, std::string>> MFA_EmailChannel::SendCode(std::share
     // 这种检测方法不稳定, 以后应该会更换emailService
     if (ret.find("EMail sent") == std::string::npos) {
        LOG_ERROR << LOG_TAG << ("验证码发送失败, 邮件发送失败: " + ret);
-       co_return {false, "验证码发送失败, 邮件发送失败: " + ret};
+       std::string errMsg;
+       for (const auto &kv : _emailErrorMap) {
+           if (ret.find(kv.first) != std::string::npos) { errMsg = kv.second; break; }
+       }
+       co_return {false, std::string("验证码邮件发送失败: ") + errMsg};
     }
     AddCodePairToList(codePair);
-    co_return {true, "验证码发送成功, 邮件ID: " + ret};
+    LOG_INFO << LOG_TAG << ("验证码发送成功, 目标邮箱: " + codePair->BaseInfo() + ", 验证码: " + codePair->Code() + ", 邮件ID: " + ret);
+    co_return {true, "验证码发送成功."};
 }
 
 // ========== MFA_SMSChannel ==========

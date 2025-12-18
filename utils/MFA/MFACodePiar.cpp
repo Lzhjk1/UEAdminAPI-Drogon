@@ -44,7 +44,7 @@ bool CodePairBase::IsExpired() const {
    return std::chrono::system_clock::now() > _expireTime;
 }
 bool CodePairBase::IsEverythingAllSet() const {
-   return !Code().empty() && _mfaType != eMFAType::Default && !IsExpired();
+   return !Code().empty() && _mfaType != eMFAType::Error && !IsExpired();
 }
 
 // 工厂方法

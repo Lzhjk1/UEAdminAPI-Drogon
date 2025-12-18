@@ -77,10 +77,28 @@ std::vector<std::string> PostParamMap::checkRequiredParams() const {
 void PostParamMap::readParamsFromJson(const Json::Value &json) {
     // 遍历请求json中的所有键值对
     // 如果键在_mapParams中存在，则将其值设置为请求json中的值
+    // 如果值为空或仅包含空格或制表符等空白字符, 则当做不存在该参数
+    
+    // 记录需要删除的键
+    std::vector<std::string> keysToDelete;
+
     for (const auto &item : _mapParams) {
         if (json.isMember(item.first)) {
-            setParamValue(item.first, json[item.first].asString());
+            std::string value = json[item.first].asString();
+            // 清除其中的空白字符
+            value.erase(std::remove_if(value.begin(), value.end(), ::isspace), value.end());
+            if (!value.empty()) {
+                setParamValue(item.first, value);
+            }
+            else{
+                // 删除键值对
+                keysToDelete.push_back(item.first);
+            }
         }
+    }
+    // 删除键值对
+    for (const auto& key : keysToDelete) {
+        _mapParams.erase(key);
     }
 }
 

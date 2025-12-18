@@ -68,6 +68,7 @@ public:
 // 邮件发送渠道
 class MFA_EmailChannel : public MFAChannelBase {
     IEmailService *_emailService;
+    std::unordered_map<std::string, std::string> _emailErrorMap;
 public:
     // 构造函数, 传入邮件服务接口实例
     explicit MFA_EmailChannel(IEmailService* emailService);

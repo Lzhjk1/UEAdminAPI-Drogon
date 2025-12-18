@@ -2,8 +2,13 @@
 
 #include <iostream>
 #include <utils/MFA/eMFA_Type.h>
-#include "utils/MFA/MFA_Manager.h"
 #include "utils/SingletonWithInit.h"
+#include "utils/MFA/IEmailService.h"
+#include "utils/MFA/ISmsService.h"
+#include "utils/MFA/MFA_Channels.h"
+#include <memory>
+#include <mutex>
+#include <vector>
 
 class IMFAService {
 public:
@@ -14,7 +19,11 @@ public:
 
 class MFAService : public IMFAService, public SingletonWithInit<MFAService> {
 private:
-    MFA_Manager* _manager;
+    std::mutex _mutex;
+    std::vector<std::shared_ptr<IMFAChannel>> _channels;
+
+    std::shared_ptr<IMFAChannel> GetChannel(eChannelType type);
+
 public:
     MFAService(IEmailService* emailService, ISmsService* smsService);
     Task<std::tuple<bool, std::string>> SendTheCode(const std::string& target, eMFAType type) override;

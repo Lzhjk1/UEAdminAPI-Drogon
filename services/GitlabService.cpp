@@ -134,7 +134,7 @@ bool GitlabService::createUser(const std::string& userName, const std::string& p
 
     git_id = responseJson["id"].asInt();
     LOG_INFO << "成功创建GitLab用户，用户名: " << userName 
-        << "，邮箱: " << "email_final" << "，GitLab ID: " << git_id;
+        << "，邮箱: " << email_final << "，GitLab ID: " << git_id;
 
     return true;
 }

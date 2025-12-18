@@ -11,6 +11,7 @@ eMFAType stringToMFAType(const std::string& str) {
     else if (str == "ThirdPartyBind") return eMFAType::ThirdPartyBind;
     else if (str == "PhoneChange") return eMFAType::PhoneChange;
     else if (str == "DeleteUser") return eMFAType::DeleteUser;
+    else if (str == "ModifyUser") return eMFAType::ModifyUser;
     
     LOG_ERROR << "发现未知的MFA类型: " + str;
     return eMFAType::Error;
@@ -27,6 +28,7 @@ std::string MFATypeToString(eMFAType type) {
         case eMFAType::ThirdPartyBind: return "ThirdPartyBind";
         case eMFAType::PhoneChange: return "PhoneChange";
         case eMFAType::DeleteUser: return "DeleteUser";
+        case eMFAType::ModifyUser: return "ModifyUser";
         default: throw std::invalid_argument("Unknown MFA type");
     }
 }
@@ -43,4 +45,20 @@ bool operator&(eMFAType a, eMFAType b) {
         throw std::invalid_argument("Cannot combine Error MFA type");
     }
     return (static_cast<uint32_t>(a) & static_cast<uint32_t>(b)) != 0;
+}
+
+// 目前腾讯云添加的模板比较少, 所以多出来的新类型就都改成Default返回
+eMFAType MFATypeToTencentSMSTemplateId(eMFAType type) {
+    switch (type) {
+        case eMFAType::Default: return type;
+        case eMFAType::Login: return type;
+        case eMFAType::Register: return type;
+        case eMFAType::ResetPassword: return type;
+        case eMFAType::EmailBind: return eMFAType::Default;
+        case eMFAType::ThirdPartyBind: return eMFAType::Default;
+        case eMFAType::PhoneChange: return eMFAType::Default;
+        case eMFAType::DeleteUser: return eMFAType::Default;
+        case eMFAType::ModifyUser: return eMFAType::Default;
+        default: throw std::invalid_argument("Unknown MFA type");
+    }
 }

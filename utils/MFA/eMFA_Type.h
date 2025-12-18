@@ -25,7 +25,8 @@ enum class eMFAType : uint32_t {
     EmailBind = 1 << 4,
     ThirdPartyBind = 1 << 5,
     PhoneChange = 1 << 6,
-    DeleteUser = 1 << 7
+    DeleteUser = 1 << 7,
+    ModifyUser = 1 << 8
 };
 
 // 函数声明
@@ -35,3 +36,4 @@ eMFAType stringToMFAType(const std::string& str);
 std::string MFATypeToString(eMFAType type);
 eMFAType operator|(eMFAType a, eMFAType b);
 bool operator&(eMFAType a, eMFAType b);
+eMFAType MFATypeToTencentSMSTemplateId(eMFAType type);
