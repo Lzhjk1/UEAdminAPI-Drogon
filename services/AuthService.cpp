@@ -222,6 +222,34 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
     }
 }
 
+Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
+    HttpResult result;
+    if (!DataFormatUtil::isJwtString(token)) {
+        result.setResult(1, "invalid token");
+        co_return result;
+    }
+
+    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
+    bool valid = co_await CheckTokenStatus(userId, status, isFlashToken);
+
+    result.jsondata["valid"] = valid;
+    result.jsondata["userId"] = userId;
+    result.jsondata["status"] = status;
+    result.jsondata["tokenType"] = isFlashToken == -1 ? "unset" : isFlashToken == 1 ? "flashToken" : "token";
+
+    if (!isSuccess) {
+        result.setResult(-1, std::format("{}验证失败", result.jsondata["tokenType"].asString()));
+        co_return result;
+    }
+    if(!valid){
+        result.setResult(-1, std::format("{}已失效", result.jsondata["tokenType"].asString()));
+        co_return result;
+    }
+
+    result.setResult(0, "Token验证成功");
+    co_return result;
+}
+
 Task<HttpResult> AuthService::RegisterByEmail(
     const std::string &username, 
     const std::string &password, 
@@ -676,17 +704,16 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::
         co_return result;
     }
 
-    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
-    if(!isSuccess || userId == -1){
-        result.setResult(-1, "身份验证失败");
+    result = co_await VerifyToken(token);
+    if(result.jsondata["tokenType"].asString() != "token"){
+        result.setResult(-1, "不是token");
         co_return result;
     }
-
-    bool valid = co_await CheckTokenStatus(userId, status, isFlashToken == 1);
-    if(!valid){
+    if(result.code != 0){
         result.setResult(-1, "Token已失效");
         co_return result;
     }
+    int userId = result.jsondata["userId"].asInt();
 
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<User> mapperUser(dbClientPtr);
@@ -850,16 +877,16 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     auto _mfaService = MFAService::Instance();
     UEAdminAPI::utils::HttpResult result;
 
-    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
-    if (!isSuccess || userId == -1) {
-        result.setResult(-1, "身份验证失败");
+    result = co_await VerifyToken(token);
+    if(result.jsondata["tokenType"].asString() != "token"){
+        result.setResult(-1, "不是token");
         co_return result;
     }
-    bool valid = co_await CheckTokenStatus(userId, status, isFlashToken == 1);
-    if (!valid) {
+    if(result.code != 0){
         result.setResult(-1, "Token已失效");
         co_return result;
     }
+    int userId = result.jsondata["userId"].asInt();
 
     auto [mfaOk, mfaErr] = co_await VerifyUserTargetMFA(pm.getParam("target"), pm.getParam("verifyCode"), userId, eMFAType::ModifyUser);
     if (!mfaOk) {
@@ -870,6 +897,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     bool isModified = false;
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<User> mapperUser(dbClientPtr);
+    Mapper<UserFlashtoken> mapperUserFlashtoken(dbClientPtr);
     User user;
     try {
         user = mapperUser.findByPrimaryKey(userId);
@@ -931,6 +959,16 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         auto [hash, salt] = CreateStrPasswordHash(pm.getParam("user_password"));
         user.setPasswordHash(hash);
         user.setPasswordSalt(salt);
+        // 密码更改, 登录应该失效, 这里通过更新status的方式
+        try{
+            auto tokenRow = mapperUserFlashtoken.findOne(Criteria(UserFlashtoken::Cols::_user_id, CompareOperator::EQ, userId));
+            tokenRow.setStatus(-1);
+            tokenRow.setStatusForToken(-1);
+            mapperUserFlashtoken.update(tokenRow);
+        }catch(const UnexpectedRows &){
+            result.setResult(-2, "内部错误");
+            co_return result;
+        }
     }
 
     if (!isModified) {
@@ -965,16 +1003,16 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
         co_return result;
     }
 
-    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
-    if (!isSuccess || userId == -1) {
-        result.setResult(-1, "身份验证失败");
+    result = co_await VerifyToken(token);
+    if(result.jsondata["tokenType"].asString() != "token"){
+        result.setResult(-1, "不是token");
         co_return result;
     }
-    bool valid = co_await CheckTokenStatus(userId, status, isFlashToken == 1);
-    if (!valid) {
+    if(result.code != 0){
         result.setResult(-1, "Token已失效");
         co_return result;
     }
+    int userId = result.jsondata["userId"].asInt();
 
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<User> mapperUser(dbClientPtr);

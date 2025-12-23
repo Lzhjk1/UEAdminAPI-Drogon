@@ -770,11 +770,18 @@ Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, c
         result.setResult(-1, "缺少必要参数");
         co_return result;
     }
-    auto [isSuccess, userId, status, isFlashToken] = _authService->CheckTokenAndParseUserId(token);
-    if (!isSuccess) {
-        result.setResult(-1, "身份验证失败");
+    
+    result = co_await _authService->VerifyToken(token);
+    if(result.jsondata["tokenType"].asString() != "token"){
+        result.setResult(-1, "不是token");
         co_return result;
     }
+    if(result.code != 0){
+        result.setResult(-1, "Token已失效");
+        co_return result;
+    }
+    int userId = result.jsondata["userId"].asInt();
+
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<User> mapperUser(dbClientPtr);
     Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
@@ -1065,16 +1072,16 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
         co_return result;
     }
 
-    auto [isSuccess, userId, status, isFlashToken] = _authService->CheckTokenAndParseUserId(token);
-    if (!isSuccess || userId == -1) {
-        result.setResult(-1, "身份验证失败");
+    result = co_await _authService->VerifyToken(token);
+    if(result.jsondata["tokenType"].asString() != "token"){
+        result.setResult(-1, "不是token");
         co_return result;
     }
-    bool valid = co_await _authService->CheckTokenStatus(userId, status, isFlashToken == 1);
-    if (!valid) {
+    if(result.code != 0){
         result.setResult(-1, "Token已失效");
         co_return result;
     }
+    int userId = result.jsondata["userId"].asInt();
 
     auto platformService = co_await getPlatform(platform);
     if (!platformService) {

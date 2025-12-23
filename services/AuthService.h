@@ -167,6 +167,9 @@ public:
 
     drogon::Task<UEAdminAPI::utils::HttpResult> GetSelfInfo(const std::string &token);
 
+    // 验证Token并返回解析信息
+    drogon::Task<UEAdminAPI::utils::HttpResult> VerifyToken(const std::string &token);
+
     // 更新当前登录用户的信息（直接接收 PostParamMap）
     drogon::Task<UEAdminAPI::utils::HttpResult> UpdateUserInfo(
         const std::string &token,
