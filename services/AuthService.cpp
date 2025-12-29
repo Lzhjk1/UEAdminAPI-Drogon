@@ -230,7 +230,11 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
     }
 
     auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
-    bool valid = co_await CheckTokenStatus(userId, status, isFlashToken);
+    bool valid = true;
+    // 只有FlashToken才检查状态
+    if(isFlashToken){
+        valid = co_await CheckTokenStatus(userId, status, isFlashToken);
+    }
 
     result.jsondata["valid"] = valid;
     result.jsondata["userId"] = userId;
