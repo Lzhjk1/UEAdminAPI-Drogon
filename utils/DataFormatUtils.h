@@ -1,8 +1,15 @@
 #pragma once
 
 #include <string>
+#include <tuple>
 
 namespace UEAdminAPI {
+
+    enum class AuthorizationTokenType {
+        Unknown,
+        Bearer,
+        Other
+    };
 
     class DataFormatUtil {
     public:
@@ -76,6 +83,7 @@ namespace UEAdminAPI {
          * @return 如果用户名格式符合要求返回true，否则返回false
          */
         static bool checkUserName(const std::string &userName);
+        static std::tuple<AuthorizationTokenType, std::string> parseTokenFromAuthorizationHeader(const std::string &authHeader);
     };
 
 }

@@ -1,5 +1,6 @@
 #include "DataFormatUtils.h"
 #include <regex>
+#include <cctype>
 
 namespace UEAdminAPI {
 
@@ -90,5 +91,27 @@ std::string DataFormatUtil::RandomCode(const std::string& source,int len){
     return result;
 }
 
+static std::string _trim(const std::string& s) {
+    size_t i = 0;
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) i++;
+    size_t j = s.size();
+    while (j > i && std::isspace(static_cast<unsigned char>(s[j - 1]))) j--;
+    return s.substr(i, j - i);
+}
+
+std::tuple<AuthorizationTokenType, std::string> DataFormatUtil::parseTokenFromAuthorizationHeader(const std::string& authHeader) {
+    if (authHeader.empty()) return {AuthorizationTokenType::Unknown, ""};
+    std::string s = _trim(authHeader);
+    auto pos = s.find(' ');
+    std::string scheme = pos != std::string::npos ? s.substr(0, pos) : "";
+    std::string token = pos != std::string::npos ? s.substr(pos + 1) : s;
+    token = _trim(token);
+    std::string lower = toLowerCase(scheme);
+    AuthorizationTokenType type = AuthorizationTokenType::Unknown;
+    if (lower == "bearer") type = AuthorizationTokenType::Bearer;
+    else if (!lower.empty()) type = AuthorizationTokenType::Other;
+    return {type, token};
+}
+ 
     
 } // namespace uehttp

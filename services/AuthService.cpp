@@ -704,7 +704,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::
     HttpResult result;
 
     if(token.empty()){
-        result.setResult(-1, "缺少必要参数");
+        result.setResult(-1, "缺少Token");
         co_return result;
     }
 

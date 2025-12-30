@@ -2,6 +2,7 @@
 #include "services/ThirdPartyLoginService.h"
 #include "services/AuthService.h"
 #include <utils/PostParamMap.h>
+#include <utils/DataFormatUtils.h>
 #include <utils/HttpResult.h>
 #include <numeric>
 
@@ -39,9 +40,9 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     pm.readParamsFromJson(*reqJson);
     auto missings = pm.checkRequiredParams();
 
-    auto token = req->getHeader("token");
+    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
     if(token.empty()){
-        missings.push_back("token in header");
+        missings.push_back("Authorization in header");
     }
 
     if(pm.hasParam("email") && pm.hasParam("tel")){
@@ -71,7 +72,7 @@ Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req, const std::
 
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
-    auto token = req->getHeader("token");
+    auto [authType2, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
     result = co_await _authService->DeleteUser(token, target, verifyCode);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);

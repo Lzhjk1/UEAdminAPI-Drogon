@@ -55,7 +55,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::bindAccount(HttpRequestPtr req,
                                     const std::string verifyCode) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
-    auto token = req->getHeader("token");
+    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
     auto result = co_await _thirdPartyLoginService->BindAccount(token, platform, code, verifyCode);
     resp->setBody(result.toJsonString());
     co_return resp;
@@ -98,7 +98,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req, const s
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
-    auto token = req->getHeader("token");
+    auto [authType2, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
     result = co_await _thirdPartyLoginService->UnbindAccount(token, platform, mfaTarget, verifyCode);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);

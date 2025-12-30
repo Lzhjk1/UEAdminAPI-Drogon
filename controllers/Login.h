@@ -28,8 +28,8 @@ class Login : public drogon::HttpController<Login>
     ADD_METHOD_TO(Login::LoginByPwd, "/user/login/pwd?userName={1}&passWord={2}", Get);
     ADD_METHOD_TO(Login::LoginByEmail, "/user/login/email?email={1}&code={2}", Get);
     ADD_METHOD_TO(Login::LoginByPhone, "/user/login/phone?phone={1}&code={2}", Get);
-    ADD_METHOD_TO(Login::LoginByFlashToken, "/user/login/flashtoken?flashToken={1}", Get);
-    ADD_METHOD_TO(Login::VerifyToken, "/user/token/verify?token={1}", Get);
+    ADD_METHOD_TO(Login::LoginByFlashToken, "/user/login/flashtoken", Get);
+    ADD_METHOD_TO(Login::VerifyToken, "/user/token/verify", Get);
     ADD_METHOD_TO(Login::GetSelfInfo, "/user/self", Get);
 
     METHOD_LIST_END
@@ -63,13 +63,13 @@ class Login : public drogon::HttpController<Login>
     /// @return
     Task<HttpResponsePtr> LoginByPhone(HttpRequestPtr req, std::string phone, std::string code);
 
-    Task<HttpResponsePtr> LoginByFlashToken(HttpRequestPtr req, std::string flashToken);
+    Task<HttpResponsePtr> LoginByFlashToken(HttpRequestPtr req);
 
     /// @brief 验证Token是否有效, 同时返回Token的相关信息
     /// @param req 
     /// @param token 要验证的Token
     /// @return 
-    Task<HttpResponsePtr> VerifyToken(HttpRequestPtr req, std::string token);
+    Task<HttpResponsePtr> VerifyToken(HttpRequestPtr req);
 
     Task<HttpResponsePtr> GetSelfInfo(HttpRequestPtr req);
 
