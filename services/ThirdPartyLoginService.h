@@ -35,6 +35,10 @@ public:
     std::string avatarImgUrl;
     std::chrono::system_clock::time_point expireTime;
     bool consumed = false;
+    bool ready = false; // 表示第三方登录流程是否完全结束(包括获取Token, OpenId等)
+    
+    // 互斥锁, 用于保护内部数据的读写安全
+    mutable std::recursive_mutex mutex;
 
     bool isExpired() const {
         return expireTime <= std::chrono::system_clock::now();

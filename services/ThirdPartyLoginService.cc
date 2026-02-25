@@ -117,6 +117,7 @@ drogon::Task<bool> ThirdPartyLoginPlatformBase::verifyTheCode(const std::string&
     }
 
     auto& value = *it;
+    std::lock_guard<std::recursive_mutex> valueLock(value->mutex);
     if (value->isExpired()) {
         loginValues.erase(it);
         co_return false;
@@ -151,6 +152,7 @@ drogon::Task<void> ThirdPartyLoginPlatformBase::clearExpired() {
     loginValues.erase(
         std::remove_if(loginValues.begin(), loginValues.end(),
                       [](const std::shared_ptr<ThirdPartyLoginValue>& value) {
+                          std::lock_guard<std::recursive_mutex> valueLock(value->mutex);
                           return value->isExpired();
                       }),
         loginValues.end());
@@ -164,6 +166,7 @@ drogon::Task<void> ThirdPartyLoginPlatformBase::consumeLoginValue(const std::str
                               return value->code == code;
                           });
     if (it != loginValues.end()) {
+        std::lock_guard<std::recursive_mutex> valueLock((*it)->mutex);
         (*it)->consumed = true;
     }
     co_return;
@@ -177,7 +180,13 @@ ThirdPartyLoginPlatform_QQ::ThirdPartyLoginPlatform_QQ(const Json::Value& config
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) {
-    if (value->code.empty()) {
+    std::string authCode;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        authCode = value->authorizationCode;
+    }
+
+    if (authCode.empty()) {
         throw std::runtime_error("登录码为空, 请检查登录码是否正确.");
     }
 
@@ -186,7 +195,7 @@ drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchTokens(std::shared_ptr<Third
     ss << "/oauth2.0/token?grant_type=authorization_code"
        << "&client_id=" << clientId
        << "&client_secret=" << clientSecret
-       << "&code=" << value->authorizationCode
+       << "&code=" << authCode
        << "&redirect_uri=" << redirectUrl
        << "&fmt=json";
 
@@ -226,33 +235,49 @@ drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchTokens(std::shared_ptr<Third
     }
 
     // 保存数据到Value
-    if (json.isMember("access_token")) {
-        value->accessToken = json["access_token"].asString();
-    }
-    if (json.isMember("refresh_token")) {
-        value->refreshToken = json["refresh_token"].asString();
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (json.isMember("access_token")) {
+            value->accessToken = json["access_token"].asString();
+        }
+        if (json.isMember("refresh_token")) {
+            value->refreshToken = json["refresh_token"].asString();
+        }
     }
 
     co_return true;
 }
 
 drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) {
-    if (value->accessToken.empty()) {
-        if (!co_await fetchTokens(value)) {
-            LOG_ERROR << "获取QQ平台AccessToken失败.";
-            co_return "";
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (!value->accessToken.empty()) {
+            co_return value->accessToken;
         }
     }
-    if (value->accessToken.empty()) {
-        LOG_ERROR << "获取QQ平台AccessToken失败, FetchTokens后AccessToken仍为空.";
+
+    if (!co_await fetchTokens(value)) {
+        LOG_ERROR << "获取QQ平台AccessToken失败.";
         co_return "";
     }
 
-    co_return value->accessToken;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (value->accessToken.empty()) {
+            LOG_ERROR << "获取QQ平台AccessToken失败, FetchTokens后AccessToken仍为空.";
+            co_return "";
+        }
+        co_return value->accessToken;
+    }
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
-    std::string accessToken = value->accessToken;
+    std::string accessToken;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        accessToken = value->accessToken;
+    }
+
     if (accessToken.empty()) {
         LOG_ERROR << "获取QQ平台OpenId失败, AccessToken为空.";
         co_return false;
@@ -297,6 +322,7 @@ drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchOpenId(std::shared_ptr<Third
 
     // 保存数据到Value
     if (json.isMember("openid")) {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
         value->openId = json["openid"].asString();
     }
 
@@ -304,8 +330,11 @@ drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchOpenId(std::shared_ptr<Third
 }
 
 drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
-    if (!value->openId.empty()) {
-        co_return value->openId;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (!value->openId.empty()) {
+            co_return value->openId;
+        }
     }
 
     std::string accessToken = co_await getAccessToken(value);
@@ -319,7 +348,10 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getOpenId(std::shared_ptr<
         co_return "";
     }
 
-    co_return value->openId;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        co_return value->openId;
+    }
 }
 
 drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) {
@@ -333,8 +365,13 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getAuthorizationUrl(std::s
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) {
-    std::string accessToken = value->accessToken;
-    std::string openId = value->openId;
+    std::string accessToken;
+    std::string openId;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        accessToken = value->accessToken;
+        openId = value->openId;
+    }
 
     if (accessToken.empty() || openId.empty()) {
         LOG_ERROR << "获取QQ平台用户信息失败, AccessToken或OpenId为空.";
@@ -383,19 +420,25 @@ drogon::Task<bool> ThirdPartyLoginPlatform_QQ::fetchThirdPartyUserInfo(std::shar
     }
 
     // 保存数据到Value
-    if (json.isMember("nickname")) {
-        value->nickName = json["nickname"].asString();
-    }
-    if (json.isMember("figureurl_qq_2")) {
-        value->avatarImgUrl = json["figureurl_qq_2"].asString();
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (json.isMember("nickname")) {
+            value->nickName = json["nickname"].asString();
+        }
+        if (json.isMember("figureurl_qq_2")) {
+            value->avatarImgUrl = json["figureurl_qq_2"].asString();
+        }
     }
 
     co_return true;
 }
 
 drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) {
-    if (!value->nickName.empty()) {
-        co_return value->nickName;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (!value->nickName.empty()) {
+            co_return value->nickName;
+        }
     }
 
     if (!co_await fetchThirdPartyUserInfo(value)) {
@@ -403,12 +446,14 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_QQ::getThirdPartyUserNickName(
         co_return "";
     }
 
-    if (value->nickName.empty()) {
-        LOG_ERROR << "获取QQ平台用户昵称失败, 获取到的昵称为空.";
-        co_return "";
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (value->nickName.empty()) {
+            LOG_ERROR << "获取QQ平台用户昵称失败, 获取到的昵称为空.";
+            co_return "";
+        }
+        co_return value->nickName;
     }
-
-    co_return value->nickName;
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatform_QQ::callBack(const std::string& code, const std::string& state) {
@@ -426,15 +471,24 @@ drogon::Task<bool> ThirdPartyLoginPlatform_QQ::callBack(const std::string& code,
         targetValue = *it;
     }
 
-    targetValue->authorizationCode = code;
+    {
+        std::lock_guard<std::recursive_mutex> valueLock(targetValue->mutex);
+        targetValue->authorizationCode = code;
+    }
+
     // TODO: 代码风格差异, 之后考虑要不要统一
     // TODO: 这样的get, set函数风格我觉得不好, getset应该属于loginvalue, 而不是platform, 也就是调用方式应为loginvalue->getAccessToken()这样,
     // 获取后会将数据存到loginValue中
     std::string accessToken = co_await getAccessToken(targetValue);
     std::string openId = co_await getOpenId(targetValue);
     std::string nickName = co_await getThirdPartyUserNickName(targetValue);
-    // loginvalue续期(本来为2分钟有效期), 后续确认登录用
-    targetValue->expireTime = std::chrono::system_clock::now() + std::chrono::minutes(5);
+    
+    {
+        std::lock_guard<std::recursive_mutex> valueLock(targetValue->mutex);
+        // loginvalue续期(本来为2分钟有效期), 后续确认登录用
+        targetValue->expireTime = std::chrono::system_clock::now() + std::chrono::minutes(5);
+        targetValue->ready = true;
+    }
     
     LOG_INFO << "QQ平台回调成功, Code: " << code << ", State: " << state
              << " AccessToken = " << accessToken
@@ -457,7 +511,13 @@ ThirdPartyLoginPlatform_WeChat::ThirdPartyLoginPlatform_WeChat(const Json::Value
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<ThirdPartyLoginValue> value) {
-    if (value->code.empty()) {
+    std::string authCode;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        authCode = value->authorizationCode;
+    }
+
+    if (authCode.empty()) {
         throw std::runtime_error("登录码为空, 请检查登录码是否正确.");
     }
 
@@ -466,7 +526,7 @@ drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<T
     ss << "/sns/oauth2/access_token"
        << "?appid=" << clientId
        << "&secret=" << clientSecret
-       << "&code=" << value->authorizationCode
+       << "&code=" << authCode
        << "&grant_type=authorization_code";
 
     // 发送请求
@@ -503,32 +563,43 @@ drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchTokens(std::shared_ptr<T
     }
 
     // 保存数据到Value
-    if (json.isMember("openid")) {
-        value->openId = json["openid"].asString();
-    }
-    if (json.isMember("access_token")) {
-        value->accessToken = json["access_token"].asString();
-    }
-    if (json.isMember("refresh_token")) {
-        value->refreshToken = json["refresh_token"].asString();
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (json.isMember("openid")) {
+            value->openId = json["openid"].asString();
+        }
+        if (json.isMember("access_token")) {
+            value->accessToken = json["access_token"].asString();
+        }
+        if (json.isMember("refresh_token")) {
+            value->refreshToken = json["refresh_token"].asString();
+        }
     }
 
     co_return true;
 }
 
 drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getAccessToken(std::shared_ptr<ThirdPartyLoginValue> value) {
-    if (value->accessToken.empty()) {
-        if (!co_await fetchTokens(value)) {
-            LOG_ERROR << "获取微信平台AccessToken失败.";
-            co_return "";
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (!value->accessToken.empty()) {
+            co_return value->accessToken;
         }
     }
-    if (value->accessToken.empty()) {
-        LOG_ERROR << "获取微信平台AccessToken失败, FetchTokens后AccessToken仍为空.";
+
+    if (!co_await fetchTokens(value)) {
+        LOG_ERROR << "获取微信平台AccessToken失败.";
         co_return "";
     }
 
-    co_return value->accessToken;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (value->accessToken.empty()) {
+            LOG_ERROR << "获取微信平台AccessToken失败, FetchTokens后AccessToken仍为空.";
+            co_return "";
+        }
+        co_return value->accessToken;
+    }
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
@@ -537,8 +608,11 @@ drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchOpenId(std::shared_ptr<T
 }
 
 drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getOpenId(std::shared_ptr<ThirdPartyLoginValue> value) {
-    if (!value->openId.empty()) {
-        co_return value->openId;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (!value->openId.empty()) {
+            co_return value->openId;
+        }
     }
 
     std::string accessToken = co_await getAccessToken(value);
@@ -552,7 +626,10 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getOpenId(std::shared_
         co_return "";
     }
 
-    co_return value->openId;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        co_return value->openId;
+    }
 }
 
 drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getAuthorizationUrl(std::shared_ptr<ThirdPartyLoginValue> value) {
@@ -568,8 +645,13 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getAuthorizationUrl(st
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchThirdPartyUserInfo(std::shared_ptr<ThirdPartyLoginValue> value) {
-    std::string accessToken = value->accessToken;
-    std::string openId = value->openId;
+    std::string accessToken;
+    std::string openId;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        accessToken = value->accessToken;
+        openId = value->openId;
+    }
 
     if (accessToken.empty() || openId.empty()) {
         LOG_ERROR << "获取微信平台用户信息失败, AccessToken或OpenId为空.";
@@ -616,19 +698,25 @@ drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::fetchThirdPartyUserInfo(std::
     }
 
     // 保存数据到Value
-    if (json.isMember("nickname")) {
-        value->nickName = json["nickname"].asString();
-    }
-    if (json.isMember("headimgurl")) {
-        value->avatarImgUrl = json["headimgurl"].asString();
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (json.isMember("nickname")) {
+            value->nickName = json["nickname"].asString();
+        }
+        if (json.isMember("headimgurl")) {
+            value->avatarImgUrl = json["headimgurl"].asString();
+        }
     }
 
     co_return true;
 }
 
 drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getThirdPartyUserNickName(std::shared_ptr<ThirdPartyLoginValue> value) {
-    if (!value->nickName.empty()) {
-        co_return value->nickName;
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (!value->nickName.empty()) {
+            co_return value->nickName;
+        }
     }
 
     if (!co_await fetchThirdPartyUserInfo(value)) {
@@ -636,12 +724,14 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::getThirdPartyUserNickN
         co_return "";
     }
 
-    if (value->nickName.empty()) {
-        LOG_ERROR << "获取微信平台用户昵称失败, 获取到的昵称为空.";
-        co_return "";
+    {
+        std::lock_guard<std::recursive_mutex> lock(value->mutex);
+        if (value->nickName.empty()) {
+            LOG_ERROR << "获取微信平台用户昵称失败, 获取到的昵称为空.";
+            co_return "";
+        }
+        co_return value->nickName;
     }
-
-    co_return value->nickName;
 }
 
 drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::callBack(const std::string& code, const std::string& state) {
@@ -659,10 +749,19 @@ drogon::Task<bool> ThirdPartyLoginPlatform_WeChat::callBack(const std::string& c
         targetValue = *it;
     }
 
-    targetValue->authorizationCode = code;
+    {
+        std::lock_guard<std::recursive_mutex> valueLock(targetValue->mutex);
+        targetValue->authorizationCode = code;
+    }
+
     std::string accessToken = co_await getAccessToken(targetValue);
     std::string openId = co_await getOpenId(targetValue);
     std::string nickName = co_await getThirdPartyUserNickName(targetValue);
+    
+    {
+        std::lock_guard<std::recursive_mutex> valueLock(targetValue->mutex);
+        targetValue->ready = true;
+    }
     
     LOG_INFO << "微信平台回调成功, Code: " << code << ", State: " << state
              << " AccessToken = " << accessToken
@@ -715,7 +814,15 @@ drogon::Task<void> ThirdPartyLoginService::deletePlatform(UEAdminAPI::utils::Enu
 }
 
 drogon::Task<void> ThirdPartyLoginService::clearExpired() {
-    for (auto& [platform, platformImpl] : platforms) {
+    std::vector<IThirdPartyLoginPlatform*> platformsCopy;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for(auto& pair : platforms) {
+            platformsCopy.push_back(pair.second.get());
+        }
+    }
+
+    for (auto* platformImpl : platformsCopy) {
         co_await platformImpl->clearExpired();
     }
     co_return;
@@ -924,10 +1031,19 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
         result.setResult(-1, "找不到对应的登录值");
         co_return result;
     }
-    if (loginValue->authorizationCode.empty()) {
-        result.setResult(-1, "该code尚未登录, 验证失败");
-        co_return result;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(loginValue->mutex);
+        if (loginValue->authorizationCode.empty()) {
+            result.setResult(-1, "该code尚未登录, 验证失败");
+            co_return result;
+        }
+        if (!loginValue->ready) {
+            result.setResult(-1, "登录请求处理中, 请稍后...");
+            co_return result;
+        }
     }
+
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
     Mapper<ThirdPartyPlatforms> mapperThirdPartyPlatforms(dbClientPtr);
