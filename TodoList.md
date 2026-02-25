@@ -36,6 +36,15 @@
 - 修改PDMS哪边的接口
     - login
 - ✅统一Token放在名为"Authorization"的Header中, 格式为"Bearer {Token}"
+- ✅Token验证有问题, 正在修复测试
+- ✅在PDMS的HttpUtils里新增改造后的函数, 不直接返回NULL而是包含错误码和错误信息
+- 在数据库, ThirdPartyInfo表里的外键约束加上了On Delete Cascade, 之后更改一下在draw.io的设计, 然后检查一下其他表
+- 第三方登陆直接注册账号时, 在其函数里直接操作数据库来新增用户, 应该是直接调用AuthService下的注册接口才对
+
+PDMS 测试
+- ✅登录
+- 注册
+
 
 # 客户端调用流程(如需要多步调用)
 - 已绑定第三方的账号, 通过第三方登陆:

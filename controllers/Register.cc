@@ -27,6 +27,12 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     HttpResult result;
 
 	auto reqJson = req->getJsonObject();
+    if (!reqJson) {
+        result.setResult(-1, "请求体必须是JSON格式");
+        resp->setBody(result.toJsonString());
+        resp->setStatusCode(k200OK);
+        co_return resp;
+    }
 
     // 使用PostParamMap类处理参数
     PostParamMap paramMap;
@@ -78,9 +84,20 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         co_return resp;
     }
 
+    UserPrivileges privileges;
+    try{
+        privileges = stringToUserPrivileges(paramMap.getParam("privilege"));
+    }
+    catch(const std::invalid_argument& e){
+        result.setResult(-1, e.what());
+        resp->setBody(result.toJsonString());
+        resp->setStatusCode(k200OK);
+        co_return resp;
+    }
+
     if(isEmailRegister) {
         if(isWithThirdPlatform){
-            _authService->RegisterWithThirdPartyByEmail(
+            result = co_await _authService->RegisterWithThirdPartyByEmail(
                 paramMap.getParam("username"), 
                 paramMap.getParam("user_password"), 
                 paramMap.getParam("email"), 
@@ -88,7 +105,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
                 paramMap.getParam("third_platform_name"),
                 paramMap.getParam("third_code"),
                 paramMap.getParam("third_verifyCode"),
-                stringToUserPrivileges(paramMap.getParam("privilege")),
+                privileges,
                 paramMap.getParam("isMale") == "true",
                 paramMap.getParam("nickname")
             );
@@ -99,7 +116,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
                 paramMap.getParam("user_password"), 
                 paramMap.getParam("email"), 
                 paramMap.getParam("verifyCode"),
-                stringToUserPrivileges(paramMap.getParam("privilege")),
+                privileges,
                 paramMap.getParam("isMale") == "true",
                 paramMap.getParam("nickname")
             );
@@ -107,7 +124,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     }
     else{
         if(isWithThirdPlatform){
-            _authService->RegisterWithThirdPartyByPhone(
+            result = co_await _authService->RegisterWithThirdPartyByPhone(
                 paramMap.getParam("username"), 
                 paramMap.getParam("user_password"), 
                 paramMap.getParam("phone"), 
@@ -115,7 +132,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
                 paramMap.getParam("third_platform_name"),
                 paramMap.getParam("third_code"),
                 paramMap.getParam("third_verifyCode"),
-                stringToUserPrivileges(paramMap.getParam("privilege")),
+                privileges,
                 paramMap.getParam("isMale") == "true",
                 paramMap.getParam("nickname")
             );
@@ -126,7 +143,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
                 paramMap.getParam("user_password"),
                 paramMap.getParam("phone"),
                 paramMap.getParam("verifyCode"),
-                stringToUserPrivileges(paramMap.getParam("privilege")),
+                privileges,
                 paramMap.getParam("isMale") == "true",
                 paramMap.getParam("nickname")   
             );

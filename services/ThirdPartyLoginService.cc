@@ -724,9 +724,13 @@ drogon::Task<void> ThirdPartyLoginService::clearExpired() {
 
 
 drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(const std::string &platform) {
-    auto platformService = co_await getPlatform(platform);
-
     UEAdminAPI::utils::HttpResult result;
+    if (platform.empty()) {
+        result.setResult(-1, "请指定平台.");
+        co_return result;
+    }
+
+    auto platformService = co_await getPlatform(platform);
 
     if (!platformService) {
         result.setResult(-1, "不支持的第三方平台");
@@ -759,6 +763,60 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::Callback(con
         co_return result;
     }
     co_return result;
+}
+
+Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string &platform, const std::string &code, const std::string &state) {
+    auto platformService = co_await getPlatform(platform);
+
+    if (platformService) {
+        co_await platformService->callBack(code, state);
+    }
+
+    // 构造自定义协议地址
+    std::string customProtocol = "ueloginreturn://success?state=" + state;
+
+    // 构造简洁美观的提示页面
+    std::string htmlContent =
+        "<!DOCTYPE html>"
+        "<html>"
+        "<head>"
+        "    <meta charset=\"UTF-8\">"
+        "    <title>登录跳转中...</title>"
+        "    "
+        "    <meta http-equiv=\"refresh\" content=\"0;url=" + customProtocol + "\">"
+        "    <style>"
+        "        body { font-family: 'Microsoft YaHei', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f5f5f5; }"
+        "        .card { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }"
+        "        .icon { color: #52c41a; font-size: 48px; margin-bottom: 20px; }"
+        "        .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #1890ff; color: white; text-decoration: none; border-radius: 4px; }"
+        "    </style>"
+        "</head>"
+        "<body>"
+        "    <div class=\"card\">"
+        "        <div class=\"icon\">✔</div>"
+        "        <h2 style=\"margin:0 0 10px 0;\">验证成功</h2>"
+        "        <p style=\"color: #666;\">正在为您跳转回应用，请稍候...</p>"
+        "        <p style=\"font-size: 14px; color: #999;\">如果您的应用没有自动弹出，请点击下方按钮：</p>"
+        "        <a href=\"" + customProtocol + "\" class=\"btn\">返回应用</a>"
+        "        <hr style=\"border:none; border-top:1px solid #eee; margin:20px 0;\">"
+        "        <p style=\"color: #999; font-size: 12px;\">现在您可以安全地关闭此浏览器窗口</p>"
+        "    </div>"
+        "    <script>"
+        "        // 第二重保险：JS 跳转"
+        "        window.location.href = '" + customProtocol + "';"
+        "    </script>"
+        "</body>"
+        "</html>";
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->setContentTypeCode(CT_TEXT_HTML);
+    resp->setBody(std::move(htmlContent));
+
+    co_return resp;
+
+    //resp->addHeader("Location", "ueloginreturn://");
+    //co_return resp;
 }
 
 Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, const std::string &platform, const std::string &code, const std::string &verifyCode) {
@@ -890,7 +948,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
     result.setResult(0, "验证成功");
     result.jsondata["allready_bind"] = isAllreadyBind;
 
-    // 如果只是确认登录, 则直接返回
+    // 如果只是检查第三方登录是否已经完成, 则直接返回
     if (onlyCheck) {
         co_return result;
     }
@@ -927,40 +985,24 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
         result.setResult(-1, "验证失败");
         co_return result;
     }
+
+    // 检查第三方登陆是否已经完成
+    result = co_await VerifyLogin(platform, code, verifyCode, true);
+
+    // 检查第三方是否已经绑定账号
+    if (result.jsondata["allready_bind"].asBool()) {
+        result.setResult(-1, "该账号已经被绑定");
+        co_return result;
+    }
+
+    // 上面已经检查了loginValue 所以不再检查
     auto loginValue = co_await platformService->getLoginValue(code);
-    if (!loginValue) {
-        result.setResult(-1, "找不到对应的登录值");
-        co_return result;
-    }
-    if (loginValue->authorizationCode.empty()) {
-        result.setResult(-1, "该code尚未登录, 验证失败");
-        co_return result;
-    }
+
+    // 新用户创建
     std::string username = "NewUser_" + RandomGenerator::getRandNumberStr(8);
     std::string password = RandomGenerator::generateRandomPassword();
-    auto dbClientPtr = drogon::app().getDbClient();
-    Mapper<User> mapperUser(dbClientPtr);
-    Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
-    Mapper<ThirdPartyPlatforms> mapperThirdPartyPlatforms(dbClientPtr);
-    int renameTryCount = 0;
-    while (true) {
-        if (renameTryCount > 10) {
-            result.setResult(-1, "创建用户失败");
-            co_return result;
-        }
-        try {
-            mapperUser.findOne(Criteria(User::Cols::_name, CompareOperator::EQ, username));
-            username = "NewUser_" + RandomGenerator::getRandNumberStr(8);
-            renameTryCount++;
-        } catch (const drogon::orm::UnexpectedRows &e) {
-            if (std::string(e.what()) == "0 rows found") {
-                break;
-            } else if (std::string(e.what()) == "Found more than one row") {
-                result.setResult(-1, "创建用户失败");
-                co_return result;
-            }
-        }
-    }
+    std::string fakeEmail = username + "@example.com";
+
     auto [hash, salt] = _authService->CreateStrPasswordHash(password);
     User user;
     user.setName(username);
@@ -970,16 +1012,15 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
     user.setCreateAt(trantor::Date::now());
     user.setIsMale(true);
     user.setPrivilege(int(UserPrivileges::User));
-    bool isUserInsertFailed = false;
-    try {
-        mapperUser.insert(user);
-    } catch (const drogon::orm::DrogonDbException &e) {
-        isUserInsertFailed = true;
-    }
-    if (isUserInsertFailed) {
-        result.setResult(-1, "创建用户失败");
+    result = co_await _authService->ExecuteRegistrationTransaction(user, password, fakeEmail);
+
+    if (result.code != 0) {
         co_return result;
     }
+
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
+
     UserThirdPartyInfo thirdPartyInfo;
     thirdPartyInfo.setUserId(user.getValueOfId()); 
     thirdPartyInfo.setPlatformId(int(platformService->getPlatform()));
@@ -987,20 +1028,27 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
     thirdPartyInfo.setAccessToken(loginValue->accessToken);
     thirdPartyInfo.setNickName(loginValue->nickName);
     thirdPartyInfo.setAvatarImgUrl(loginValue->avatarImgUrl);
-    isUserInsertFailed = false;
+    bool isThirdPartyInfoInsertFailed = false;
+    
     try {
         mapperThirdPartyInfo.insert(thirdPartyInfo);
     } catch (const drogon::orm::DrogonDbException &e) {
-        isUserInsertFailed = true;
+        LOG_ERROR << "创建第三方登录信息失败: " << e.base().what();
+        isThirdPartyInfoInsertFailed = true;
     }
-    if (isUserInsertFailed) {
-        mapperUser.deleteOne(user);
-        result.setResult(-1, "创建第三方登录信息失败");
+    if (isThirdPartyInfoInsertFailed) {
+        result = co_await _authService->DeleteUserForce(user.getValueOfId());
+        if (result.code != 0) {
+            LOG_ERROR << "回滚删除用户时失败: " << result.msg;
+            co_return result;
+        }
+        result.setResult(-1, "创建第三方登录信息失败, 先前创建的用户已删除");
         co_return result;
     }
 
-    // 登录
+    // 登录获取Token
     result = co_await _authService->LoginByUserId(user.getValueOfId());
+    // 登录成功后, 消耗登录值, 使其不能再次使用
     co_await platformService->consumeLoginValue(code);
     
     co_return result;

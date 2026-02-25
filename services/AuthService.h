@@ -181,6 +181,9 @@ public:
         const std::string &target,
         const std::string &verifyCode);
 
+    // 强制删除用户 (不验证验证码, 仅供内部或管理员使用)
+    drogon::Task<UEAdminAPI::utils::HttpResult> DeleteUserForce(int userId);
+
     // 验证指定用户的绑定目标并校验MFA验证码
     drogon::Task<std::tuple<bool, std::string>> VerifyUserTargetMFA(
         const std::string &target,
@@ -195,16 +198,15 @@ public:
         const drogon_model::UEAdminAPI::User &user,
         eMFAType type);
 
-private:
     /**
      * @brief 核心注册事务处理：Gitlab创建 -> 数据库插入 -> 异常回滚
      * @param preparedUser 已经填充好基础信息（密码哈希、昵称、时间等）的User对象
      * @param rawPassword 原始密码（用于Gitlab账号创建）
-     * @param gitlabEmail 用于Gitlab注册的邮箱（手机注册时为假邮箱）
+     * @param gitlabEmail 用于Gitlab注册的邮箱（手机注册和第三方注册时为假邮箱）
      * @return HttpResult
      */
     drogon::Task<UEAdminAPI::utils::HttpResult> ExecuteRegistrationTransaction(
-        drogon_model::UEAdminAPI::User preparedUser, 
+        drogon_model::UEAdminAPI::User &preparedUser, 
         const std::string &rawPassword, 
         const std::string &gitlabEmail
     );

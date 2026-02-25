@@ -1,5 +1,6 @@
 #include "PostParamMap.h"
 #include <drogon/HttpController.h>
+#include "utils/DataFormatUtils.h"
 
 namespace UEAdminAPI {
 
@@ -52,7 +53,7 @@ std::vector<std::string> PostParamMap::checkRequiredParams() const {
     // 检查必填参数
     for (const auto &item : _mapParams) {
         if (item.second.isNecessary && !item.second.isExist) {
-            errors.push_back("缺少必填参数: " + item.first);
+            errors.push_back(item.first);
         }
     }
     
@@ -86,7 +87,7 @@ void PostParamMap::readParamsFromJson(const Json::Value &json) {
         if (json.isMember(item.first)) {
             std::string value = json[item.first].asString();
             // 清除其中的空白字符
-            value.erase(std::remove_if(value.begin(), value.end(), ::isspace), value.end());
+            value = DataFormatUtil::trim(value);
             if (!value.empty()) {
                 setParamValue(item.first, value);
             }

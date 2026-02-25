@@ -201,6 +201,7 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
         auto verifier = jwt::verify()
             .allow_algorithm(jwt::algorithm::hs512{_secret})
             .with_issuer(_jwtIssuer);
+        verifier.verify(decoded);
         tokenType = decoded.get_payload_claim("tokenType").as_string();
         if(tokenType != "token" && tokenType != "flashToken"){
             LOG_ERROR << std::format("对于Token: {}, tokenType 既不是 token, 也不是 flashToken", token);
@@ -211,13 +212,24 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
         userId = std::stoi(decoded.get_payload_claim("id").as_string());
         return std::make_tuple(true, userId, status, isFlashToken);
     }
-    catch (const std::exception &e) {
-        LOG_ERROR << std::format("对于Token: {}, 有缺失的 Claim: {}", token, e.what());
+    catch (const jwt::error::token_verification_exception &e) {
+        LOG_ERROR << std::format("对于Token: {}, 验证失败: {}", token, e.what());
         return std::make_tuple(false, -1, -1, -1);
     }
-    // token格式不正确
+    catch (const jwt::error::signature_verification_exception& e) {
+        LOG_ERROR << std::format("对于Token: {}, 签名无效: {}", token, e.what());
+        return std::make_tuple(false, -1, -1, -1);
+    }
+    catch (const std::out_of_range &e) {
+        LOG_ERROR << std::format("对于Token: {}, 缺失的Claim: {}", token, e.what());
+        return std::make_tuple(false, -1, -1, -1);
+    }
     catch (const std::invalid_argument &e) {
-        LOG_ERROR << std::format("对于Token: {}, 格式错误: {}", token, e.what());
+        LOG_ERROR << std::format("对于Token: {}, Claim解析错误: {}", token, e.what());
+        return std::make_tuple(false, -1, -1, -1);
+    }
+    catch (const std::exception &e) {
+        LOG_ERROR << std::format("对于Token: {}, 未知错误: {}", token, e.what());
         return std::make_tuple(false, -1, -1, -1);
     }
 }
@@ -768,9 +780,9 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::
     }
     result.jsondata["gitlab_token"] = gitlabToken;
 
-    result.jsondata["email"] = Json::Value(Json::arrayValue);
+    result.jsondata["emails"] = Json::Value(Json::arrayValue);
     if(user.getEmail()){
-        result.jsondata["email"].append(user.getValueOfEmail());
+        result.jsondata["emails"].append(user.getValueOfEmail());
     }
 
     result.setResult(0, "success");
@@ -778,7 +790,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::
 }
 
 Task<HttpResult> AuthService::ExecuteRegistrationTransaction(
-    User preparedUser, 
+    User &preparedUser, 
     const std::string &rawPassword, 
     const std::string &gitlabEmail) {
     
@@ -995,7 +1007,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
     const std::string &target,
     const std::string &verifyCode) {
     auto _mfaService = MFAService::Instance();
-    auto _gitlabService = UEAdminAPI::GitlabService::Instance();
     UEAdminAPI::utils::HttpResult result;
     std::vector<std::string> missing;
     if (token.empty()) missing.push_back("token");
@@ -1051,9 +1062,18 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
         co_return result;
     }
 
+    co_return co_await DeleteUserForce(userId);
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUserForce(int userId) {
+    auto _gitlabService = UEAdminAPI::GitlabService::Instance();
+    UEAdminAPI::utils::HttpResult result;
+    auto dbClientPtr = drogon::app().getDbClient();
+    
     Mapper<UserThirdPartyInfo> mapperThird(dbClientPtr);
     Mapper<UserGitlabInfo> mapperGit(dbClientPtr);
     Mapper<UserFlashtoken> mapperToken(dbClientPtr);
+    Mapper<User> mapperUser(dbClientPtr);
 
     // 同步删除 GitLab 用户
     try {

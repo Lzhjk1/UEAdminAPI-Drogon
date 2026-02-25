@@ -21,7 +21,7 @@ public:
     // 第三方绑定已有账号
     ADD_METHOD_TO(ThirdPartyLogin::bindAccount, "/api/third/bind?platform={1}&code={2}&verifyCode={3}", Post);
     // 第三方直接注册账号并完成登录
-    ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdParty, "/api/third/register_and_login?platform={1}&code={2}&verifyCode={3}", Get);
+    ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdParty, "/api/third/register_and_login?platform={1}&code={2}&verifyCode={3}", Post);
     ADD_METHOD_TO(ThirdPartyLogin::unbindAccount, "/api/third/unbind?platform={1}&mfaTarget={2}&verifyCode={3}", Post);
     METHOD_LIST_END
 

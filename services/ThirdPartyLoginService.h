@@ -151,6 +151,7 @@ public:
 
     drogon::Task<UEAdminAPI::utils::HttpResult> GetLoginUrl(const std::string &platform);
     drogon::Task<UEAdminAPI::utils::HttpResult> Callback(const std::string &platform, const std::string &code, const std::string &state);
+    drogon::Task<drogon::HttpResponsePtr> CallbackRedirect(const std::string &platform, const std::string &code, const std::string &state);
     drogon::Task<UEAdminAPI::utils::HttpResult> BindAccount(const std::string &token, const std::string &platform, const std::string &code, const std::string &verifyCode);
     drogon::Task<UEAdminAPI::utils::HttpResult> VerifyLogin(const std::string &platform, const std::string &code, const std::string &verifyCode, bool onlyCheck = true);
     drogon::Task<UEAdminAPI::utils::HttpResult> CreateUserFromThirdPartyAndLogin(const std::string &platform, const std::string &code, const std::string &verifyCode);

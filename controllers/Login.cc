@@ -15,12 +15,12 @@ Task<HttpResponsePtr> Login::LoginByPwd(HttpRequestPtr req, std::string userName
     auto _authService = AuthService::Instance();
 
 	auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k400BadRequest);
+    resp->setStatusCode(k200OK);
 
     HttpResult result = co_await _authService->LoginByPwd(userName, pwd);
 
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);
+    resp->setStatusCode(k200OK);
 
 	co_return resp;
 }
@@ -36,7 +36,7 @@ Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target
     HttpResult result = co_await _authService->LoginByOther(target, targetDBColName, code);
 
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k500InternalServerError);
+    resp->setStatusCode(k200OK);
 
     co_return resp;
 }
@@ -51,7 +51,7 @@ Task<HttpResponsePtr> Login::LoginByEmail(HttpRequestPtr req, std::string email,
     HttpResult result = co_await _authService->LoginByEmail(email, code);
     
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k500InternalServerError);
+    resp->setStatusCode(k200OK);
     
     co_return resp;
 }
@@ -66,7 +66,7 @@ Task<HttpResponsePtr> Login::LoginByPhone(HttpRequestPtr req, std::string phone,
     HttpResult result = co_await _authService->LoginByPhone(phone, code);
     
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k500InternalServerError);
+    resp->setStatusCode(k200OK);
     
     co_return resp;
 }
@@ -77,11 +77,11 @@ Task<HttpResponsePtr> Login::LoginByFlashToken(HttpRequestPtr req) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
 
-    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
+    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("AuthorizationFlashToken"));
     HttpResult result = co_await _authService->LoginByFlashToken(token);
 
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k500InternalServerError);
+    resp->setStatusCode(k200OK);
 
     co_return resp;
 }
@@ -93,7 +93,7 @@ Task<HttpResponsePtr> Login::VerifyToken(HttpRequestPtr req) {
     auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
     HttpResult result = co_await _authService->VerifyToken(token);
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);
+    resp->setStatusCode(k200OK);
     co_return resp;
 }
 
@@ -107,7 +107,7 @@ Task<HttpResponsePtr> Login::GetSelfInfo(HttpRequestPtr req) {
     HttpResult result = co_await _authService->GetSelfInfo(token);
 
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);
+    resp->setStatusCode(k200OK);
 
     co_return resp;
 }

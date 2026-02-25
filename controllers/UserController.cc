@@ -22,7 +22,7 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     if (!reqJson) {
         result.setResult(-1, "请求体必须是JSON格式");
         resp->setBody(result.toJsonString());
-        resp->setStatusCode(k400BadRequest);
+        resp->setStatusCode(k200OK);
         co_return resp;
     }
 
@@ -57,13 +57,13 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
         result.setResult(-1, "缺少必要参数" + std::accumulate(missings.begin(), missings.end(), std::string(""), 
             [](const std::string& a, const std::string& b) { return a + ", " + b; }));
         resp->setBody(result.toJsonString());
-        resp->setStatusCode(k400BadRequest);
+        resp->setStatusCode(k200OK);
         co_return resp;
     }
 
     result = co_await _authService->UpdateUserInfo(token, pm);
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);
+    resp->setStatusCode(k200OK);
     co_return resp;
 }
 
@@ -75,6 +75,6 @@ Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req, const std::
     auto [authType2, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
     result = co_await _authService->DeleteUser(token, target, verifyCode);
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(result.code == 0 ? k200OK : k400BadRequest);
+    resp->setStatusCode(k200OK);
     co_return resp;
 }

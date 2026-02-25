@@ -12,6 +12,7 @@ inline UserPrivileges stringToUserPrivileges(const std::string& str){
     if (str == "Default") return UserPrivileges::Default;
     else if (str == "User") return UserPrivileges::User;
     else if (str == "Admin") return UserPrivileges::Admin;
+    else if (str.empty()) return UserPrivileges::Default;
     throw std::invalid_argument("Unknown UserPrivileges type: " + str);
 }
 

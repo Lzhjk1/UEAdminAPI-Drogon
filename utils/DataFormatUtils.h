@@ -2,6 +2,7 @@
 
 #include <string>
 #include <tuple>
+#include <algorithm>
 
 namespace UEAdminAPI {
 
@@ -84,6 +85,8 @@ namespace UEAdminAPI {
          */
         static bool checkUserName(const std::string &userName);
         static std::tuple<AuthorizationTokenType, std::string> parseTokenFromAuthorizationHeader(const std::string &authHeader);
+
+        static std::string trim(const std::string& s);
     };
 
 }

@@ -112,6 +112,22 @@ std::tuple<AuthorizationTokenType, std::string> DataFormatUtil::parseTokenFromAu
     else if (!lower.empty()) type = AuthorizationTokenType::Other;
     return {type, token};
 }
+
+std::string DataFormatUtil::trim(const std::string& s) {
+    if (s.empty()) return s;
+
+    // ������Ҫ���˵Ŀհ��ַ���ASCII ��Χ����ȫ����ȷ��
+    const std::string whitespace = " \t\n\r\f\v";
+
+    // Ѱ�ҵ�һ���ǿհ��ַ�
+    size_t start = s.find_first_not_of(whitespace);
+    if (start == std::string::npos) return ""; // ȫ�ǿո�����
+
+    // Ѱ�����һ���ǿհ��ַ�
+    size_t end = s.find_last_not_of(whitespace);
+
+    return s.substr(start, end - start + 1);
+}
  
     
 } // namespace uehttp
