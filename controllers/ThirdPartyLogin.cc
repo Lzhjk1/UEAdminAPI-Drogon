@@ -87,7 +87,7 @@ Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr r
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
-    auto result = co_await _thirdPartyLoginService->CreateUserFromThirdPartyAndLogin(platform, code, verifyCode);
+    auto result = co_await _thirdPartyLoginService->CreateUserFromThirdParty(platform, code, verifyCode);
     resp->setBody(result.toJsonString());
     co_return resp;
 }

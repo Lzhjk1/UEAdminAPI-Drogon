@@ -17,6 +17,7 @@
 #include "services/MFAService.h"
 #include "utils/MFA/MFA_Channels.h"
 #include "utils/MFA/MFACodePair.h"
+#include <numeric>
 
 using namespace drogon;
 using namespace drogon::orm;
@@ -1012,13 +1013,26 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
     
     UEAdminAPI::utils::HttpResult result;
 
+    // 检查参数, 并提示缺少的参数
+    std::vector<std::string> missingParam;
+    if (platform.empty()) {
+        missingParam.push_back("platform");
+    }
+    if (code.empty()) {
+        missingParam.push_back("code");
+    }
+    if (verifyCode.empty()) {
+        missingParam.push_back("verifyCode");
+    }
+    if (!missingParam.empty()) {
+        result.setResult(-1, "缺少必要参数: " + std::accumulate(missingParam.begin(), missingParam.end(), std::string(), 
+            [](const std::string &a, const std::string &b) { return a.empty() ? b : a + ", " + b; }));
+        co_return result;
+    }
+
     auto platformService = co_await getPlatform(platform);
     if (!platformService) {
         result.setResult(-1, "不支持的第三方平台");
-        co_return result;
-    }
-    if (code.empty() || verifyCode.empty()) {
-        result.setResult(-1, "缺少必要参数, code 和 verifyCode");
         co_return result;
     }
     bool success = co_await platformService->verifyTheCode(code, verifyCode);
@@ -1083,7 +1097,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFromThirdPartyAndLogin(const std::string &platform, const std::string &code, const std::string &verifyCode) {
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFromThirdParty(const std::string &platform, const std::string &code, const std::string &verifyCode) {
     auto _authService = AuthService::Instance();
 
     UEAdminAPI::utils::HttpResult result;
@@ -1162,11 +1176,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
         co_return result;
     }
 
-    // 登录获取Token
-    result = co_await _authService->LoginByUserId(user.getValueOfId());
-    // 登录成功后, 消耗登录值, 使其不能再次使用
-    co_await platformService->consumeLoginValue(code);
-    
     co_return result;
 }
 
