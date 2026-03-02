@@ -43,7 +43,7 @@ Task<std::tuple<bool, std::string>> MFAService::SendTheCode(const std::string &t
     co_return std::make_tuple(result, errorMsg);
 }
 
-Task<std::tuple<bool, std::string>> MFAService::VerifyTheCode(const std::string &target, const std::string &code, eMFAType type) {
+Task<std::tuple<bool, std::string>> MFAService::VerifyTheCode(const std::string &target, const std::string &code, eMFAType type, bool isConsume) {
     auto channelType = MFAChannelBase::DetermineChannelType(target);
     if (channelType == eChannelType::None) {
         co_return std::make_tuple(false, std::string("无法判断渠道类型"));
@@ -53,6 +53,6 @@ Task<std::tuple<bool, std::string>> MFAService::VerifyTheCode(const std::string 
         co_return std::make_tuple(false, std::string("无法找到对应的验证码发送渠道"));
     }
     std::string errorMsg;
-    bool result = channel->VerifyTheCode(target, code, type, errorMsg);
+    bool result = channel->VerifyTheCode(target, code, type, errorMsg, isConsume);
     co_return std::make_tuple(result, errorMsg);
 }

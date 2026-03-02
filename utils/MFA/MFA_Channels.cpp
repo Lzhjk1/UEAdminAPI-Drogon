@@ -21,7 +21,7 @@ std::optional<std::shared_ptr<ICodePair>> MFAChannelBase::GetCodePair(const std:
     return std::nullopt;
 }
 
-bool MFAChannelBase::VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg) {
+bool MFAChannelBase::VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg, bool isConsume) {
     ClearExpired();
     auto target = GetCodePair(baseInfo, type);
     if (!target) {
@@ -29,7 +29,7 @@ bool MFAChannelBase::VerifyTheCode(const std::string &baseInfo, const std::strin
         return false;
     }
     bool result = (target.value()->Code() == code) && ((target.value()->MFAType() & type));
-    if (result) {
+    if (result && isConsume) {
         std::lock_guard lock(_mutex);
         _listCodePairs.erase(std::remove(_listCodePairs.begin(), _listCodePairs.end(), target.value()), _listCodePairs.end());
     }
@@ -141,7 +141,7 @@ drogon::Task<std::pair<bool, std::string>> MFA_SMSChannel::SendCode(std::shared_
     co_return {true, "短信验证码发送成功"};
 }
 
-bool MFA_SMSChannel::VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg) {
+bool MFA_SMSChannel::VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg, bool isConsume) {
     auto [countryCode, phoneNumber] = CodePairBase::SMSCodePair::ParsePhoneNumber(baseInfo);
-    return MFAChannelBase::VerifyTheCode(countryCode + phoneNumber, code, type, errorMsg);
+    return MFAChannelBase::VerifyTheCode(countryCode + phoneNumber, code, type, errorMsg, isConsume);
 }
