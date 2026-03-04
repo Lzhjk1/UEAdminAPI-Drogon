@@ -13,9 +13,10 @@ eChannelType MFAChannelBase::ChannelType() const {
 }
 
 std::optional<std::shared_ptr<ICodePair>> MFAChannelBase::GetCodePair(const std::string &key, const eMFAType& type) {
+    if (type == eMFAType::Error) return std::nullopt;
     std::lock_guard lock(_mutex);
     for (const auto &p : _listCodePairs) {
-        if (p->BaseInfo() == key && p->MFAType() == type)
+        if (p->BaseInfo() == key && (p->MFAType() & type))
             return p;
     }
     return std::nullopt;

@@ -26,7 +26,8 @@ enum class eMFAType : uint32_t {
     ThirdPartyBind = 1 << 5,
     PhoneChange = 1 << 6,
     DeleteUser = 1 << 7,
-    ModifyUser = 1 << 8
+    ModifyUser = 1 << 8,
+    LoginOrRegister = (1 << 1) | (1 << 2)
 };
 
 // 函数声明

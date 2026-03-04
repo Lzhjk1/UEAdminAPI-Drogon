@@ -1,17 +1,24 @@
 #include "eMFA_Type.h"
 #include <stdexcept>
 #include <trantor/utils/Logger.h>
+#include <algorithm>
+#include <cctype>
 
 eMFAType stringToMFAType(const std::string& str) {
-    if (str == "Default") return eMFAType::Default;
-    else if (str == "Login") return eMFAType::Login;
-    else if (str == "Register") return eMFAType::Register;
-    else if (str == "ResetPassword") return eMFAType::ResetPassword;
-    else if (str == "EmailBind") return eMFAType::EmailBind;
-    else if (str == "ThirdPartyBind") return eMFAType::ThirdPartyBind;
-    else if (str == "PhoneChange") return eMFAType::PhoneChange;
-    else if (str == "DeleteUser") return eMFAType::DeleteUser;
-    else if (str == "ModifyUser") return eMFAType::ModifyUser;
+    std::string lowerStr = str;
+    std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
+
+    if (lowerStr == "default") return eMFAType::Default;
+    else if (lowerStr == "login") return eMFAType::Login;
+    else if (lowerStr == "register") return eMFAType::Register;
+    else if (lowerStr == "resetpassword") return eMFAType::ResetPassword;
+    else if (lowerStr == "emailbind") return eMFAType::EmailBind;
+    else if (lowerStr == "thirdpartybind") return eMFAType::ThirdPartyBind;
+    else if (lowerStr == "phonechange") return eMFAType::PhoneChange;
+    else if (lowerStr == "deleteuser") return eMFAType::DeleteUser;
+    else if (lowerStr == "modifyuser") return eMFAType::ModifyUser;
+    else if (lowerStr == "loginorregister") return eMFAType::LoginOrRegister;
     
     LOG_ERROR << "发现未知的MFA类型: " + str;
     return eMFAType::Error;

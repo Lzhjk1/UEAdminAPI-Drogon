@@ -607,26 +607,31 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
 
     HttpResult result;
 
-    // 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, code, eMFAType::Login);
-    if(!isSuccess) {
-        LOG_ERROR << errMsg;
-        result.setResult(-1, "验证码错误");
-        co_return result;
-    }
-
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
 
     // 查找用户
     User targetUser;
+    bool userFound = false;
     try{
         targetUser = mapperUsers.findFutureOne(Criteria(targetDBColName, CompareOperator::EQ, target)).get();
+        userFound = true;
     }
-    // 没找到会抛出异常
+    // 没找到会抛出异常, 但是不立刻返回, 还需要检查验证码
     catch (UnexpectedRows& e){
-        LOG_ERROR << "邮箱验证码登录查询用户时出错!";
-        result.setResult(-1, "用户不存在");
+        LOG_ERROR << "邮箱验证码登录查询用户时出错! 用户不存在!";
+        result.setResult(-1, "用户不存在!");
+        result.jsondata["isUserNotExist"] = true;
+    }
+    if (!userFound) {
+        co_return result;
+    }
+
+    // 检查验证码
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, code, eMFAType::Login);
+    if(!isSuccess) {
+        LOG_ERROR << "登录验证码验证错误: " << errMsg;
+        result.setResult(-1, "验证码错误");
         co_return result;
     }
 
@@ -735,10 +740,14 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::
     Mapper<User> mapperUser(dbClientPtr);
 
     User user;
+    bool found = false;
     try {
         user = mapperUser.findByPrimaryKey(userId);
+        found = true;
     } catch (const UnexpectedRows &e) {
         result.setResult(-1, "数据库错误");
+    }
+    if (!found) {
         co_return result;
     }
 
@@ -877,13 +886,15 @@ Task<HttpResult> AuthService::ExecuteRegistrationTransaction(
 }
 
 Task<bool> AuthService::CheckIfExist(drogon::orm::Mapper<User> &mapper, const drogon::orm::Criteria &criteria) {
+    bool found = false;
     try {
         // 阻塞式调用
         mapper.findOne(criteria);
-        co_return true;
+        found = true;
     } catch (...) {
-        co_return false;
+        found = false;
     }
+    co_return found;
 }
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
