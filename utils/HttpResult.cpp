@@ -7,7 +7,7 @@ UEAdminAPI::utils::HttpResult::HttpResult(int32_t c, std::string m) {
 
 std::string UEAdminAPI::utils::HttpResult::toJsonString() const {
     Json::Value v;
-    v["code"] = std::to_string(code);
+    v["code"] = code;
     v["msg"] = msg;
     if (!jsondata.isNull()) {
         v["data"] = jsondata;
