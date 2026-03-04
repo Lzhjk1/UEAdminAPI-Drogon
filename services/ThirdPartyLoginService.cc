@@ -834,14 +834,14 @@ drogon::Task<void> ThirdPartyLoginService::clearExpired() {
 drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(const std::string &platform) {
     UEAdminAPI::utils::HttpResult result;
     if (platform.empty()) {
-        result.setResult(-1, "请指定平台.");
+        result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform, "请指定平台.");
         co_return result;
     }
 
     auto platformService = co_await getPlatform(platform);
 
     if (!platformService) {
-        result.setResult(-1, "不支持的第三方平台");
+        result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform);
         co_return result;
     }
     auto loginValue = co_await platformService->createNewThirdLoginValue();
@@ -859,15 +859,15 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::Callback(con
     UEAdminAPI::utils::HttpResult result;
 
     if (!platformService) {
-        result.setResult(-1, "不支持的第三方平台");
+        result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform);
         co_return result;
     }
     if (!co_await platformService->callBack(code, state)) {
-        result.setResult(-1, "处理第三方登录回调失败, 可能是登录操作超时");
+        result.setResult(ApiErrorCode::ApiError_ThirdPartyCallbackFailed, "处理第三方登录回调失败, 可能是登录操作超时");
         co_return result;
     }
     if (!co_await platformService->getLoginValue(state)) {
-        result.setResult(-1, "找不到对应的登录值");
+        result.setResult(ApiErrorCode::ApiError_LoginValueNotFound);
         co_return result;
     }
     co_return result;
@@ -933,17 +933,17 @@ Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, c
     HttpResult result;
     
     if (platform.empty() || code.empty() || verifyCode.empty() || token.empty()) {
-        result.setResult(-1, "缺少必要参数");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs);
         co_return result;
     }
     
     result = co_await _authService->VerifyToken(token);
     if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(-1, "不是token");
+        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
         co_return result;
     }
     if(result.code != 0){
-        result.setResult(-1, "Token已失效");
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
         co_return result;
     }
     int userId = result.jsondata["userId"].asInt();
@@ -957,10 +957,10 @@ Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, c
     result = co_await VerifyLogin(platform, code, verifyCode);
     if(result.code != 0){
         if(result.jsondata["allready_bind"] == true){
-            result.setResult(-1, "该平台已经绑定过账号");
+            result.setResult(ApiErrorCode::ApiError_PlatformAlreadyBound);
             co_return result;
         }
-        result.setResult(-1, "第三方登陆验证失败");
+        result.setResult(ApiErrorCode::ApiError_ThirdPartyAuthFailed);
         co_return result;
     }
 
@@ -968,16 +968,16 @@ Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, c
     try {
         targetUser = mapperUser.findOne(Criteria(User::Cols::_id, CompareOperator::EQ, userId));
     } catch (const drogon::orm::DrogonDbException &ex) {
-        result.setResult(-1, "内部错误");
+        result.setResult(ApiErrorCode::ApiError_InternalError);
         co_return result;
     }
     auto thirdPartyPlatform = co_await getPlatform(platform);
     if (!thirdPartyPlatform) {
-        result.setResult(-1, "不支持的第三方平台");
+        result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform);
         co_return result;
     }
     if (!(co_await thirdPartyPlatform->verifyTheCode(code, verifyCode))) {
-        result.setResult(-1, "验证码错误");
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode);
         co_return result;
     }
     auto thirdPartyInfos = targetUser.getThird_party_platforms(dbClientPtr);
@@ -985,7 +985,7 @@ Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, c
         return info.first.getValueOfPlatformName() == ThirdPartyPlatformToString(thirdPartyPlatform->getPlatform());
     });
     if (targetInfos != thirdPartyInfos.end()) {
-        result.setResult(-1, "该平台已经绑定过账号");
+        result.setResult(ApiErrorCode::ApiError_PlatformAlreadyBound);
         co_return result;
     }
 
@@ -1000,10 +1000,11 @@ Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, c
     try {
         mapperThirdPartyInfo.insert(thirdPartyInfo);
     } catch (const drogon::orm::DrogonDbException &ex) {
-        result.setResult(-1, "绑定第三方账号失败");
+        LOG_ERROR << "绑定第三方账号失败: " << ex.base().what();
+        result.setResult(ApiErrorCode::ApiError_BindingFailed);
         co_return result;
     }
-    result.setResult(0, "绑定成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "绑定成功");
     co_await thirdPartyPlatform->consumeLoginValue(code);
     co_return result;
 }
@@ -1025,35 +1026,35 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
         missingParam.push_back("verifyCode");
     }
     if (!missingParam.empty()) {
-        result.setResult(-1, "缺少必要参数: " + std::accumulate(missingParam.begin(), missingParam.end(), std::string(), 
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必要参数: " + std::accumulate(missingParam.begin(), missingParam.end(), std::string(), 
             [](const std::string &a, const std::string &b) { return a.empty() ? b : a + ", " + b; }));
         co_return result;
     }
 
     auto platformService = co_await getPlatform(platform);
     if (!platformService) {
-        result.setResult(-1, "不支持的第三方平台");
+        result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform);
         co_return result;
     }
     bool success = co_await platformService->verifyTheCode(code, verifyCode);
     if (!success) {
-        result.setResult(-1, "验证失败");
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, "验证失败");
         co_return result;
     }
     auto loginValue = co_await platformService->getLoginValue(code);
     if (!loginValue) {
-        result.setResult(-1, "找不到对应的登录值");
+        result.setResult(ApiErrorCode::ApiError_LoginValueNotFound);
         co_return result;
     }
 
     {
         std::lock_guard<std::recursive_mutex> lock(loginValue->mutex);
         if (loginValue->authorizationCode.empty()) {
-            result.setResult(-1, "该code尚未登录, 验证失败");
+            result.setResult(ApiErrorCode::ApiError_CodeNotLoggedIn, "该code尚未登录, 验证失败");
             co_return result;
         }
         if (!loginValue->ready) {
-            result.setResult(-1, "登录请求处理中, 请稍后...");
+            result.setResult(ApiErrorCode::ApiError_LoginProcessing, "登录请求处理中, 请稍后...");
             co_return result;
         }
     }
@@ -1075,7 +1076,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
 
     // 这里返回成功并不是说这个第三方账号可以绑定, 而仅是表示code对应的那一次扫码登录完成了
     // 后续需要根据isAllreadyBind来判断是否需要创建用户
-    result.setResult(0, "验证成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "验证成功");
     result.jsondata["allready_bind"] = isAllreadyBind;
 
     // 如果只是检查第三方登录是否已经完成, 则直接返回
@@ -1086,7 +1087,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::VerifyLogin(
     // 如果不是确认登录, 则需要根据isAllreadyBind来判断是否需要已经绑定
     // 如果绑定则登录, 否则返回提示信息
     if (!isAllreadyBind) {
-        result.setResult(-1, "该平台未绑定过该账号");
+        result.setResult(ApiErrorCode::ApiError_PlatformNotBound, "该平台未绑定过该账号");
         co_return result;
     }
 
@@ -1103,16 +1104,16 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
     UEAdminAPI::utils::HttpResult result;
     auto platformService = co_await getPlatform(platform);
     if (!platformService) {
-        result.setResult(-1, "不支持的第三方平台");
+        result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform);
         co_return result;
     }
     if (code.empty() || verifyCode.empty()) {
-        result.setResult(-1, "缺少必要参数, code 和 verifyCode");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必要参数, code 和 verifyCode");
         co_return result;
     }
     bool success = co_await platformService->verifyTheCode(code, verifyCode);
     if (!success) {
-        result.setResult(-1, "验证失败");
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, "验证失败");
         co_return result;
     }
 
@@ -1121,7 +1122,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
 
     // 检查第三方是否已经绑定账号
     if (result.jsondata["allready_bind"].asBool()) {
-        result.setResult(-1, "该账号已经被绑定");
+        result.setResult(ApiErrorCode::ApiError_PlatformAlreadyBound, "该账号已经被绑定");
         co_return result;
     }
 
@@ -1172,7 +1173,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
             LOG_ERROR << "回滚删除用户时失败: " << result.msg;
             co_return result;
         }
-        result.setResult(-1, "创建第三方登录信息失败, 先前创建的用户已删除");
+        result.setResult(ApiErrorCode::ApiError_ThirdPartyInfoCreationFailure, "创建第三方登录信息失败, 先前创建的用户已删除");
         co_return result;
     }
 
@@ -1190,7 +1191,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::LoginWithThi
 
     // 2. 检查是否已绑定
     if (!result.jsondata["allready_bind"].asBool()) {
-        result.setResult(-1, "该第三方账号未绑定任何用户");
+        result.setResult(ApiErrorCode::ApiError_PlatformNotBound, "该第三方账号未绑定任何用户");
         co_return result;
     }
 
@@ -1209,7 +1210,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::LoginWithThi
             Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform())));
     } catch (const drogon::orm::UnexpectedRows &e) {
         // 理论上 VerifyLogin 返回 allready_bind=true 时这里一定能找到
-        result.setResult(-1, "内部错误");
+        result.setResult(ApiErrorCode::ApiError_InternalError, "内部错误");
         LOG_ERROR << "内部数据不一致, 提示已绑定但找不到对应的数据库记录";
         co_return result;
     }
@@ -1229,36 +1230,36 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
     UEAdminAPI::utils::HttpResult result;
 
     if (platform.empty()) {
-        result.setResult(-1, "缺少参数 platform");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 platform");
         co_return result;
     }
     if (target.empty()) {
-        result.setResult(-1, "缺少参数 target");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 target");
         co_return result;
     }
     if (token.empty()) {
-        result.setResult(-1, "缺少参数 token");
+        result.setResult(ApiErrorCode::ApiError_TokenMissing, "缺少参数 token");
         co_return result;
     }
     if (verifyCode.empty()) {
-        result.setResult(-1, "缺少参数 verifyCode");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 verifyCode");
         co_return result;
     }
 
     result = co_await _authService->VerifyToken(token);
     if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(-1, "不是token");
+        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
         co_return result;
     }
     if(result.code != 0){
-        result.setResult(-1, "Token已失效");
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
         co_return result;
     }
     int userId = result.jsondata["userId"].asInt();
 
     auto platformService = co_await getPlatform(platform);
     if (!platformService) {
-        result.setResult(-1, "不支持的第三方平台");
+        result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform);
         co_return result;
     }
 
@@ -1270,7 +1271,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
     try {
         user = mapperUser.findByPrimaryKey(userId);
     } catch (const drogon::orm::UnexpectedRows &e) {
-        result.setResult(-1, "数据库错误");
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
         co_return result;
     }
 
@@ -1281,7 +1282,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
         } else if (user.getTelephoneNumber()) {
             realTarget = user.getValueOfTelephoneNumber();
         } else {
-            result.setResult(-1, "无法确定MFA目标，请提供target");
+            result.setResult(ApiErrorCode::ApiError_UnknownChannelType, "无法确定MFA目标，请提供target");
             co_return result;
         }
     }
@@ -1289,23 +1290,23 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
     auto chType = MFAChannelBase::DetermineChannelType(realTarget);
     if (chType == eChannelType::Email) {
         if (!user.getEmail() || user.getValueOfEmail() != realTarget) {
-            result.setResult(-1, "目标未绑定到当前用户");
+            result.setResult(ApiErrorCode::ApiError_TargetNotBoundToUser);
             co_return result;
         }
     } else if (chType == eChannelType::SMS) {
         auto [cc, pn] = CodePairBase::SMSCodePair::ParsePhoneNumber(realTarget);
         if (!user.getTelephoneNumber() || user.getValueOfTelephoneNumber() != pn) {
-            result.setResult(-1, "目标未绑定到当前用户");
+            result.setResult(ApiErrorCode::ApiError_TargetNotBoundToUser);
             co_return result;
         }
     } else {
-        result.setResult(-1, "无法判断渠道类型");
+        result.setResult(ApiErrorCode::ApiError_UnknownChannelType);
         co_return result;
     }
 
     auto [ok, msg] = co_await _mfaService->VerifyTheCode(realTarget, verifyCode, eMFAType::ThirdPartyBind);
     if (!ok) {
-        result.setResult(-1, msg.empty() ? "验证码错误" : msg);
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, msg.empty() ? "验证码错误" : msg);
         co_return result;
     }
 
@@ -1322,17 +1323,17 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
         if (std::string(e.what()) == "0 rows found") {
             notBound = true;
         } else {
-            result.setResult(-1, "内部错误");
+            result.setResult(ApiErrorCode::ApiError_InternalError);
             co_return result;
         }
     }
 
     if (notBound) {
-        result.setResult(-1, "该平台未绑定账号");
+        result.setResult(ApiErrorCode::ApiError_PlatformNotBound);
         co_return result;
     }
 
-    result.setResult(0, "解绑成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "解绑成功");
     co_return result;
 }
 

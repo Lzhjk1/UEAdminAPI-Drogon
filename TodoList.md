@@ -40,6 +40,7 @@
 - ✅在PDMS的HttpUtils里新增改造后的函数, 不直接返回NULL而是包含错误码和错误信息
 - 在数据库, ThirdPartyInfo表里的外键约束加上了On Delete Cascade, 之后更改一下在draw.io的设计, 然后检查一下其他表
 - ✅第三方登陆直接注册账号时, 在其函数里直接操作数据库来新增用户, 应该是直接调用AuthService下的注册接口才对
+- ✅规范了返回的json里的code, 在一个枚举里
 
 PDMS 测试
 - ✅登录

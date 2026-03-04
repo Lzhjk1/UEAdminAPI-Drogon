@@ -28,7 +28,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
 
 	auto reqJson = req->getJsonObject();
     if (!reqJson) {
-        result.setResult(-1, "请求体必须是JSON格式");
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
         resp->setBody(result.toJsonString());
         resp->setStatusCode(k200OK);
         co_return resp;
@@ -79,7 +79,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     // 如果有缺失的必填项，返回错误
     if (!missingFields.empty()) {
         HttpResult result;
-        result.setResult(-1, "缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }));
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }));
         resp->setBody(result.toJsonString());
         co_return resp;
     }
@@ -89,7 +89,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         privileges = stringToUserPrivileges(paramMap.getParam("privilege"));
     }
     catch(const std::invalid_argument& e){
-        result.setResult(-1, e.what());
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, e.what());
         resp->setBody(result.toJsonString());
         resp->setStatusCode(k200OK);
         co_return resp;

@@ -237,7 +237,7 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
 Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
     HttpResult result;
     if (!DataFormatUtil::isJwtString(token)) {
-        result.setResult(1, "invalid token");
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat, "invalid token");
         co_return result;
     }
 
@@ -254,15 +254,15 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
     result.jsondata["tokenType"] = isFlashToken == -1 ? "unset" : isFlashToken == 1 ? "flashToken" : "token";
 
     if (!isSuccess) {
-        result.setResult(-1, std::format("{}验证失败", result.jsondata["tokenType"].asString()));
+        result.setResult(ApiErrorCode::ApiError_AuthenticationFailed, std::format("{}验证失败", result.jsondata["tokenType"].asString()));
         co_return result;
     }
     if(!valid){
-        result.setResult(-1, std::format("{}已失效", result.jsondata["tokenType"].asString()));
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, std::format("{}已失效", result.jsondata["tokenType"].asString()));
         co_return result;
     }
 
-    result.setResult(0, "Token验证成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "Token验证成功");
     co_return result;
 }
 
@@ -279,7 +279,7 @@ Task<HttpResult> AuthService::RegisterByEmail(
     // 1. 检查验证码 (这里可以用 co_await 是因为 VerifyTheCode 返回的是 Task 或者 Awaitable)
     auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, code, eMFAType::Register);
     if(!isSuccess) {
-        result.setResult(-1, errMsg);
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
         co_return result;
     }
     // 2. 数据库查重
@@ -287,11 +287,11 @@ Task<HttpResult> AuthService::RegisterByEmail(
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
     // 使用同步辅助函数
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
-        result.setResult(-1, "用户名已存在");
+        result.setResult(ApiErrorCode::ApiError_UsernameAlreadyExists);
         co_return result;
     }
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_email, CompareOperator::EQ, email))) {
-        result.setResult(-1, "邮箱已存在");
+        result.setResult(ApiErrorCode::ApiError_EmailAlreadyExists);
         co_return result;
     }
     // 3. 组装对象
@@ -326,7 +326,7 @@ Task<HttpResult> AuthService::RegisterByPhone(
     // 检查验证码
     auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, code, eMFAType::Register);
     if(!isSuccess) {
-        result.setResult(-1, errMsg);
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
         co_return result;
     }
     // 数据库初始化
@@ -334,11 +334,11 @@ Task<HttpResult> AuthService::RegisterByPhone(
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
     // 查重
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
-        result.setResult(-1, "用户名已存在");
+        result.setResult(ApiErrorCode::ApiError_UsernameAlreadyExists);
         co_return result;
     }
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_telephone_number, CompareOperator::EQ, phoneNumber))) {
-        result.setResult(-1, "手机号已存在");
+        result.setResult(ApiErrorCode::ApiError_PhoneAlreadyExists);
         co_return result;
     }
     // 构建用户
@@ -377,7 +377,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     // 1. 检查验证码 (这里可以用 co_await 是因为 VerifyTheCode 返回的是 Task 或者 Awaitable)
     auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, verifyCode, eMFAType::Register);
     if(!isSuccess) {
-        result.setResult(-1, errMsg);
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
         co_return result;
     }
     // 2. 数据库查重
@@ -385,11 +385,11 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
     // 使用同步辅助函数
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
-        result.setResult(-1, "用户名已存在");
+        result.setResult(ApiErrorCode::ApiError_UsernameAlreadyExists);
         co_return result;
     }
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_email, CompareOperator::EQ, email))) {
-        result.setResult(-1, "邮箱已存在");
+        result.setResult(ApiErrorCode::ApiError_EmailAlreadyExists);
         co_return result;
     }
     // 3. 检查第三方平台验证码
@@ -399,7 +399,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     }
     // 4. 检查是否已绑定
     if(result.jsondata["allready_bind"].asBool()) {
-        result.setResult(-1, "该邮箱已绑定过账号");
+        result.setResult(ApiErrorCode::ApiError_EmailAlreadyBound);
         co_return result;
     }
     // 4. 组装对象
@@ -432,7 +432,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     try{
         mapperThirdPartyInfo.insert(newThirdPartyInfo);
     }catch (const drogon::orm::UnexpectedRows &e) {
-        result.setResult(-1, "插入第三方账号失败, 但账号已创建, 可之后再绑定");
+        result.setResult(ApiErrorCode::ApiError_ThirdPartyInfoCreationFailure, "插入第三方账号失败, 但账号已创建, 可之后再绑定");
         result.jsondata["userCreatedButThirdPartyNotBind"] = true;
         co_return result;
     }
@@ -460,7 +460,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     // 1. 检查验证码
     auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, verifyCode, eMFAType::Register);
     if(!isSuccess) {
-        result.setResult(-1, errMsg);
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
         co_return result;
     }
     // 2. 数据库查重
@@ -468,11 +468,11 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
     // 使用同步辅助函数
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
-        result.setResult(-1, "用户名已存在");
+        result.setResult(ApiErrorCode::ApiError_UsernameAlreadyExists);
         co_return result;
     }
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_telephone_number, CompareOperator::EQ, phoneNumber))) {
-        result.setResult(-1, "手机号已存在");
+        result.setResult(ApiErrorCode::ApiError_PhoneAlreadyExists);
         co_return result;
     }
     // 3. 检查第三方平台验证码
@@ -482,7 +482,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     }
     // 4. 检查是否已绑定
     if(result.jsondata["allready_bind"].asBool()) {
-        result.setResult(-1, "该第三方账号已绑定过账号");
+        result.setResult(ApiErrorCode::ApiError_PlatformAlreadyBound);
         co_return result;
     }
     // 4. 组装对象
@@ -517,7 +517,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     try{
         mapperThirdPartyInfo.insert(newThirdPartyInfo);
     }catch (const drogon::orm::UnexpectedRows &e) {
-        result.setResult(-1, "插入第三方账号失败, 但账号已创建, 可之后再绑定");
+        result.setResult(ApiErrorCode::ApiError_ThirdPartyInfoCreationFailure, "插入第三方账号失败, 但账号已创建, 可之后再绑定");
         result.jsondata["userCreatedButThirdPartyNotBind"] = true;
         co_return result;
     }
@@ -543,7 +543,7 @@ drogon::Task<bool> AuthService::CheckTokenStatus(const int &userId, const int &s
 
     if (isFlashToken) {
         if (token.getValueOfStatus() != status)
-            co_return false;
+        co_return false;
     }
     else {
         if (token.getValueOfStatusForToken() != status)
@@ -558,7 +558,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::s
     HttpResult result;
 
     if (userName.empty() || pwd.empty()) {
-        result.setResult(-1, "缺少用户名或密码");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少用户名或密码");
         co_return result;
     }
 
@@ -571,32 +571,32 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::s
         targetUser = mapperUsers.findFutureOne(Criteria(User::Cols::_name, CompareOperator::EQ, userName)).get();
     }catch (const UnexpectedRows &e) {
         LOG_ERROR << "查询用户失败:" << e.what();
-        result.setResult(-1, "用户名或密码错误");
+        result.setResult(ApiErrorCode::ApiError_InvalidCredentials);
         co_return result;
     }
 
     auto hash = targetUser.getPasswordHash();
     auto salt = targetUser.getPasswordSalt();
     if(!hash || !salt){
-        result.setResult(-1, "用户没有设置密码");
+        result.setResult(ApiErrorCode::ApiError_PasswordNotSet);
         co_return result;
     }
 
     if(!VerifyPasswordHash(pwd, hash, salt)){
-        result.setResult(-1, "用户名或密码错误");
+        result.setResult(ApiErrorCode::ApiError_InvalidCredentials);
         co_return result;
     }
 
     auto [token, flashToken, status] = co_await NewTokenPair(targetUser.getValueOfId());
     if (status == -1) {
-        result.setResult(-1, "更新状态失败");
+        result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新状态失败");
         co_return result;
     }
 
     result.jsondata["flashToken"] = flashToken;
     result.jsondata["token"] = token;
     result.jsondata["id"] = targetUser.getValueOfId();
-    result.setResult(0, "登录成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "登录成功");
 
     co_return result;
 }
@@ -620,7 +620,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
     // 没找到会抛出异常, 但是不立刻返回, 还需要检查验证码
     catch (UnexpectedRows& e){
         LOG_ERROR << "邮箱验证码登录查询用户时出错! 用户不存在!";
-        result.setResult(-1, "用户不存在!");
+        result.setResult(ApiErrorCode::ApiError_UserNotFound, "用户不存在!");
         result.jsondata["isUserNotExist"] = true;
     }
     if (!userFound) {
@@ -631,20 +631,20 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
     auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, code, eMFAType::Login);
     if(!isSuccess) {
         LOG_ERROR << "登录验证码验证错误: " << errMsg;
-        result.setResult(-1, "验证码错误");
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, "验证码错误");
         co_return result;
     }
 
     auto [token2, flashToken2, status2] = co_await NewTokenPair(targetUser.getValueOfId());
     if (status2 == -1) {
-        result.setResult(-1, "更新状态失败");
+        result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新状态失败");
         co_return result;
     }
 
     result.jsondata["flashToken"] = flashToken2;
     result.jsondata["token"] = token2;
     result.jsondata["id"] = targetUser.getValueOfId();
-    result.setResult(0, "登录成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "登录成功");
 
     co_return result;
 }
@@ -662,7 +662,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userI
         targetUser = mapperUsers.findByPrimaryKey(userId);
         isUserExist = true;
     } catch (const UnexpectedRows& e) {
-        result.setResult(-1, "用户不存在");
+        result.setResult(ApiErrorCode::ApiError_UserNotFound, "用户不存在");
     }
     if(!isUserExist){
         co_return result;
@@ -670,14 +670,14 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userI
 
     auto [token, flashToken, status] = co_await NewTokenPair(targetUser.getValueOfId());
     if (status == -1) {
-        result.setResult(-1, "更新状态失败");
+        result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新状态失败");
         co_return result;
     }
 
     result.jsondata["flashToken"] = flashToken;
     result.jsondata["token"] = token;
     result.jsondata["id"] = targetUser.getValueOfId();
-    result.setResult(0, "登录成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "登录成功");
 
     co_return result;
 }
@@ -695,17 +695,17 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByFlashToken(const
 
     auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(flashToken);
     if(isFlashToken != 1){
-        result.setResult(-1, "不是FlashToken");
+        result.setResult(ApiErrorCode::ApiError_FlashTokenInvalidType);
         co_return result;
     }
     if(!isSuccess || userId == -1){
-        result.setResult(-1, "FlashToken验证失败");
+        result.setResult(ApiErrorCode::ApiError_FlashTokenVerificationFailed);
         co_return result;
     }
 
     bool valid = co_await CheckTokenStatus(userId, status, true);
     if(!valid){
-        result.setResult(-1, "FlashToken已失效");
+        result.setResult(ApiErrorCode::ApiError_FlashTokenExpired);
         co_return result;
     }
 
@@ -713,7 +713,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByFlashToken(const
     result.jsondata["token"] = token;
     result.jsondata["flashToken"] = flashToken;
     result.jsondata["id"] = userId;
-    result.setResult(0, "刷新成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "刷新成功");
     co_return result;
 }
 
@@ -721,17 +721,17 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::
     HttpResult result;
 
     if(token.empty()){
-        result.setResult(-1, "缺少Token");
+        result.setResult(ApiErrorCode::ApiError_TokenMissing);
         co_return result;
     }
 
     result = co_await VerifyToken(token);
     if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(-1, "不是token");
+        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
         co_return result;
     }
     if(result.code != 0){
-        result.setResult(-1, "Token已失效");
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
         co_return result;
     }
     int userId = result.jsondata["userId"].asInt();
@@ -745,7 +745,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::
         user = mapperUser.findByPrimaryKey(userId);
         found = true;
     } catch (const UnexpectedRows &e) {
-        result.setResult(-1, "数据库错误");
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
     }
     if (!found) {
         co_return result;
@@ -794,7 +794,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::
         result.jsondata["emails"].append(user.getValueOfEmail());
     }
 
-    result.setResult(0, "success");
+    result.setResult(ApiErrorCode::ApiError_Success, "success");
     co_return result;
 }
 
@@ -808,14 +808,14 @@ Task<HttpResult> AuthService::ExecuteRegistrationTransaction(
     // 1. 同步创建 GitLab 账号
     int gitlabUserId = 0;
     if(!_gitlabService->createUser(preparedUser.getValueOfName(), rawPassword, gitlabEmail, gitlabUserId)){
-        result.setResult(-1, "创建 GitLab 账号失败");
+        result.setResult(ApiErrorCode::ApiError_GitLabAccountCreationFailure);
         co_return result;
     }
     // 2. 邀请用户加入项目
     if(!_gitlabService->adminInvitationProject(1, UEAdminAPI::GitlabService::AccessLevels::Developer, gitlabUserId)){
         // 注意：这里如果失败，理论上也应该回滚删除刚创建的 Gitlab 用户，原代码未处理，这里建议加上
         _gitlabService->deleteUser(gitlabUserId); 
-        result.setResult(-1, "邀请用户加入项目失败");
+        result.setResult(ApiErrorCode::ApiError_GitLabProjectInvitationFailure);
         co_return result;
     }
     // 3. 创建 gitlab impersonation token
@@ -823,7 +823,7 @@ Task<HttpResult> AuthService::ExecuteRegistrationTransaction(
     std::string gitlabImpersonationToken = "";
     if(!_gitlabService->createImpersonationToken(gitlabUserId, gitlabImpersonationToken, gitImpersonationTokenId)){
         _gitlabService->deleteUser(gitlabUserId);
-        result.setResult(-1, "创建 GitLab Impersonation Token失败");
+        result.setResult(ApiErrorCode::ApiError_GitLabTokenCreationFailure);
         co_return result;
     }
     // 4. 数据库操作准备
@@ -875,12 +875,12 @@ Task<HttpResult> AuthService::ExecuteRegistrationTransaction(
                 LOG_ERROR << "创建用户失败, 回滚时删除先前插入的用户数据失败";
             }
         }
-        result.setResult(-1, "创建用户失败");
+        result.setResult(ApiErrorCode::ApiError_UserCreationFailure);
         co_return result;
     }
     
     // 成功
-    result.setResult(0, "创建用户成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "创建用户成功");
     result.jsondata["userId"] = preparedUser.getValueOfId();
     co_return result;
 }
@@ -906,18 +906,18 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
 
     result = co_await VerifyToken(token);
     if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(-1, "不是token");
+        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
         co_return result;
     }
     if(result.code != 0){
-        result.setResult(-1, "Token已失效");
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
         co_return result;
     }
     int userId = result.jsondata["userId"].asInt();
 
     auto [mfaOk, mfaErr] = co_await VerifyUserTargetMFA(pm.getParam("target"), pm.getParam("verifyCode"), userId, eMFAType::ModifyUser);
     if (!mfaOk) {
-        result.setResult(-1, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
         co_return result;
     }
 
@@ -929,13 +929,13 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     try {
         user = mapperUser.findByPrimaryKey(userId);
     } catch (const UnexpectedRows &) {
-        result.setResult(-1, "用户不存在");
+        result.setResult(ApiErrorCode::ApiError_UserNotFound);
         co_return result;
     }
 
     if (pm.hasParam("email") && pm.hasParam("tel")) {
         isModified = true;
-        result.setResult(-1, "电话或邮箱不能同时修改");
+        result.setResult(ApiErrorCode::ApiError_ConcurrentModificationError);
         co_return result;
     }
     bool isEmailOrPhoneModified = pm.hasParam("email");
@@ -943,7 +943,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         isModified = true;
         auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(isEmailOrPhoneModified ? pm.getParam("email") : pm.getParam("tel"), pm.getParam("newEmailOrPhoneVerifyCode"), isEmailOrPhoneModified ? eMFAType::EmailBind : eMFAType::PhoneChange);
         if (!mfaOk) {
-            result.setResult(-1, mfaErr.empty() ? std::string("新邮箱或电话验证码错误") : mfaErr);
+            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("新邮箱或电话验证码错误") : mfaErr);
             co_return result;
         }
         if(isEmailOrPhoneModified) {
@@ -957,13 +957,13 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         isModified = true;
         const auto newName = pm.getParam("username");
         if (!DataFormatUtil::checkUserName(newName)) {
-            result.setResult(-1, "用户名格式不合法");
+            result.setResult(ApiErrorCode::ApiError_InvalidUsernameFormat);
             co_return result;
         }
         try {
             mapperUser.findOne(Criteria(User::Cols::_name, CompareOperator::EQ, newName) &&
                                Criteria(User::Cols::_id, CompareOperator::NE, userId));
-            result.setResult(-1, "用户名已存在");
+            result.setResult(ApiErrorCode::ApiError_UsernameAlreadyExists);
             co_return result;
         } catch (...) {}
         user.setName(newName);
@@ -993,23 +993,23 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
             tokenRow.setStatusForToken(-1);
             mapperUserFlashtoken.update(tokenRow);
         }catch(const UnexpectedRows &){
-            result.setResult(-2, "内部错误");
+            result.setResult(ApiErrorCode::ApiError_InternalError);
             co_return result;
         }
     }
 
     if (!isModified) {
-        result.setResult(-1, "没有修改项");
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "没有修改项");
         co_return result;
     }
 
     auto ret = mapperUser.update(user);
     if (ret != 1) {
-        result.setResult(-1, "更新失败");
+        result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新失败");
         co_return result;
     }
 
-    result.setResult(0, "更新成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "更新成功");
     co_return result;
 }
 
@@ -1025,17 +1025,17 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
     if (verifyCode.empty()) missing.push_back("verifyCode");
     if (!missing.empty()) {
         std::string msg = "缺少必填项: " + std::accumulate(missing.begin(), missing.end(), std::string(), [](const std::string& a, const std::string& b){ return a.empty() ? b : a + ", " + b; });
-        result.setResult(-1, msg);
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, msg);
         co_return result;
     }
 
     result = co_await VerifyToken(token);
     if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(-1, "不是token");
+        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
         co_return result;
     }
     if(result.code != 0){
-        result.setResult(-1, "Token已失效");
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
         co_return result;
     }
     int userId = result.jsondata["userId"].asInt();
@@ -1046,30 +1046,30 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
     try {
         user = mapperUser.findByPrimaryKey(userId);
     } catch (...) {
-        result.setResult(-1, "用户不存在");
+        result.setResult(ApiErrorCode::ApiError_UserNotFound);
         co_return result;
     }
 
     auto chType2 = MFAChannelBase::DetermineChannelType(target);
     if (chType2 == eChannelType::Email) {
         if (!user.getEmail() || user.getValueOfEmail() != target) {
-            result.setResult(-1, "目标未绑定到当前用户");
+            result.setResult(ApiErrorCode::ApiError_TargetNotBoundToUser, "目标未绑定到当前用户");
             co_return result;
         }
     } else if (chType2 == eChannelType::SMS) {
         auto [cc, pn] = CodePairBase::SMSCodePair::ParsePhoneNumber(target);
         if (!user.getTelephoneNumber() || user.getValueOfTelephoneNumber() != pn) {
-            result.setResult(-1, "目标未绑定到当前用户");
+            result.setResult(ApiErrorCode::ApiError_TargetNotBoundToUser, "目标未绑定到当前用户");
             co_return result;
         }
     } else {
-        result.setResult(-1, "无法判断渠道类型");
+        result.setResult(ApiErrorCode::ApiError_UnknownChannelType, "无法判断渠道类型");
         co_return result;
     }
 
     auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(target, verifyCode, eMFAType::DeleteUser);
     if (!mfaOk) {
-        result.setResult(-1, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
         co_return result;
     }
 
@@ -1096,7 +1096,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUserForce(int use
                 (void)_gitlabService->deleteImpersonationToken(static_cast<uint32_t>(gitlabId), static_cast<uint32_t>(gitInfo.getValueOfGitlabImpersonationTokenId()));
             }
             if (!_gitlabService->deleteUser(static_cast<uint32_t>(gitlabId))) {
-                result.setResult(-1, "删除 GitLab 用户失败");
+                result.setResult(ApiErrorCode::ApiError_GitLabAccountDeletionFailure);
                 co_return result;
             }
         }
@@ -1127,11 +1127,11 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUserForce(int use
     }
 
     if (!deleted) {
-        result.setResult(-1, "删除失败");
+        result.setResult(ApiErrorCode::ApiError_UserDeletionFailure);
         co_return result;
     }
 
-    result.setResult(0, "删除成功");
+    result.setResult(ApiErrorCode::ApiError_Success, "删除成功");
     co_return result;
 }
 

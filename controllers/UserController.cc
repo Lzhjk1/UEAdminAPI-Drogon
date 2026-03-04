@@ -20,7 +20,7 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
 
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
-        result.setResult(-1, "请求体必须是JSON格式");
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
         resp->setBody(result.toJsonString());
         resp->setStatusCode(k200OK);
         co_return resp;
@@ -54,7 +54,7 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     }
 
     if (!missings.empty()) {
-        result.setResult(-1, "缺少必要参数" + std::accumulate(missings.begin(), missings.end(), std::string(""), 
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必要参数" + std::accumulate(missings.begin(), missings.end(), std::string(""), 
             [](const std::string& a, const std::string& b) { return a + ", " + b; }));
         resp->setBody(result.toJsonString());
         resp->setStatusCode(k200OK);

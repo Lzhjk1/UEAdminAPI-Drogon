@@ -15,7 +15,7 @@ Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string t
 
     // 检查IP是否处于冷却
     if(IsInColdDown(req->getPeerAddr().toIp())) {    
-        result.setResult(-2, "发送过于频繁, 请稍后再试");
+        result.setResult(ApiErrorCode::ApiError_SendVerifyCodeTooFrequent, "发送过于频繁, 请稍后再试");
         resp->setBody(result.toJsonString());
         co_return resp;
     }
