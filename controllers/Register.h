@@ -13,6 +13,7 @@ class Register : public drogon::HttpController<Register>
     // METHOD_ADD(Register::your_method_name, "/{1}/{2}/list", Get); // path is /Register/{arg1}/{arg2}/list
     // ADD_METHOD_TO(Register::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
     ADD_METHOD_TO(Register::RegisterUser, "/user/create", Post);
+    ADD_METHOD_TO(Register::RegisterUserByPhone, "/user/create/phone?phone={1}&verifyCode={2}", Post);
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
@@ -23,5 +24,9 @@ class Register : public drogon::HttpController<Register>
     /// @param req 
     /// @return 成功时, 返回注册的用户的id
     Task<HttpResponsePtr> RegisterUser(HttpRequestPtr req);
+
+    /// @brief 快速注册用户, 通过手机号和验证码注册, 自动生成用户名和密码
+    Task<HttpResponsePtr> RegisterUserByPhone(HttpRequestPtr req, std::string phone, std::string verifyCode);
+
 
 };

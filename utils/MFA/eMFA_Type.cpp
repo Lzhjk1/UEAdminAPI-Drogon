@@ -66,6 +66,7 @@ eMFAType MFATypeToTencentSMSTemplateId(eMFAType type) {
         case eMFAType::PhoneChange: return eMFAType::Default;
         case eMFAType::DeleteUser: return eMFAType::Default;
         case eMFAType::ModifyUser: return eMFAType::Default;
-        default: throw std::invalid_argument("Unknown MFA type");
+        case eMFAType::LoginOrRegister: return eMFAType::Login;
+        default: throw std::invalid_argument("转换到腾讯云MFAType失败: Unknown MFA type");
     }
 }

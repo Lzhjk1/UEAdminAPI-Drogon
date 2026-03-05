@@ -44,6 +44,11 @@
 | | -309 | `ApiError_UserCreationFailure` | 创建用户失败 (回滚发生) |
 | | -510 | `ApiError_ThirdPartyInfoCreationFailure` | 创建第三方登录信息失败 |
 | | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
+| **/user/create/phone** (POST) | 0 | `ApiError_Success` | 注册成功 (返回 username, password) |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少必填项: ... |
+| | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
+| | -305 | `ApiError_PhoneAlreadyExists` | 手机号已存在 |
+| | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
 
 ### 3. 用户管理模块 (User Controller)
 

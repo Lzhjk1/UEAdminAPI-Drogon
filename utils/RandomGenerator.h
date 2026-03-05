@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <string>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
+#include <chrono>
 
 class RandomGenerator {
 private:
@@ -56,6 +59,18 @@ public:
 
     static std::string getRandNumberStr(int digits) {
         return std::to_string(getRandNumber64(digits));
+    }
+
+    // 生成随机用户名，格式：NewUser_+YYMMDDHHMMSS+1位随机值
+    static std::string generateRandomUsername() {
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+        std::tm now_tm;
+        localtime_s(&now_tm, &now_c);
+        
+        std::stringstream ss;
+        ss << "NewUser_" << std::put_time(&now_tm, "%y%m%d%H%M%S") << getInt(0, 9);
+        return ss.str();
     }
 
     // 生成随机密码，格式：4位字母+6位数字+1位符号+4位数字

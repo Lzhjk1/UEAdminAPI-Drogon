@@ -7,6 +7,7 @@
 #include "services/GitlabService.h"
 #include <utils/PostParamMap.h>
 #include <utils/HttpResult.h>
+#include <utils/RandomGenerator.h>
 #include <numeric>
 
 using namespace std;
@@ -152,5 +153,41 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
 
     resp->setBody(result.toJsonString());
 
+    co_return resp;
+}
+
+Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::string phone, std::string verifyCode) {
+    auto _authService = AuthService::Instance();
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    HttpResult result;
+
+    if (phone.empty() || verifyCode.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: phone, verifyCode");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    std::string username = RandomGenerator::generateRandomUsername();
+    std::string password = RandomGenerator::generateRandomPassword();
+
+    result = co_await _authService->RegisterByPhone(
+        username,
+        password,
+        phone,
+        verifyCode,
+        UserPrivileges::User,
+        true, 
+        ""
+    );
+
+    if (result.code == 0) {
+        result.jsondata["username"] = username;
+        result.jsondata["password"] = password;
+        result.msg = "注册成功, 请妥善保管您的用户名和密码";
+    }
+
+    resp->setBody(result.toJsonString());
     co_return resp;
 }
