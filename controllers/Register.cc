@@ -8,6 +8,7 @@
 #include <utils/PostParamMap.h>
 #include <utils/HttpResult.h>
 #include <utils/RandomGenerator.h>
+#include <utils/DataFormatUtils.h>
 #include <numeric>
 
 using namespace std;
@@ -99,9 +100,9 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     if(isEmailRegister) {
         if(isWithThirdPlatform){
             result = co_await _authService->RegisterWithThirdPartyByEmail(
-                paramMap.getParam("username"), 
-                paramMap.getParam("user_password"), 
-                paramMap.getParam("email"), 
+                paramMap.getParam("username"),
+                paramMap.getParam("user_password"),
+                paramMap.getParam("email"),
                 paramMap.getParam("verifyCode"),
                 paramMap.getParam("third_platform_name"),
                 paramMap.getParam("third_code"),
@@ -113,9 +114,9 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         }
         else{
             result = co_await _authService->RegisterByEmail(
-                paramMap.getParam("username"), 
-                paramMap.getParam("user_password"), 
-                paramMap.getParam("email"), 
+                paramMap.getParam("username"),
+                paramMap.getParam("user_password"),
+                paramMap.getParam("email"),
                 paramMap.getParam("verifyCode"),
                 privileges,
                 paramMap.getParam("isMale") == "true",
@@ -189,5 +190,39 @@ Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::str
     }
 
     resp->setBody(result.toJsonString());
+    co_return resp;
+}
+
+Task<HttpResponsePtr> Register::CheckUserExist(HttpRequestPtr req, std::string target) {
+    auto _authService = AuthService::Instance();
+    auto resp = HttpResponse::newHttpResponse();
+    HttpResult result;
+
+    if (target.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数: target");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
+    if(token.empty()){
+        result.setResult(ApiErrorCode::ApiError_TokenMissing, "Authorization in header");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    auto verifyResult = co_await _authService->VerifyToken(token);
+    if (verifyResult.code != 0) {
+        resp->setBody(verifyResult.toJsonString());
+        co_return resp;
+    }
+
+    bool exist = co_await _authService->CheckUserExist(target);
+
+    result.setResult(ApiErrorCode::ApiError_Success, exist ? "用户已存在" : "用户不存在");
+    result.jsondata["exist"] = exist;
+    
+    resp->setBody(result.toJsonString());
+    resp->setStatusCode(k200OK);
     co_return resp;
 }

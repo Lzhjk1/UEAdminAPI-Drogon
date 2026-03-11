@@ -61,6 +61,17 @@ public:
     /// @return 元组[总体成功与否, 用户Id, 状态码, 是否为flashToken(int)], token失效过期时id为-1, 仍会正常获取tokenType, 如果tokentype也没有则会返回-1
     std::tuple<bool, int, int, int> CheckTokenAndParseUserId(const std::string &token);
 
+    /// @brief 检查用户是否存在(通过邮箱或手机号)
+    /// @param email 邮箱 (可选)
+    /// @param phone 手机号 (可选)
+    /// @return true: 存在, false: 不存在
+    drogon::Task<bool> CheckUserExist(const std::string &email, const std::string &phone);
+
+    /// @brief 检查用户是否存在(智能判断是邮箱还是手机号)
+    /// @param target 邮箱或手机号
+    /// @return true: 存在, false: 不存在
+    drogon::Task<bool> CheckUserExist(const std::string &target);
+
     /// @brief 邮箱注册用户
     /// @param username 用户名
     /// @param password 密码
@@ -171,6 +182,8 @@ public:
     drogon::Task<UEAdminAPI::utils::HttpResult> VerifyToken(const std::string &token);
 
     // 更新当前登录用户的信息（直接接收 PostParamMap）
+    // 特殊情况说明: 如果当前用户未绑定邮箱和电话(如第三方登录创建的初始账号), 
+    // 则可以直接绑定邮箱或电话, 此时不需要提供 verifyCode 和 target 参数.
     drogon::Task<UEAdminAPI::utils::HttpResult> UpdateUserInfo(
         const std::string &token,
         const UEAdminAPI::PostParamMap &pm);

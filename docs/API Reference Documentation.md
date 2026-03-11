@@ -106,15 +106,43 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
-#### 2.2.2 手机号快速注册
-- **URL**: `/user/create/phone`
+#### 2.2.2 手机快速注册
+- **URL**: `/user/create/phone?phone={phone}&verifyCode={code}`
 - **Method**: `POST`
-- **Params (Query)**:
+- **Params**:
   - `phone` (string, required): 手机号
   - `verifyCode` (string, required): 验证码
-- **Description**: 自动生成用户名和密码。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "注册成功...",
+    "data": {
+      "username": "...",
+      "password": "..."
+    }
+  }
+  ```
 
-### 2.3 验证码 (Verify Code)
+#### 2.2.3 检查用户是否存在
+- **URL**: `/user/check_exist?target={target}`
+- **Method**: `GET`
+- **Headers**:
+  - `Authorization`: Token
+- **Params**:
+  - `target` (string, required): 邮箱或手机号
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "用户已存在" / "用户不存在",
+    "data": {
+      "exist": true / false
+    }
+  }
+  ```
+
+### 2.3 验证码 (Verification Code)
 
 #### 2.3.1 发送验证码
 - **URL**: `/user/mfa`

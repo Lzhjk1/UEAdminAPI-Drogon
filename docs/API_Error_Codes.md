@@ -49,6 +49,11 @@
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 | | -305 | `ApiError_PhoneAlreadyExists` | 手机号已存在 |
 | | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
+| **/user/check_exist** (GET) | 0 | `ApiError_Success` | 用户已存在/不存在 |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少参数: target |
+| | -203 | `ApiError_TokenMissing` | 缺少Token |
+| | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
+| | -202 | `ApiError_InvalidTokenType` | Token类型错误 |
 
 ### 3. 用户管理模块 (User Controller)
 

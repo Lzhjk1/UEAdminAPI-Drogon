@@ -266,6 +266,36 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
     co_return result;
 }
 
+drogon::Task<bool> AuthService::CheckUserExist(const std::string &email, const std::string &phone) {
+    auto dbClientPtr = drogon::app().getDbClient();
+    drogon::orm::Mapper<User> mapper(dbClientPtr);
+
+    if (!email.empty()) {
+        try {
+            mapper.findOne(Criteria(User::Cols::_email, CompareOperator::EQ, email));
+            co_return true;
+        } catch (...) {}
+    }
+
+    if (!phone.empty()) {
+        try {
+            mapper.findOne(Criteria(User::Cols::_telephone_number, CompareOperator::EQ, phone));
+            co_return true;
+        } catch (...) {}
+    }
+
+    co_return false;
+}
+
+drogon::Task<bool> AuthService::CheckUserExist(const std::string &target) {
+    if (DataFormatUtil::isEmail(target)) {
+        co_return co_await CheckUserExist(target, "");
+    } else if (DataFormatUtil::isPhoneNumber(target)) {
+        co_return co_await CheckUserExist("", target);
+    }
+    co_return false;
+}
+
 Task<HttpResult> AuthService::RegisterByEmail(
     const std::string &username, 
     const std::string &password, 
@@ -276,7 +306,7 @@ Task<HttpResult> AuthService::RegisterByEmail(
     const std::string &nickname) {
     HttpResult result;
     auto _mfaService = MFAService::Instance();
-    // 1. 检查验证码 (这里可以用 co_await 是因为 VerifyTheCode 返回的是 Task 或者 Awaitable)
+    // 1. 检查验证码
     auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, code, eMFAType::Register);
     if(!isSuccess) {
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
@@ -904,6 +934,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     auto _mfaService = MFAService::Instance();
     UEAdminAPI::utils::HttpResult result;
 
+    // 1. 验证 Token 有效性
     result = co_await VerifyToken(token);
     if(result.jsondata["tokenType"].asString() != "token"){
         result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
@@ -915,17 +946,13 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     }
     int userId = result.jsondata["userId"].asInt();
 
-    auto [mfaOk, mfaErr] = co_await VerifyUserTargetMFA(pm.getParam("target"), pm.getParam("verifyCode"), userId, eMFAType::ModifyUser);
-    if (!mfaOk) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
-        co_return result;
-    }
-
     bool isModified = false;
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<User> mapperUser(dbClientPtr);
     Mapper<UserFlashtoken> mapperUserFlashtoken(dbClientPtr);
     User user;
+    
+    // 2. 获取当前用户信息
     try {
         user = mapperUser.findByPrimaryKey(userId);
     } catch (const UnexpectedRows &) {
@@ -933,7 +960,22 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         co_return result;
     }
 
+    // 3. 验证操作本身的 MFA (确保是本人操作)
+    // 如果用户没有绑定邮箱和手机号(第三方登录创建的初始账号), 则跳过此验证, 允许直接绑定
+    bool hasEmail = user.getEmail() && !user.getValueOfEmail().empty();
+    bool hasPhone = user.getTelephoneNumber() && !user.getValueOfTelephoneNumber().empty();
+
+    if (hasEmail || hasPhone) {
+        auto [mfaOk, mfaErr] = co_await VerifyUserTargetMFA(pm.getParam("target"), pm.getParam("verifyCode"), userId, eMFAType::ModifyUser);
+        if (!mfaOk) {
+            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
+            co_return result;
+        }
+    }
+
+    // 4. 处理邮箱或电话修改
     if (pm.hasParam("email") && pm.hasParam("tel")) {
+        // 不允许同时修改邮箱和电话
         isModified = true;
         result.setResult(ApiErrorCode::ApiError_ConcurrentModificationError);
         co_return result;
@@ -941,18 +983,36 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     bool isEmailOrPhoneModified = pm.hasParam("email");
     if (pm.hasParam("email") || pm.hasParam("tel")) {
         isModified = true;
+        // 验证新邮箱或新电话的验证码
         auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(isEmailOrPhoneModified ? pm.getParam("email") : pm.getParam("tel"), pm.getParam("newEmailOrPhoneVerifyCode"), isEmailOrPhoneModified ? eMFAType::EmailBind : eMFAType::PhoneChange);
         if (!mfaOk) {
             result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("新邮箱或电话验证码错误") : mfaErr);
             co_return result;
         }
         if(isEmailOrPhoneModified) {
-            user.setEmail(pm.getParam("email"));
+            const auto newEmail = pm.getParam("email");
+            try {
+                // 检查邮箱唯一性 (排除自己)
+                mapperUser.findOne(Criteria(User::Cols::_email, CompareOperator::EQ, newEmail) &&
+                                   Criteria(User::Cols::_id, CompareOperator::NE, userId));
+                result.setResult(ApiErrorCode::ApiError_EmailAlreadyExists);
+                co_return result;
+            } catch (...) {}
+            user.setEmail(newEmail);
         } else {
-            user.setTelephoneNumber(pm.getParam("tel"));
+            const auto newTel = pm.getParam("tel");
+            try {
+                // 检查电话唯一性 (排除自己)
+                mapperUser.findOne(Criteria(User::Cols::_telephone_number, CompareOperator::EQ, newTel) &&
+                                   Criteria(User::Cols::_id, CompareOperator::NE, userId));
+                result.setResult(ApiErrorCode::ApiError_PhoneAlreadyExists);
+                co_return result;
+            } catch (...) {}
+            user.setTelephoneNumber(newTel);
         }
     }
 
+    // 5. 处理用户名修改
     if (pm.hasParam("username")) {
         isModified = true;
         const auto newName = pm.getParam("username");
@@ -961,6 +1021,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
             co_return result;
         }
         try {
+            // 检查用户名唯一性 (排除自己)
             mapperUser.findOne(Criteria(User::Cols::_name, CompareOperator::EQ, newName) &&
                                Criteria(User::Cols::_id, CompareOperator::NE, userId));
             result.setResult(ApiErrorCode::ApiError_UsernameAlreadyExists);
@@ -969,11 +1030,13 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         user.setName(newName);
     }
 
+    // 6. 处理昵称修改
     if (pm.hasParam("nickname")) {
         isModified = true;
         user.setNickName(pm.getParam("nickname"));
     }
 
+    // 7. 处理性别修改
     if (pm.hasParam("isMale")) {
         isModified = true;
         const auto v = pm.getParam("isMale");
@@ -981,12 +1044,13 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         user.setIsMale(male);
     }
 
+    // 8. 处理密码修改
     if (pm.hasParam("user_password")) {
         isModified = true;
         auto [hash, salt] = CreateStrPasswordHash(pm.getParam("user_password"));
         user.setPasswordHash(hash);
         user.setPasswordSalt(salt);
-        // 密码更改, 登录应该失效, 这里通过更新status的方式
+        // 密码更改后, 使当前所有登录 Token 失效
         try{
             auto tokenRow = mapperUserFlashtoken.findOne(Criteria(UserFlashtoken::Cols::_user_id, CompareOperator::EQ, userId));
             tokenRow.setStatus(-1);
@@ -998,11 +1062,13 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         }
     }
 
+    // 9. 检查是否有修改项
     if (!isModified) {
         result.setResult(ApiErrorCode::ApiError_InvalidOperation, "没有修改项");
         co_return result;
     }
 
+    // 10. 执行数据库更新
     auto ret = mapperUser.update(user);
     if (ret != 1) {
         result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新失败");
@@ -1161,8 +1227,14 @@ drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(
 drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(const std::string &target, const std::string &verifyCode, const drogon_model::UEAdminAPI::User &user, eMFAType type) {
     auto _mfaService = MFAService::Instance();
 
-    if (target.empty() || verifyCode.empty() || user.getValueOfId() <= 0) {
-        co_return std::make_tuple(false, std::string("缺少必要参数"));
+    std::vector<std::string> missing;
+    if (target.empty()) missing.push_back("target");
+    if (verifyCode.empty()) missing.push_back("verifyCode");
+    if (user.getValueOfId() <= 0) missing.push_back("user");
+
+    if (!missing.empty()) {
+        std::string msg = "缺少必要参数: " + std::accumulate(missing.begin(), missing.end(), std::string(), [](const std::string& a, const std::string& b){ return a.empty() ? b : a + ", " + b; });
+        co_return std::make_tuple(false, msg);
     }
 
     auto chType = MFAChannelBase::DetermineChannelType(target);

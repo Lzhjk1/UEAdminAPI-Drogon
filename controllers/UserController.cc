@@ -27,8 +27,10 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     }
 
     PostParamMap pm;
-    pm.addParam("verifyCode", true)
-      .addParam("target", true)
+    // verifyCode 和 target 用于 MFA 验证 (修改敏感信息时需要)
+    // 特殊情况: 如果用户未绑定邮箱和电话(如第三方登录创建的初始账号), 则可以直接绑定, 此时不需要这两个参数
+    pm.addParam("verifyCode", false)
+      .addParam("target", false)
       .addParam("username", false)
       .addParam("nickname", false)
       .addParam("email", false)
