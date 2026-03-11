@@ -185,13 +185,13 @@ public:
     drogon::Task<UEAdminAPI::utils::HttpResult> DeleteUserForce(int userId);
 
     // 验证指定用户的绑定目标并校验MFA验证码
+    // 重载: 传入userId, 从数据读取user记录对象后, 再传入主要函数
     drogon::Task<std::tuple<bool, std::string>> VerifyUserTargetMFA(
         const std::string &target,
         const std::string &verifyCode,
         int userId,
         eMFAType type);
     // 验证指定用户的绑定目标并校验MFA验证码
-    // 重载: 直接使用传入的user对象
     drogon::Task<std::tuple<bool, std::string>> VerifyUserTargetMFA(
         const std::string &target,
         const std::string &verifyCode,

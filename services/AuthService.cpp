@@ -6,12 +6,11 @@
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <numeric>
 
 #include "services/AuthService.h"
 #include "services/MFAService.h"
 #include "services/GitLabService.h"
-#include "utils/MFA/MFA_Channels.h"
-#include "utils/MFA/MFACodePair.h"
 #include "services/ThirdPartyLoginService.h"
 
 #include "models/UserFlashtoken.h"
@@ -20,11 +19,12 @@
 #include "models/UserThirdPartyInfo.h"
 #include "models/ThirdpartyPlatforms.h"
 
-#include <utils/EnumUserPrivileges.h>
-#include <utils/RandomGenerator.h>
-#include <utils/DataFormatUtils.h>
-#include <numeric>
-#include <utils/PostParamMap.h>
+#include "utils/EnumUserPrivileges.h"
+#include "utils/RandomGenerator.h"
+#include "utils/DataFormatUtils.h"
+#include "utils/MFA/MFA_Channels.h"
+#include "utils/MFA/MFACodePair.h"
+#include "utils/PostParamMap.h"
 
 using namespace drogon_model::UEAdminAPI;
 using namespace drogon::orm;
