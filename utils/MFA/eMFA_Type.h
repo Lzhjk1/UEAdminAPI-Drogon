@@ -27,6 +27,7 @@ enum class eMFAType : uint32_t {
     PhoneChange = 1 << 6,
     DeleteUser = 1 << 7,
     ModifyUser = 1 << 8,
+    Unbind = 1 << 9,
     LoginOrRegister = (1 << 1) | (1 << 2)
 };
 

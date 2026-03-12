@@ -36,6 +36,8 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
       .addParam("email", false)
       .addParam("tel", false)
       .addParam("newEmailOrPhoneVerifyCode", false)
+      .addParam("unbindEmail", false)
+      .addParam("unbindPhone", false)
       .addParam("isMale", false)
       .addParam("user_password", false);
 
@@ -51,8 +53,17 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
         missings.push_back("email和tel不可同时修改");
     }
 
-    if((pm.hasParam("email") || pm.hasParam("tel")) && !pm.hasParam("newEmailOrPhoneVerifyCode")){
-        missings.push_back("修改email或tel需要提供新邮箱或电话的验证码");
+    // 检查解绑参数互斥
+    if(pm.hasParam("unbindEmail") && pm.hasParam("email")) {
+        missings.push_back("不可同时修改和解绑邮箱");
+    }
+    if(pm.hasParam("unbindPhone") && pm.hasParam("tel")) {
+        missings.push_back("不可同时修改和解绑电话");
+    }
+
+    // 修改邮箱或电话需要验证码, 解绑也需要原邮箱或电话的验证码
+    if((pm.hasParam("email") || pm.hasParam("tel") || pm.hasParam("unbindEmail") || pm.hasParam("unbindPhone")) && !pm.hasParam("newEmailOrPhoneVerifyCode")){
+        missings.push_back("修改/解绑email或tel需要提供验证码");
     }
 
     if (!missings.empty()) {

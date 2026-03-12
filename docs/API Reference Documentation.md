@@ -162,6 +162,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Body**:
   ```json
   {
+    // 当账号既没有手机号码也没有邮箱时, 不需要头两个参数
     "verifyCode": "...",             // (Required) 当前绑定方式的验证码
     "target": "...",                 // (Required) 验证码发送的目标(邮箱/手机)
     "username": "new_name",          // (Optional)

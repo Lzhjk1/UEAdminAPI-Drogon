@@ -18,6 +18,7 @@ eMFAType stringToMFAType(const std::string& str) {
     else if (lowerStr == "phonechange") return eMFAType::PhoneChange;
     else if (lowerStr == "deleteuser") return eMFAType::DeleteUser;
     else if (lowerStr == "modifyuser") return eMFAType::ModifyUser;
+    else if (lowerStr == "unbind") return eMFAType::Unbind;
     else if (lowerStr == "loginorregister") return eMFAType::LoginOrRegister;
     
     LOG_ERROR << "发现未知的MFA类型: " + str;
@@ -36,6 +37,8 @@ std::string MFATypeToString(eMFAType type) {
         case eMFAType::PhoneChange: return "PhoneChange";
         case eMFAType::DeleteUser: return "DeleteUser";
         case eMFAType::ModifyUser: return "ModifyUser";
+        case eMFAType::Unbind: return "Unbind";
+        case eMFAType::LoginOrRegister: return "LoginOrRegister";
         default: throw std::invalid_argument("Unknown MFA type");
     }
 }
@@ -66,6 +69,7 @@ eMFAType MFATypeToTencentSMSTemplateId(eMFAType type) {
         case eMFAType::PhoneChange: return eMFAType::Default;
         case eMFAType::DeleteUser: return eMFAType::Default;
         case eMFAType::ModifyUser: return eMFAType::Default;
+        case eMFAType::Unbind: return eMFAType::Default;
         case eMFAType::LoginOrRegister: return eMFAType::Login;
         default: throw std::invalid_argument("转换到腾讯云MFAType失败: Unknown MFA type");
     }

@@ -973,43 +973,71 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         }
     }
 
-    // 4. 处理邮箱或电话修改
+    // 4. 处理邮箱或电话修改/解绑
+    bool unbindEmail = pm.hasParam("unbindEmail") && pm.getParam("unbindEmail") == "true";
+    bool unbindPhone = pm.hasParam("unbindPhone") && pm.getParam("unbindPhone") == "true";
+
     if (pm.hasParam("email") && pm.hasParam("tel")) {
         // 不允许同时修改邮箱和电话
         isModified = true;
         result.setResult(ApiErrorCode::ApiError_ConcurrentModificationError);
         co_return result;
     }
-    bool isEmailOrPhoneModified = pm.hasParam("email");
-    if (pm.hasParam("email") || pm.hasParam("tel")) {
+
+    if (unbindEmail) {
         isModified = true;
-        // 验证新邮箱或新电话的验证码
-        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(isEmailOrPhoneModified ? pm.getParam("email") : pm.getParam("tel"), pm.getParam("newEmailOrPhoneVerifyCode"), isEmailOrPhoneModified ? eMFAType::EmailBind : eMFAType::PhoneChange);
+        // 解绑邮箱需要验证码
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(user.getValueOfEmail(), pm.getParam("newEmailOrPhoneVerifyCode"), eMFAType::Unbind);
         if (!mfaOk) {
-            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("新邮箱或电话验证码错误") : mfaErr);
+            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("解绑邮箱验证码错误") : mfaErr);
             co_return result;
         }
-        if(isEmailOrPhoneModified) {
-            const auto newEmail = pm.getParam("email");
-            try {
-                // 检查邮箱唯一性 (排除自己)
-                mapperUser.findOne(Criteria(User::Cols::_email, CompareOperator::EQ, newEmail) &&
-                                   Criteria(User::Cols::_id, CompareOperator::NE, userId));
-                result.setResult(ApiErrorCode::ApiError_EmailAlreadyExists);
-                co_return result;
-            } catch (...) {}
-            user.setEmail(newEmail);
-        } else {
-            const auto newTel = pm.getParam("tel");
-            try {
-                // 检查电话唯一性 (排除自己)
-                mapperUser.findOne(Criteria(User::Cols::_telephone_number, CompareOperator::EQ, newTel) &&
-                                   Criteria(User::Cols::_id, CompareOperator::NE, userId));
-                result.setResult(ApiErrorCode::ApiError_PhoneAlreadyExists);
-                co_return result;
-            } catch (...) {}
-            user.setTelephoneNumber(newTel);
+        user.setEmailToNull();
+    } else if (pm.hasParam("email")) {
+        isModified = true;
+        // 验证新邮箱验证码
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(pm.getParam("email"), pm.getParam("newEmailOrPhoneVerifyCode"), eMFAType::EmailBind);
+        if (!mfaOk) {
+            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("新邮箱验证码错误") : mfaErr);
+            co_return result;
         }
+        const auto newEmail = pm.getParam("email");
+        try {
+            // 检查邮箱唯一性 (排除自己)
+            mapperUser.findOne(Criteria(User::Cols::_email, CompareOperator::EQ, newEmail) &&
+                               Criteria(User::Cols::_id, CompareOperator::NE, userId));
+            result.setResult(ApiErrorCode::ApiError_EmailAlreadyExists);
+            co_return result;
+        } catch (...) {}
+        user.setEmail(newEmail);
+    }
+
+    if (unbindPhone) {
+        isModified = true;
+        // 解绑电话需要验证码
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(user.getValueOfTelephoneNumber(), pm.getParam("newEmailOrPhoneVerifyCode"), eMFAType::Unbind);
+        if (!mfaOk) {
+            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("解绑电话验证码错误") : mfaErr);
+            co_return result;
+        }
+        user.setTelephoneNumberToNull();
+    } else if (pm.hasParam("tel")) {
+        isModified = true;
+        // 验证新电话验证码
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(pm.getParam("tel"), pm.getParam("newEmailOrPhoneVerifyCode"), eMFAType::PhoneChange);
+        if (!mfaOk) {
+            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("新电话验证码错误") : mfaErr);
+            co_return result;
+        }
+        const auto newTel = pm.getParam("tel");
+        try {
+            // 检查电话唯一性 (排除自己)
+            mapperUser.findOne(Criteria(User::Cols::_telephone_number, CompareOperator::EQ, newTel) &&
+                               Criteria(User::Cols::_id, CompareOperator::NE, userId));
+            result.setResult(ApiErrorCode::ApiError_PhoneAlreadyExists);
+            co_return result;
+        } catch (...) {}
+        user.setTelephoneNumber(newTel);
     }
 
     // 5. 处理用户名修改
