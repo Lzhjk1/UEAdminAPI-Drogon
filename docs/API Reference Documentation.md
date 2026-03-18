@@ -49,6 +49,18 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Params**:
   - `userName` (string, required): 用户名
   - `passWord` (string, required): 密码
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "登录成功",
+    "data": {
+      "id": 1,
+      "token": "eyJhbGci...",
+      "flashToken": "eyJhbGci..."
+    }
+  }
+  ```
 
 #### 2.1.2 邮箱验证码登录
 - **URL**: `/user/login/email`
@@ -56,6 +68,18 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Params**:
   - `email` (string, required): 邮箱地址
   - `code` (string, required): 验证码
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "登录成功",
+    "data": {
+      "id": 1,
+      "token": "eyJhbGci...",
+      "flashToken": "eyJhbGci..."
+    }
+  }
+  ```
 
 #### 2.1.3 手机验证码登录
 - **URL**: `/user/login/phone`
@@ -63,12 +87,36 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Params**:
   - `phone` (string, required): 手机号
   - `code` (string, required): 验证码
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "登录成功",
+    "data": {
+      "id": 1,
+      "token": "eyJhbGci...",
+      "flashToken": "eyJhbGci..."
+    }
+  }
+  ```
 
 #### 2.1.4 FlashToken 登录
 - **URL**: `/user/login/flashtoken`
 - **Method**: `GET`
 - **Headers**:
   - `AuthorizationFlashToken`: FlashToken 字符串
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "登录成功",
+    "data": {
+      "id": 1,
+      "token": "eyJhbGci...",
+      "flashToken": "eyJhbGci..."
+    }
+  }
+  ```
 
 #### 2.1.5 验证 Token
 - **URL**: `/user/token/verify`
@@ -76,12 +124,41 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Headers**:
   - `Authorization`: Token
 - **Description**: 验证 Token 是否有效，并返回 Token 相关信息。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "Token验证成功",
+    "data": {
+      "userId": 1,
+      "tokenType": "token",
+      "exp": 1698765432
+    }
+  }
+  ```
 
 #### 2.1.6 获取个人信息
 - **URL**: `/user/self`
 - **Method**: `GET`
 - **Headers**:
   - `Authorization`: Token
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "获取成功",
+    "data": {
+      "id": 1,
+      "name": "user1",
+      "nickname": "Nick",
+      "email": "test@ex.com",
+      "telephoneNumber": "13800000000",
+      "privilege": 0,
+      "is_male": true,
+      "create_at": "2023-10-01 12:00:00"
+    }
+  }
+  ```
 
 ### 2.2 注册 (Register)
 
@@ -105,6 +182,16 @@ GitLab 相关接口目前使用独立的响应格式：
     "third_verifyCode": ""     // (Required if platform set) 第三方 VerifyCode
   }
   ```
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "创建用户成功",
+    "data": {
+      "userId": 2
+    }
+  }
+  ```
 
 #### 2.2.2 手机快速注册
 - **URL**: `/user/create/phone?phone={phone}&verifyCode={code}`
@@ -116,7 +203,7 @@ GitLab 相关接口目前使用独立的响应格式：
   ```json
   {
     "code": 0,
-    "msg": "注册成功...",
+    "msg": "注册成功",
     "data": {
       "username": "...",
       "password": "..."
@@ -150,6 +237,14 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Params**:
   - `target` (string, required): 邮箱或手机号
   - `type` (string, required): 类型 (通常由后端自动识别，但参数名为 type)
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "验证码发送成功.",
+    "data": null
+  }
+  ```
 
 ---
 
@@ -174,14 +269,31 @@ GitLab 相关接口目前使用独立的响应格式：
     "user_password": "..."           // (Optional)
   }
   ```
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "更新成功",
+    "data": null
+  }
+  ```
 
 ### 3.2 删除用户
 - **URL**: `/user/delete`
 - **Method**: `POST`
 - **Headers**: `Authorization`
 - **Params (Query)**:
-  - `verifyCode` (string, required): 验证码
-  - `target` (string, required): 验证码目标
+  - `verifyCode` (string, required if email/phone bound): 验证码
+  - `target` (string, required if email/phone bound): 验证码目标
+- **Description**: 删除当前登录用户。如果用户绑定了邮箱或手机号，则需要提供 `target` 和 `verifyCode` 进行验证。如果用户未绑定邮箱或手机号（例如仅通过第三方登录），则可以直接调用此接口删除，无需提供 `verifyCode` 和 `target`。用户的基本信息将被移动到 `user_deleted` 表中进行软删除，而第三方、GitLab 等关联信息将被彻底删除。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "删除成功",
+    "data": null
+  }
+  ```
 
 ---
 
@@ -191,47 +303,160 @@ GitLab 相关接口目前使用独立的响应格式：
 - **URL**: `/api/third/authorization_url`
 - **Method**: `GET`
 - **Params**:
-  - `platform` (string, required): 平台名称 (如 `github`, `gitlab` 等)
+  - `platform` (string, required): 平台名称 (如 `github`, `gitlab`, `qq`, `wechat` 等)
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "authorizationUrl": "https://...", // 第三方授权页面地址
+      "code": "...",                     // 临时会话 Code (用于后续接口)
+      "verifyCode": "..."                // 临时会话 VerifyCode (用于后续接口)
+    }
+  }
+  ```
+- **Description**: 获取第三方登录的授权地址。返回的 `code` 和 `verifyCode` 必须保存，用于后续的 `login/check`, `bind`, `register` 等接口。客户端应引导用户在浏览器中打开 `authorizationUrl`。
 
 ### 4.2 登录回调 (Callback)
 - **URL**: `/api/third/{platform}`
 - **Method**: `GET`
 - **Params**:
-  - `code`: 授权码
-  - `state`: 状态码
-- **Description**: 第三方平台重定向回来的地址。
+  - `code`: OAuth 授权码
+  - `state`: OAuth 状态码 (包含服务器生成的 verify info)
+- **Description**: 第三方平台授权完成后重定向回来的地址。通常由浏览器自动访问。服务器接收到此请求后，会将 OAuth 信息与 4.1 中生成的临时会话关联。
 
-### 4.3 验证登录
+### 4.3 验证登录 (Check Login Status)
 - **URL**: `/api/third/login/check`
 - **Method**: `GET`
 - **Params**:
-  - `platform`, `code`, `verifyCode`, `onlyCheck`
+  - `platform` (string, required): 平台名称
+  - `code` (string, required): 4.1 接口返回的 `code`
+  - `verifyCode` (string, required): 4.1 接口返回的 `verifyCode`
+  - `onlyCheck` (boolean, optional): 默认为 `true`。
+    - `true`: 仅检查是否绑定。
+    - `false`: 如果已绑定，直接执行登录逻辑并返回 Token。
+- **Response (onlyCheck=true)**:
+  ```json
+  {
+    "code": 0,
+    "msg": "验证成功",
+    "data": {
+      "allready_bind": true // true: 已绑定本地账号; false: 未绑定 (需调用 bind 或 register)
+    }
+  }
+  ```
+- **Response (onlyCheck=false, allready_bind=true)**:
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "token": "...",       // 登录 Token
+      "user": { ... }       // 用户信息
+    }
+  }
+  ```
+- **Response (onlyCheck=false, allready_bind=false)**:
+  ```json
+  {
+    "code": -503,
+    "msg": "该平台未绑定过该账号",
+    "data": {
+      "allready_bind": false
+    }
+  }
+  ```
 
-### 4.4 直接登录
+### 4.4 直接登录 (Direct Login)
 - **URL**: `/api/third/login`
 - **Method**: `GET`
 - **Params**:
-  - `platform`, `code`, `verifyCode`
+  - `platform` (string, required): 平台名称
+  - `code` (string, required): 4.1 接口返回的 `code`
+  - `verifyCode` (string, required): 4.1 接口返回的 `verifyCode`
+- **Description**: 尝试直接使用第三方账号登录。如果未绑定，将返回错误。
+- **Response (Success)**:
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "token": "...",
+      "user": { ... }
+    }
+  }
+  ```
+- **Response (Error)**:
+  ```json
+  {
+    "code": -503,
+    "msg": "该平台未绑定过该账号",
+    "data": null
+  }
+  ```
 
-### 4.5 绑定账号
+### 4.5 绑定账号 (Bind Account)
 - **URL**: `/api/third/bind`
 - **Method**: `POST`
-- **Headers**: `Authorization`
+- **Headers**:
+  - `Authorization`: Bearer Token (必须已登录)
 - **Params (Query)**:
-  - `platform`, `code`, `verifyCode`
+  - `platform` (string, required): 平台名称
+  - `code` (string, required): 4.1 接口返回的 `code`
+  - `verifyCode` (string, required): 4.1 接口返回的 `verifyCode`
+- **Description**: 将当前登录用户与第三方账号绑定。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "绑定成功",
+    "data": null
+  }
+  ```
+- **Error Codes**:
+  - `-502`: 该平台已经绑定过账号
 
-### 4.6 第三方注册
+### 4.6 第三方注册 (Register via Third-Party)
 - **URL**: `/api/third/register`
 - **Method**: `POST`
 - **Params (Query)**:
-  - `platform`, `code`, `verifyCode`
+  - `platform` (string, required): 平台名称
+  - `code` (string, required): 4.1 接口返回的 `code`
+  - `verifyCode` (string, required): 4.1 接口返回的 `verifyCode`
+- **Description**: 使用第三方账号信息创建一个新的本地用户，并自动登录。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "token": "...",
+      "user": { ... }
+    }
+  }
+  ```
+- **Error Codes**:
+  - `-502`: 该账号已经被绑定 (不能重复注册)
 
-### 4.7 解绑账号
+### 4.7 解绑账号 (Unbind Account)
 - **URL**: `/api/third/unbind`
 - **Method**: `POST`
-- **Headers**: `Authorization`
+- **Headers**:
+  - `Authorization`: Bearer Token
 - **Params (Query)**:
-  - `platform`, `mfaTarget`, `verifyCode`
+  - `platform` (string, required): 平台名称
+  - `mfaTarget` (string, required): 接收验证码的邮箱或手机号
+  - `verifyCode` (string, required): MFA 验证码 (通过 `/user/mfa` 获取，type 为 `Unbind`)
+- **Description**: 解除当前用户与指定第三方平台的绑定。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "解绑成功",
+    "data": null
+  }
+  ```
 
 ---
 
