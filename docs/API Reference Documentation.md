@@ -160,6 +160,20 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
+#### 2.1.7 注销登录
+- **URL**: `/user/logout`
+- **Method**: `POST`
+- **Headers**:
+  - `Authorization`: Token (需要注销的 Token)
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "注销成功",
+    "data": null
+  }
+  ```
+
 ### 2.2 注册 (Register)
 
 #### 2.2.1 账号注册 (通用)

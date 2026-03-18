@@ -41,6 +41,21 @@ Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target
     co_return resp;
 }
 
+Task<HttpResponsePtr> Login::Logout(HttpRequestPtr req) {
+    auto _authService = AuthService::Instance();
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+
+    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
+    HttpResult result = co_await _authService->Logout(token);
+
+    resp->setBody(result.toJsonString());
+    resp->setStatusCode(k200OK);
+
+    co_return resp;
+}
+
 Task<HttpResponsePtr> Login::LoginByEmail(HttpRequestPtr req, std::string email, std::string code){
     // 依赖
     auto _authService = AuthService::Instance();

@@ -267,6 +267,49 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
     co_return result;
 }
 
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::Logout(const std::string &token) {
+    HttpResult result;
+    
+    // 1. 验证 Token (获取 userId 和 类型)
+    // 即使 Token 已经过期, 只要能解析出 ID 也可以执行注销(防止重复注销报错, 虽然意义不大但体验更好)
+    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
+    
+    if (!isSuccess || userId <= 0) {
+        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "无效的 Token");
+        co_return result;
+    }
+
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<UserFlashtoken> mapper(dbClientPtr);
+    
+    try {
+        auto row = mapper.findByPrimaryKey(userId);
+        
+        // 2. 使 Token 失效
+        // 根据 token 类型更新对应的状态字段
+        if (isFlashToken == 1) { // FlashToken
+            row.setStatus(-1); 
+        } else { // 普通 Token
+            row.setStatusForToken(-1);
+        }
+        
+        auto ret = mapper.update(row);
+        if (ret != 1) {
+            result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "注销失败: 数据库更新错误");
+            co_return result;
+        }
+    } catch (const UnexpectedRows &e) {
+        // 用户没有登录记录, 也算注销成功
+    } catch (const std::exception &e) {
+        LOG_ERROR << "Logout error: " << e.what();
+        result.setResult(ApiErrorCode::ApiError_InternalError, "内部错误");
+        co_return result;
+    }
+
+    result.setResult(ApiErrorCode::ApiError_Success, "注销成功");
+    co_return result;
+}
+
 drogon::Task<bool> AuthService::CheckUserExist(const std::string &email, const std::string &phone) {
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapper(dbClientPtr);

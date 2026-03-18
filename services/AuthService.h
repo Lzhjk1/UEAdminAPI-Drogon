@@ -181,6 +181,9 @@ public:
     // 验证Token并返回解析信息
     drogon::Task<UEAdminAPI::utils::HttpResult> VerifyToken(const std::string &token);
 
+    // 注销登录 (使当前 Token 失效)
+    drogon::Task<UEAdminAPI::utils::HttpResult> Logout(const std::string &token);
+
     // 更新当前登录用户的信息（直接接收 PostParamMap）
     // 特殊情况说明: 如果当前用户未绑定邮箱和电话(如第三方登录创建的初始账号), 
     // 则可以直接绑定邮箱或电话, 此时不需要提供 verifyCode 和 target 参数.

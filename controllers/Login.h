@@ -31,6 +31,7 @@ class Login : public drogon::HttpController<Login>
     ADD_METHOD_TO(Login::LoginByFlashToken, "/user/login/flashtoken", Get);
     ADD_METHOD_TO(Login::VerifyToken, "/user/token/verify", Get);
     ADD_METHOD_TO(Login::GetSelfInfo, "/user/self", Get);
+    ADD_METHOD_TO(Login::Logout, "/user/logout", Post);
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
@@ -72,6 +73,11 @@ class Login : public drogon::HttpController<Login>
     Task<HttpResponsePtr> VerifyToken(HttpRequestPtr req);
 
     Task<HttpResponsePtr> GetSelfInfo(HttpRequestPtr req);
+
+    /// @brief 注销登录
+    /// @param req 
+    /// @return 
+    Task<HttpResponsePtr> Logout(HttpRequestPtr req);
 
 
 };
