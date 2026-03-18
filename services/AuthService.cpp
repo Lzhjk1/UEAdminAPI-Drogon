@@ -18,6 +18,7 @@
 #include "models/UserGitlabInfo.h"
 #include "models/UserThirdPartyInfo.h"
 #include "models/ThirdpartyPlatforms.h"
+#include "models/UserDeleted.h"
 
 #include "utils/EnumUserPrivileges.h"
 #include "utils/RandomGenerator.h"
@@ -1113,13 +1114,9 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
     const std::string &verifyCode) {
     auto _mfaService = MFAService::Instance();
     UEAdminAPI::utils::HttpResult result;
-    std::vector<std::string> missing;
-    if (token.empty()) missing.push_back("token");
-    if (target.empty()) missing.push_back("target");
-    if (verifyCode.empty()) missing.push_back("verifyCode");
-    if (!missing.empty()) {
-        std::string msg = "缺少必填项: " + std::accumulate(missing.begin(), missing.end(), std::string(), [](const std::string& a, const std::string& b){ return a.empty() ? b : a + ", " + b; });
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, msg);
+    
+    if (token.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: token");
         co_return result;
     }
 
@@ -1141,6 +1138,24 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
         user = mapperUser.findByPrimaryKey(userId);
     } catch (...) {
         result.setResult(ApiErrorCode::ApiError_UserNotFound);
+        co_return result;
+    }
+
+    // 检查是否绑定了邮箱或手机号
+    bool hasEmail = user.getEmail() && !user.getValueOfEmail().empty();
+    bool hasPhone = user.getTelephoneNumber() && !user.getValueOfTelephoneNumber().empty();
+
+    if (!hasEmail && !hasPhone) {
+        // 未绑定邮箱或手机号，直接删除
+        co_return co_await DeleteUserForce(userId);
+    }
+
+    std::vector<std::string> missing;
+    if (target.empty()) missing.push_back("target");
+    if (verifyCode.empty()) missing.push_back("verifyCode");
+    if (!missing.empty()) {
+        std::string msg = "缺少必填项: " + std::accumulate(missing.begin(), missing.end(), std::string(), [](const std::string& a, const std::string& b){ return a.empty() ? b : a + ", " + b; });
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, msg);
         co_return result;
     }
 
@@ -1214,6 +1229,28 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUserForce(int use
     bool deleted = false;
     try {
         auto user = mapperUser.findByPrimaryKey(userId);
+        
+        // 备份数据到 user_deleted 表
+        Mapper<UserDeleted> mapperUserDeleted(dbClientPtr);
+        UserDeleted deletedUser;
+        deletedUser.setId(user.getValueOfId());
+        deletedUser.setName(user.getValueOfName());
+        if (user.getPasswordSalt()) deletedUser.setPasswordSalt(user.getValueOfPasswordSalt());
+        if (user.getPasswordHash()) deletedUser.setPasswordHash(user.getValueOfPasswordHash());
+        if (user.getPrivilege()) deletedUser.setPrivilege(user.getValueOfPrivilege());
+        if (user.getNickName()) deletedUser.setNickname(user.getValueOfNickName());
+        if (user.getTelephoneNumber()) deletedUser.setTelephonenumber(user.getValueOfTelephoneNumber());
+        if (user.getEmail()) deletedUser.setEmail(user.getValueOfEmail());
+        if (user.getIsMale()) deletedUser.setIsMale(user.getValueOfIsMale());
+        if (user.getCreateAt()) deletedUser.setCreateAt(user.getValueOfCreateAt());
+        deletedUser.setDeleteAt(trantor::Date::now());
+        
+        try {
+            mapperUserDeleted.insert(deletedUser);
+        } catch (const drogon::orm::DrogonDbException& e) {
+            LOG_ERROR << "备份删除用户到 user_deleted 表失败: " << e.base().what();
+        }
+
         mapperUser.deleteOne(user);
         deleted = true;
     } catch (...) {
