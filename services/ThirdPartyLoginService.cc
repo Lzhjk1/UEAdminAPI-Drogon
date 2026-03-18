@@ -956,14 +956,15 @@ Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, c
     // 验证登录
     result = co_await VerifyLogin(platform, code, verifyCode);
     if(result.code != 0){
-        if(result.jsondata["allready_bind"] == true){
-            result.setResult(ApiErrorCode::ApiError_PlatformAlreadyBound);
-            co_return result;
-        }
         result.setResult(ApiErrorCode::ApiError_ThirdPartyAuthFailed);
         co_return result;
     }
 
+    if(result.jsondata["allready_bind"] == true){
+        result.setResult(ApiErrorCode::ApiError_PlatformAlreadyBound);
+        co_return result;
+    }
+    
     User targetUser;
     try {
         targetUser = mapperUser.findOne(Criteria(User::Cols::_id, CompareOperator::EQ, userId));
