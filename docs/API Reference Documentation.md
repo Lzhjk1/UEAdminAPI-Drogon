@@ -294,7 +294,7 @@ GitLab 相关接口目前使用独立的响应格式：
 
 ### 3.2 删除用户
 - **URL**: `/user/delete`
-- **Method**: `POST`
+- **Method**: `DELETE`
 - **Headers**: `Authorization`
 - **Params (Query)**:
   - `verifyCode` (string, required if email/phone bound): 验证码

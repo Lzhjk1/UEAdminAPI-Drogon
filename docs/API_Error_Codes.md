@@ -72,7 +72,7 @@
 | | -103 | `ApiError_InternalError` | 内部错误 (更新Token状态失败) |
 | | -105 | `ApiError_InvalidOperation` | 没有修改项 |
 | | -308 | `ApiError_UserUpdateFailed` | 更新失败 |
-| **/user/delete** (POST) | 0 | `ApiError_Success` | 删除成功 |
+| **/user/delete** (DELETE) | 0 | `ApiError_Success` | 删除成功 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必填项... |
 | | -202 | `ApiError_InvalidTokenType` | 不是token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
