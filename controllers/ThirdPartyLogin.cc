@@ -92,12 +92,15 @@ Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr r
     co_return resp;
 }
 
-Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req, const std::string platform, const std::string mfaTarget, const std::string verifyCode) {
+Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req,
+                                                    const std::string platform,
+                                                    const std::string mfaTarget,
+                                                    const std::string mfaCode) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
     auto [authType2, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    result = co_await _thirdPartyLoginService->UnbindAccount(token, platform, mfaTarget, verifyCode);
+    result = co_await _thirdPartyLoginService->UnbindAccount(token, platform, mfaTarget, mfaCode);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
     co_return resp;

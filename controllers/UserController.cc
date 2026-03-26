@@ -27,15 +27,15 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     }
 
     PostParamMap pm;
-    // verifyCode 和 target 用于 MFA 验证 (修改敏感信息时需要)
+    // mfaCode 和 target 用于 MFA 验证 (修改敏感信息时需要)
     // 特殊情况: 如果用户未绑定邮箱和电话(如第三方登录创建的初始账号), 则可以直接绑定, 此时不需要这两个参数
-    pm.addParam("verifyCode", false)
+    pm.addParam("mfaCode", false)
       .addParam("target", false)
       .addParam("username", false)
       .addParam("nickname", false)
       .addParam("email", false)
       .addParam("tel", false)
-      .addParam("newEmailOrPhoneVerifyCode", false)
+      .addParam("newMfaCode", false)
       .addParam("unbindEmail", false)
       .addParam("unbindPhone", false)
       .addParam("isMale", false)
@@ -62,7 +62,7 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     }
 
     // 修改邮箱或电话需要验证码, 解绑也需要原邮箱或电话的验证码
-    if((pm.hasParam("email") || pm.hasParam("tel") || pm.hasParam("unbindEmail") || pm.hasParam("unbindPhone")) && !pm.hasParam("newEmailOrPhoneVerifyCode")){
+    if((pm.hasParam("email") || pm.hasParam("tel") || pm.hasParam("unbindEmail") || pm.hasParam("unbindPhone")) && !pm.hasParam("newMfaCode")){
         missings.push_back("修改/解绑email或tel需要提供验证码");
     }
 
@@ -80,13 +80,13 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     co_return resp;
 }
 
-Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req, const std::string verifyCode, const std::string target) {
+Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req, const std::string mfaCode, const std::string target) {
     auto _authService = AuthService::Instance();
 
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
     auto [authType2, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    result = co_await _authService->DeleteUser(token, target, verifyCode);
+    result = co_await _authService->DeleteUser(token, target, mfaCode);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
     co_return resp;

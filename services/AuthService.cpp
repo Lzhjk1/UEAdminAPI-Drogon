@@ -344,14 +344,14 @@ Task<HttpResult> AuthService::RegisterByEmail(
     const std::string &username, 
     const std::string &password, 
     const std::string &email, 
-    const std::string &code,
+    const std::string &mfaCode,
     const UserPrivileges &privilege, 
     const bool &isMale, 
     const std::string &nickname) {
     HttpResult result;
     auto _mfaService = MFAService::Instance();
     // 1. 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, code, eMFAType::Register);
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, mfaCode, eMFAType::Register);
     if(!isSuccess) {
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
         co_return result;
@@ -388,7 +388,7 @@ Task<HttpResult> AuthService::RegisterByPhone(
         const std::string &username, 
         const std::string &password, 
         const std::string &phoneNumber, 
-        const std::string &code, 
+        const std::string &mfaCode, 
         const UserPrivileges &privilege, 
         const bool &isMale, 
         const std::string &nickname) {
@@ -398,7 +398,7 @@ Task<HttpResult> AuthService::RegisterByPhone(
     HttpResult result;
 
     // 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, code, eMFAType::Register);
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, mfaCode, eMFAType::Register);
     if(!isSuccess) {
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
         co_return result;
@@ -435,7 +435,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     const std::string &username, 
     const std::string &password, 
     const std::string &email, 
-    const std::string &verifyCode, 
+    const std::string &mfaCode, 
     const std::string &third_platform_name, 
     const std::string &third_code, 
     const std::string &third_verifyCode, 
@@ -449,7 +449,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
 
     HttpResult result;
     // 1. 检查验证码 (这里可以用 co_await 是因为 VerifyTheCode 返回的是 Task 或者 Awaitable)
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, verifyCode, eMFAType::Register);
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, mfaCode, eMFAType::Register);
     if(!isSuccess) {
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
         co_return result;
@@ -518,7 +518,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     const std::string &username, 
     const std::string &password, 
     const std::string &phoneNumber, 
-    const std::string &verifyCode, 
+    const std::string &mfaCode, 
     const std::string &third_platform_name, 
     const std::string &third_code, 
     const std::string &third_verifyCode, 
@@ -532,7 +532,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
 
     HttpResult result;
     // 1. 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, verifyCode, eMFAType::Register);
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, mfaCode, eMFAType::Register);
     if(!isSuccess) {
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
         co_return result;
@@ -675,10 +675,8 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::s
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std::string &target, const std::string &targetDBColName, const std::string &code) {
-    // 依赖
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std::string &target, const std::string &targetDBColName, const std::string &mfaCode) {
     auto _mfaService = MFAService::Instance();
-
     HttpResult result;
 
     auto dbClientPtr = drogon::app().getDbClient();
@@ -702,7 +700,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
     }
 
     // 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, code, eMFAType::Login);
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, mfaCode, eMFAType::Login);
     if(!isSuccess) {
         LOG_ERROR << "登录验证码验证错误: " << errMsg;
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, "验证码错误");
@@ -756,12 +754,12 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userI
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByEmail(const std::string &email, const std::string &code){
-    co_return co_await LoginByOther(email, User::Cols::_email, code);
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByEmail(const std::string &email, const std::string &mfaCode){
+    co_return co_await LoginByOther(email, User::Cols::_email, mfaCode);
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPhone(const std::string &phone, const std::string &code) {
-    co_return co_await LoginByOther(phone, User::Cols::_telephone_number, code);
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPhone(const std::string &phone, const std::string &mfaCode) {
+    co_return co_await LoginByOther(phone, User::Cols::_telephone_number, mfaCode);
 }
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByFlashToken(const std::string &flashToken) {
@@ -1010,7 +1008,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     bool hasPhone = user.getTelephoneNumber() && !user.getValueOfTelephoneNumber().empty();
 
     if (hasEmail || hasPhone) {
-        auto [mfaOk, mfaErr] = co_await VerifyUserTargetMFA(pm.getParam("target"), pm.getParam("verifyCode"), userId, eMFAType::ModifyUser);
+        auto [mfaOk, mfaErr] = co_await VerifyUserTargetMFA(pm.getParam("target"), pm.getParam("mfaCode"), userId, eMFAType::ModifyUser);
         if (!mfaOk) {
             result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
             co_return result;
@@ -1031,7 +1029,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     if (unbindEmail) {
         isModified = true;
         // 解绑邮箱需要验证码
-        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(user.getValueOfEmail(), pm.getParam("newEmailOrPhoneVerifyCode"), eMFAType::Unbind);
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(user.getValueOfEmail(), pm.getParam("newMfaCode"), eMFAType::Unbind);
         if (!mfaOk) {
             result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("解绑邮箱验证码错误") : mfaErr);
             co_return result;
@@ -1040,7 +1038,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     } else if (pm.hasParam("email")) {
         isModified = true;
         // 验证新邮箱验证码
-        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(pm.getParam("email"), pm.getParam("newEmailOrPhoneVerifyCode"), eMFAType::EmailBind);
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(pm.getParam("email"), pm.getParam("newMfaCode"), eMFAType::EmailBind);
         if (!mfaOk) {
             result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("新邮箱验证码错误") : mfaErr);
             co_return result;
@@ -1059,7 +1057,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     if (unbindPhone) {
         isModified = true;
         // 解绑电话需要验证码
-        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(user.getValueOfTelephoneNumber(), pm.getParam("newEmailOrPhoneVerifyCode"), eMFAType::Unbind);
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(user.getValueOfTelephoneNumber(), pm.getParam("newMfaCode"), eMFAType::Unbind);
         if (!mfaOk) {
             result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("解绑电话验证码错误") : mfaErr);
             co_return result;
@@ -1068,7 +1066,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     } else if (pm.hasParam("tel")) {
         isModified = true;
         // 验证新电话验证码
-        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(pm.getParam("tel"), pm.getParam("newEmailOrPhoneVerifyCode"), eMFAType::PhoneChange);
+        auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(pm.getParam("tel"), pm.getParam("newMfaCode"), eMFAType::PhoneChange);
         if (!mfaOk) {
             result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("新电话验证码错误") : mfaErr);
             co_return result;
@@ -1154,7 +1152,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
     const std::string &token,
     const std::string &target,
-    const std::string &verifyCode) {
+    const std::string &mfaCode) {
     auto _mfaService = MFAService::Instance();
     UEAdminAPI::utils::HttpResult result;
     
@@ -1195,7 +1193,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
 
     std::vector<std::string> missing;
     if (target.empty()) missing.push_back("target");
-    if (verifyCode.empty()) missing.push_back("verifyCode");
+    if (mfaCode.empty()) missing.push_back("mfaCode");
     if (!missing.empty()) {
         std::string msg = "缺少必填项: " + std::accumulate(missing.begin(), missing.end(), std::string(), [](const std::string& a, const std::string& b){ return a.empty() ? b : a + ", " + b; });
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, msg);
@@ -1219,7 +1217,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
         co_return result;
     }
 
-    auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(target, verifyCode, eMFAType::DeleteUser);
+    auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(target, mfaCode, eMFAType::DeleteUser);
     if (!mfaOk) {
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
         co_return result;
@@ -1311,7 +1309,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUserForce(int use
 
 drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(
     const std::string &target,
-    const std::string &verifyCode,
+    const std::string &mfaCode,
     int userId,
     eMFAType type) 
 {
@@ -1329,15 +1327,15 @@ drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(
         co_return std::make_tuple(false, std::string("用户不存在"));
     }
 
-    co_return co_await VerifyUserTargetMFA(target, verifyCode, user, type);
+    co_return co_await VerifyUserTargetMFA(target, mfaCode, user, type);
 }
 
-drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(const std::string &target, const std::string &verifyCode, const drogon_model::UEAdminAPI::User &user, eMFAType type) {
+drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(const std::string &target, const std::string &mfaCode, const drogon_model::UEAdminAPI::User &user, eMFAType type) {
     auto _mfaService = MFAService::Instance();
 
     std::vector<std::string> missing;
     if (target.empty()) missing.push_back("target");
-    if (verifyCode.empty()) missing.push_back("verifyCode");
+    if (mfaCode.empty()) missing.push_back("mfaCode");
     if (user.getValueOfId() <= 0) missing.push_back("user");
 
     if (!missing.empty()) {
@@ -1359,7 +1357,7 @@ drogon::Task<std::tuple<bool, std::string>> AuthService::VerifyUserTargetMFA(con
         co_return std::make_tuple(false, std::string("无法判断渠道类型"));
     }
 
-    auto [ok, msg] = co_await _mfaService->VerifyTheCode(target, verifyCode, type);
+    auto [ok, msg] = co_await _mfaService->VerifyTheCode(target, mfaCode, type);
     if (!ok) {
         co_return std::make_tuple(false, msg.empty() ? std::string("验证码错误") : msg);
     }

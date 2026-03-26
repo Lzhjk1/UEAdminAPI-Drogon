@@ -76,7 +76,7 @@ public:
     /// @param username 用户名
     /// @param password 密码
     /// @param email 邮箱
-    /// @param verifyCode 验证码
+    /// @param mfaCode 验证码
     /// @param nickname 昵称, 默认为空, 为空时使用用户名
     /// @return std::tuple<int, std::string, int> 
     /// 1: 返回码, 0表示成功, 
@@ -86,7 +86,7 @@ public:
         const std::string &username, 
         const std::string &password, 
         const std::string &email, 
-        const std::string &verifyCode, 
+        const std::string &mfaCode, 
         const UserPrivileges &privilege = UserPrivileges::User, 
         const bool &isMale = true, 
         const std::string &nickname = "");
@@ -96,7 +96,7 @@ public:
         const std::string &username, 
         const std::string &password, 
         const std::string &phoneNumber, 
-        const std::string &verifyCode, 
+        const std::string &mfaCode, 
         const UserPrivileges &privilege = UserPrivileges::User, 
         const bool &isMale = true, 
         const std::string &nickname = "");
@@ -113,7 +113,7 @@ public:
        const std::string &username, 
        const std::string &password, 
        const std::string &email, 
-       const std::string &verifyCode, 
+       const std::string &mfaCode, 
        const std::string &third_platform_name,
        const std::string &third_code,
        const std::string &third_verifyCode,
@@ -128,7 +128,7 @@ public:
        const std::string &username, 
        const std::string &password, 
        const std::string &phoneNumber, 
-       const std::string &verifyCode, 
+       const std::string &mfaCode, 
        const std::string &third_platform_name,
        const std::string &third_code,
        const std::string &third_verifyCode,
@@ -158,21 +158,21 @@ public:
     /// @brief 通过其他方式, 如邮箱, 手机验证码登录
     /// @param target 目标, 如邮箱, 手机号
     /// @param targetDBColName 目标在数据库的列名, 建议通过orm对象获取, 如User::Cols::_email
-    /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
+    /// @param mfaCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
-    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByOther(const std::string &target, const std::string &targetDBColName, const std::string &verifyCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByOther(const std::string &target, const std::string &targetDBColName, const std::string &mfaCode);
 
     /// @brief 通过邮箱验证码登录
     /// @param email 邮箱
-    /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
+    /// @param mfaCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
-    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByEmail(const std::string &email, const std::string &verifyCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByEmail(const std::string &email, const std::string &mfaCode);
 
     /// @brief 通过手机验证码登录
     /// @param phone 手机号
-    /// @param verifyCode 预先通过验证码SendVerifyCode控制器发送的验证码
+    /// @param mfaCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
-    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByPhone(const std::string &phone, const std::string &verifyCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByPhone(const std::string &phone, const std::string &mfaCode);
 
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginByFlashToken(const std::string &flashToken);
 
@@ -186,7 +186,7 @@ public:
 
     // 更新当前登录用户的信息（直接接收 PostParamMap）
     // 特殊情况说明: 如果当前用户未绑定邮箱和电话(如第三方登录创建的初始账号), 
-    // 则可以直接绑定邮箱或电话, 此时不需要提供 verifyCode 和 target 参数.
+    // 则可以直接绑定邮箱或电话, 此时不需要提供 mfaCode 和 target 参数.
     drogon::Task<UEAdminAPI::utils::HttpResult> UpdateUserInfo(
         const std::string &token,
         const UEAdminAPI::PostParamMap &pm);
@@ -195,7 +195,7 @@ public:
     drogon::Task<UEAdminAPI::utils::HttpResult> DeleteUser(
         const std::string &token,
         const std::string &target,
-        const std::string &verifyCode);
+        const std::string &mfaCode);
 
     // 强制删除用户 (不验证验证码, 仅供内部或管理员使用)
     drogon::Task<UEAdminAPI::utils::HttpResult> DeleteUserForce(int userId);
@@ -204,13 +204,13 @@ public:
     // 重载: 传入userId, 从数据读取user记录对象后, 再传入主要函数
     drogon::Task<std::tuple<bool, std::string>> VerifyUserTargetMFA(
         const std::string &target,
-        const std::string &verifyCode,
+        const std::string &mfaCode,
         int userId,
         eMFAType type);
     // 验证指定用户的绑定目标并校验MFA验证码
     drogon::Task<std::tuple<bool, std::string>> VerifyUserTargetMFA(
         const std::string &target,
-        const std::string &verifyCode,
+        const std::string &mfaCode,
         const drogon_model::UEAdminAPI::User &user,
         eMFAType type);
 

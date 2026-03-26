@@ -90,6 +90,9 @@
 | **/user/mfa** (GET) | 0 | `ApiError_Success` | 发送成功 |
 | | -402 | `ApiError_SendVerifyCodeTooFrequent` | 发送过于频繁 |
 | | -1 | (未定义枚举) | 发送失败 (如邮件服务不可用) |
+| **/user/mfa/check** (GET) | 0 | `ApiError_Success` | 验证码正确 |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少参数 target, code 或 type |
+| | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 
 > **注意**: `SendVerifyCode` 接口中仍存在硬编码的 `-1`，建议后续统一为 `ApiError_InternalError` 或新增 `ApiError_SendVerifyCodeFailed`。
 

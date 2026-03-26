@@ -25,7 +25,7 @@ Task<HttpResponsePtr> Login::LoginByPwd(HttpRequestPtr req, std::string userName
 	co_return resp;
 }
 
-Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target, std::string targetDBColName, std::string code) {
+Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target, std::string targetDBColName, std::string mfaCode) {
     // 依赖
     auto _authService = AuthService::Instance();
 
@@ -33,7 +33,7 @@ Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
 
-    HttpResult result = co_await _authService->LoginByOther(target, targetDBColName, code);
+    HttpResult result = co_await _authService->LoginByOther(target, targetDBColName, mfaCode);
 
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
@@ -56,14 +56,14 @@ Task<HttpResponsePtr> Login::Logout(HttpRequestPtr req) {
     co_return resp;
 }
 
-Task<HttpResponsePtr> Login::LoginByEmail(HttpRequestPtr req, std::string email, std::string code){
+Task<HttpResponsePtr> Login::LoginByEmail(HttpRequestPtr req, std::string email, std::string mfaCode){
     // 依赖
     auto _authService = AuthService::Instance();
     
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     
-    HttpResult result = co_await _authService->LoginByEmail(email, code);
+    HttpResult result = co_await _authService->LoginByEmail(email, mfaCode);
     
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
@@ -71,14 +71,14 @@ Task<HttpResponsePtr> Login::LoginByEmail(HttpRequestPtr req, std::string email,
     co_return resp;
 }
 
-Task<HttpResponsePtr> Login::LoginByPhone(HttpRequestPtr req, std::string phone, std::string code) {
+Task<HttpResponsePtr> Login::LoginByPhone(HttpRequestPtr req, std::string phone, std::string mfaCode) {
     // 依赖
     auto _authService = AuthService::Instance();
     
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     
-    HttpResult result = co_await _authService->LoginByPhone(phone, code);
+    HttpResult result = co_await _authService->LoginByPhone(phone, mfaCode);
     
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);

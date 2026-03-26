@@ -31,6 +31,29 @@ Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string t
     co_return resp;
 }
 
+Task<HttpResponsePtr> SendVerifyCode::CheckCode(HttpRequestPtr req, std::string target, std::string mfaCode, std::string type) {
+    auto _mfaService = MFAService::Instance();
+    auto resp = HttpResponse::newHttpResponse();
+    HttpResult result;
+
+    if (target.empty() || mfaCode.empty() || type.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 target, mfaCode 或 type");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, mfaCode, stringToMFAType(type), false);
+    
+    if (isSuccess) {
+        result.setResult(ApiErrorCode::ApiError_Success, "验证码正确");
+    } else {
+        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg.empty() ? "验证码错误" : errMsg);
+    }
+
+    resp->setBody(result.toJsonString());
+    co_return resp;
+}
+
 bool SendVerifyCode::IsInColdDown(std::string ipAddr) {
     std::lock_guard<std::mutex> lock(_mutexForColdDownMap);
 

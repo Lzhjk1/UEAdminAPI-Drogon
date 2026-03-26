@@ -1224,7 +1224,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::LoginWithThi
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccount(const std::string &token, const std::string &platform, const std::string &target, const std::string &verifyCode) {
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccount(const std::string &token, const std::string &platform, const std::string &target, const std::string &mfaCode) {
     auto _authService = AuthService::Instance();
     auto _mfaService = MFAService::Instance();
 
@@ -1242,8 +1242,8 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
         result.setResult(ApiErrorCode::ApiError_TokenMissing, "缺少参数 token");
         co_return result;
     }
-    if (verifyCode.empty()) {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 verifyCode");
+    if (mfaCode.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 mfaCode");
         co_return result;
     }
 
@@ -1305,7 +1305,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
         co_return result;
     }
 
-    auto [ok, msg] = co_await _mfaService->VerifyTheCode(realTarget, verifyCode, eMFAType::ThirdPartyBind);
+    auto [ok, msg] = co_await _mfaService->VerifyTheCode(realTarget, mfaCode, eMFAType::ThirdPartyBind);
     if (!ok) {
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, msg.empty() ? "验证码错误" : msg);
         co_return result;

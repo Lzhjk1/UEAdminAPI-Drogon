@@ -43,11 +43,11 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         .addParam("user_password", true)
         .addParam("privilege", false, "User")
         .addParam("nickname", false)
+        .addParam("isMale", false, "true")
         .addParam("email", false)
         .addParam("tel", false)
-        .addParam("isMale", false, "true")
-        .addParam("verifyCode", true)
-        // 同时第三方平台注册
+        .addParam("mfaCode", true)
+        // 支持第三方注册
         .addParam("third_platform_name", false)
         .addParam("third_code", false)
         .addParam("third_verifyCode", false);
@@ -103,7 +103,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
                 paramMap.getParam("username"),
                 paramMap.getParam("user_password"),
                 paramMap.getParam("email"),
-                paramMap.getParam("verifyCode"),
+                paramMap.getParam("mfaCode"),
                 paramMap.getParam("third_platform_name"),
                 paramMap.getParam("third_code"),
                 paramMap.getParam("third_verifyCode"),
@@ -117,7 +117,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
                 paramMap.getParam("username"),
                 paramMap.getParam("user_password"),
                 paramMap.getParam("email"),
-                paramMap.getParam("verifyCode"),
+                paramMap.getParam("mfaCode"),
                 privileges,
                 paramMap.getParam("isMale") == "true",
                 paramMap.getParam("nickname")
@@ -130,7 +130,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
                 paramMap.getParam("username"), 
                 paramMap.getParam("user_password"), 
                 paramMap.getParam("phone"), 
-                paramMap.getParam("verifyCode"),
+                paramMap.getParam("mfaCode"),
                 paramMap.getParam("third_platform_name"),
                 paramMap.getParam("third_code"),
                 paramMap.getParam("third_verifyCode"),
@@ -144,7 +144,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
                 paramMap.getParam("username"),
                 paramMap.getParam("user_password"),
                 paramMap.getParam("phone"),
-                paramMap.getParam("verifyCode"),
+                paramMap.getParam("mfaCode"),
                 privileges,
                 paramMap.getParam("isMale") == "true",
                 paramMap.getParam("nickname")   
@@ -157,15 +157,15 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     co_return resp;
 }
 
-Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::string phone, std::string verifyCode) {
+Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::string phone, std::string mfaCode) {
     auto _authService = AuthService::Instance();
 
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     HttpResult result;
 
-    if (phone.empty() || verifyCode.empty()) {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: phone, verifyCode");
+    if (phone.empty() || mfaCode.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: phone, mfaCode");
         resp->setBody(result.toJsonString());
         co_return resp;
     }
@@ -177,7 +177,7 @@ Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::str
         username,
         password,
         phone,
-        verifyCode,
+        mfaCode,
         UserPrivileges::User,
         true, 
         ""

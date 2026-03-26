@@ -67,7 +67,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `GET`
 - **Params**:
   - `email` (string, required): 邮箱地址
-  - `code` (string, required): 验证码
+  - `mfaCode` (string, required): 验证码
 - **Response**:
   ```json
   {
@@ -86,7 +86,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `GET`
 - **Params**:
   - `phone` (string, required): 手机号
-  - `code` (string, required): 验证码
+  - `mfaCode` (string, required): 验证码
 - **Response**:
   ```json
   {
@@ -185,7 +185,7 @@ GitLab 相关接口目前使用独立的响应格式：
   {
     "username": "user1",       // (Required) 用户名
     "user_password": "pwd",    // (Required) 密码
-    "verifyCode": "123456",    // (Required) 验证码
+    "mfaCode": "123456",       // (Required) MFA验证码
     "email": "test@ex.com",    // (Required if phone missing) 邮箱
     "tel": "13800000000",      // (Required if email missing) 手机号
     "nickname": "Nick",        // (Optional) 昵称
@@ -208,11 +208,11 @@ GitLab 相关接口目前使用独立的响应格式：
   ```
 
 #### 2.2.2 手机快速注册
-- **URL**: `/user/create/phone?phone={phone}&verifyCode={code}`
+- **URL**: `/user/create/phone?phone={phone}&mfaCode={code}`
 - **Method**: `POST`
 - **Params**:
   - `phone` (string, required): 手机号
-  - `verifyCode` (string, required): 验证码
+  - `mfaCode` (string, required): 验证码
 - **Response**:
   ```json
   {
@@ -260,6 +260,23 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
+#### 2.3.2 检查验证码
+- **URL**: `/user/mfa/check`
+- **Method**: `GET`
+- **Params**:
+  - `target` (string, required): 邮箱或手机号
+  - `mfaCode` (string, required): 验证码
+  - `type` (string, required): 类型，需与发送验证码时的类型一致
+- **Description**: 仅检查验证码是否正确，但不消耗该验证码，后续操作依然可以使用此验证码。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "验证码正确",
+    "data": null
+  }
+  ```
+
 ---
 
 ## 3. 用户管理 (User Management)
@@ -272,13 +289,15 @@ GitLab 相关接口目前使用独立的响应格式：
   ```json
   {
     // 当账号既没有手机号码也没有邮箱时, 不需要头两个参数
-    "verifyCode": "...",             // (Required) 当前绑定方式的验证码
+    "mfaCode": "...",                // (Required) 当前绑定方式的验证码
     "target": "...",                 // (Required) 验证码发送的目标(邮箱/手机)
     "username": "new_name",          // (Optional)
     "nickname": "new_nick",          // (Optional)
     "email": "new@ex.com",           // (Optional)
     "tel": "139...",                 // (Optional)
-    "newEmailOrPhoneVerifyCode": "", // (Required if email/tel changed) 新邮箱/手机的验证码
+    "newMfaCode": "...",             // (Required if email/tel changed) 新邮箱/手机的验证码
+    "unbindEmail": "false",          // (Optional) 是否解绑邮箱
+    "unbindPhone": "false",          // (Optional) 是否解绑手机
     "isMale": "false",               // (Optional)
     "user_password": "..."           // (Optional)
   }
@@ -297,9 +316,9 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `DELETE`
 - **Headers**: `Authorization`
 - **Params (Query)**:
-  - `verifyCode` (string, required if email/phone bound): 验证码
+  - `mfaCode` (string, required if email/phone bound): 验证码
   - `target` (string, required if email/phone bound): 验证码目标
-- **Description**: 删除当前登录用户。如果用户绑定了邮箱或手机号，则需要提供 `target` 和 `verifyCode` 进行验证。如果用户未绑定邮箱或手机号（例如仅通过第三方登录），则可以直接调用此接口删除，无需提供 `verifyCode` 和 `target`。用户的基本信息将被移动到 `user_deleted` 表中进行软删除，而第三方、GitLab 等关联信息将被彻底删除。
+- **Description**: 删除当前登录用户。如果用户绑定了邮箱或手机号，则需要提供 `target` 和 `mfaCode` 进行验证。如果用户未绑定邮箱或手机号（例如仅通过第三方登录），则可以直接调用此接口删除，无需提供 `mfaCode` 和 `target`。用户的基本信息将被移动到 `user_deleted` 表中进行软删除，而第三方、GitLab 等关联信息将被彻底删除。
 - **Response**:
   ```json
   {
@@ -461,7 +480,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Params (Query)**:
   - `platform` (string, required): 平台名称
   - `mfaTarget` (string, required): 接收验证码的邮箱或手机号
-  - `verifyCode` (string, required): MFA 验证码 (通过 `/user/mfa` 获取，type 为 `Unbind`)
+  - `mfaCode` (string, required): MFA 验证码 (通过 `/user/mfa` 获取，type 为 `Unbind`)
 - **Description**: 解除当前用户与指定第三方平台的绑定。
 - **Response**:
   ```json

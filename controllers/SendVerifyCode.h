@@ -16,6 +16,7 @@ public:
     // METHOD_ADD(SendVerifyCode::your_method_name, "/{1}/{2}/list", Get); // path is /SendVerifyCode/{arg1}/{arg2}/list
     // ADD_METHOD_TO(SendVerifyCode::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
     ADD_METHOD_TO(SendVerifyCode::SendCode, "/user/mfa?target={1}&type={2}", Get); // path is /SendVerifyCode/{arg1}/{arg2}
+    ADD_METHOD_TO(SendVerifyCode::CheckCode, "/user/mfa/check?target={1}&mfaCode={2}&type={3}", Get);
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
@@ -25,6 +26,9 @@ public:
     // 发送验证码, 支持邮箱和手机号, 自动识别类型, 有冷却时间, 
     // 因冷却时间导致的错误, 错误码为-2
     Task<HttpResponsePtr> SendCode(HttpRequestPtr req, std::string target, std::string type);
+
+    // 检查验证码是否正确，但不消耗该验证码
+    Task<HttpResponsePtr> CheckCode(HttpRequestPtr req, std::string target, std::string mfaCode, std::string type);
 
     // 基于IP地址的冷却, 目前服务器是通过frp穿透来测试的, 所以IP是固定的, 所以冷却时间目前设置很短
     bool IsInColdDown(std::string ipAddr);
