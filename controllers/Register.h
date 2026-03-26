@@ -14,7 +14,7 @@ class Register : public drogon::HttpController<Register>
     // ADD_METHOD_TO(Register::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
     ADD_METHOD_TO(Register::RegisterUser, "/user/create", Post);
     ADD_METHOD_TO(Register::RegisterUserByPhone, "/user/create/phone?phone={1}&mfaCode={2}", Post);
-    ADD_METHOD_TO(Register::CheckUserExist, "/user/check_exist?target={1}", Get);
+    ADD_METHOD_TO(Register::CheckUserExist, "/user/check_exist?target={1}", Get, "AuthFilter");
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:

@@ -204,19 +204,6 @@ Task<HttpResponsePtr> Register::CheckUserExist(HttpRequestPtr req, std::string t
         co_return resp;
     }
 
-    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    if(token.empty()){
-        result.setResult(ApiErrorCode::ApiError_TokenMissing, "Authorization in header");
-        resp->setBody(result.toJsonString());
-        co_return resp;
-    }
-
-    auto verifyResult = co_await _authService->VerifyToken(token);
-    if (verifyResult.code != 0) {
-        resp->setBody(verifyResult.toJsonString());
-        co_return resp;
-    }
-
     bool exist = co_await _authService->CheckUserExist(target);
 
     result.setResult(ApiErrorCode::ApiError_Success, exist ? "用户已存在" : "用户不存在");

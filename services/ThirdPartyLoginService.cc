@@ -927,27 +927,16 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
     //co_return resp;
 }
 
-Task<HttpResult> ThirdPartyLoginService::BindAccount(const std::string &token, const std::string &platform, const std::string &code, const std::string &verifyCode) {
+Task<HttpResult> ThirdPartyLoginService::BindAccount(int userId, const std::string &platform, const std::string &code, const std::string &verifyCode) {
     auto _authService = AuthService::Instance();
 
     HttpResult result;
     
-    if (platform.empty() || code.empty() || verifyCode.empty() || token.empty()) {
+    if (platform.empty() || code.empty() || verifyCode.empty()) {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs);
         co_return result;
     }
     
-    result = co_await _authService->VerifyToken(token);
-    if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
-        co_return result;
-    }
-    if(result.code != 0){
-        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
-        co_return result;
-    }
-    int userId = result.jsondata["userId"].asInt();
-
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<User> mapperUser(dbClientPtr);
     Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
@@ -1224,7 +1213,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::LoginWithThi
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccount(const std::string &token, const std::string &platform, const std::string &target, const std::string &mfaCode) {
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccount(int userId, const std::string &platform, const std::string &target, const std::string &mfaCode) {
     auto _authService = AuthService::Instance();
     auto _mfaService = MFAService::Instance();
 
@@ -1238,25 +1227,10 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 target");
         co_return result;
     }
-    if (token.empty()) {
-        result.setResult(ApiErrorCode::ApiError_TokenMissing, "缺少参数 token");
-        co_return result;
-    }
     if (mfaCode.empty()) {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 mfaCode");
         co_return result;
     }
-
-    result = co_await _authService->VerifyToken(token);
-    if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
-        co_return result;
-    }
-    if(result.code != 0){
-        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
-        co_return result;
-    }
-    int userId = result.jsondata["userId"].asInt();
 
     auto platformService = co_await getPlatform(platform);
     if (!platformService) {

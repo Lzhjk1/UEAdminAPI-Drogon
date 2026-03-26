@@ -267,14 +267,10 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::Logout(const std::string &token) {
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::Logout(int userId) {
     HttpResult result;
     
-    // 1. 验证 Token (获取 userId 和 类型)
-    // 即使 Token 已经过期, 只要能解析出 ID 也可以执行注销(防止重复注销报错, 虽然意义不大但体验更好)
-    auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
-    
-    if (!isSuccess || userId <= 0) {
+    if (userId <= 0) {
         result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "无效的 Token");
         co_return result;
     }
@@ -287,11 +283,9 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::Logout(const std::strin
         
         // 2. 使 Token 失效
         // 根据 token 类型更新对应的状态字段
-        if (isFlashToken == 1) { // FlashToken
-            row.setStatus(-1); 
-        } else { // 普通 Token
-            row.setStatusForToken(-1);
-        }
+        // 由于我们现在不区分是哪种Token触发的注销，统一将两者都置为失效
+        row.setStatus(-1); 
+        row.setStatusForToken(-1);
         
         auto ret = mapper.update(row);
         if (ret != 1) {
@@ -789,24 +783,8 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByFlashToken(const
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(const std::string &token) {
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(int userId) {
     HttpResult result;
-
-    if(token.empty()){
-        result.setResult(ApiErrorCode::ApiError_TokenMissing);
-        co_return result;
-    }
-
-    result = co_await VerifyToken(token);
-    if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
-        co_return result;
-    }
-    if(result.code != 0){
-        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
-        co_return result;
-    }
-    int userId = result.jsondata["userId"].asInt();
 
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<User> mapperUser(dbClientPtr);
@@ -970,23 +948,11 @@ Task<bool> AuthService::CheckIfExist(drogon::orm::Mapper<User> &mapper, const dr
 }
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
-    const std::string &token,
+    int userId,
     const UEAdminAPI::PostParamMap &pm)
 {
     auto _mfaService = MFAService::Instance();
     UEAdminAPI::utils::HttpResult result;
-
-    // 1. 验证 Token 有效性
-    result = co_await VerifyToken(token);
-    if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
-        co_return result;
-    }
-    if(result.code != 0){
-        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
-        co_return result;
-    }
-    int userId = result.jsondata["userId"].asInt();
 
     bool isModified = false;
     auto dbClientPtr = drogon::app().getDbClient();
@@ -1150,27 +1116,11 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
 }
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
-    const std::string &token,
+    int userId,
     const std::string &target,
     const std::string &mfaCode) {
     auto _mfaService = MFAService::Instance();
     UEAdminAPI::utils::HttpResult result;
-    
-    if (token.empty()) {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: token");
-        co_return result;
-    }
-
-    result = co_await VerifyToken(token);
-    if(result.jsondata["tokenType"].asString() != "token"){
-        result.setResult(ApiErrorCode::ApiError_InvalidTokenType, "不是token");
-        co_return result;
-    }
-    if(result.code != 0){
-        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token已失效");
-        co_return result;
-    }
-    int userId = result.jsondata["userId"].asInt();
 
     auto dbClientPtr = drogon::app().getDbClient();
     Mapper<User> mapperUser(dbClientPtr);
@@ -1179,6 +1129,8 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUser(
         user = mapperUser.findByPrimaryKey(userId);
     } catch (...) {
         result.setResult(ApiErrorCode::ApiError_UserNotFound);
+    }
+    if(result.code != ApiErrorCode::ApiError_Success){
         co_return result;
     }
 

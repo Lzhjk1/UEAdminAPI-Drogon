@@ -1,0 +1,49 @@
+#include "AuthFilter.h"
+#include "services/AuthService.h"
+#include "utils/DataFormatUtils.h"
+#include "utils/HttpResult.h"
+#include "utils/ApiErrorCodes.h"
+#include <drogon/utils/coroutine.h>
+
+using namespace drogon;
+
+void AuthFilter::doFilter(const HttpRequestPtr &req,
+                          FilterCallback &&fcb,
+                          FilterChainCallback &&fccb)
+{
+    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
+    
+    if (token.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
+        UEAdminAPI::utils::HttpResult result(static_cast<int32_t>(UEAdminAPI::ApiErrorCode::ApiError_TokenMissing), "Authorization in header is missing or empty");
+        resp->setBody(result.toJsonString());
+        resp->setStatusCode(k200OK);
+        fcb(resp);
+        return;
+    }
+
+    drogon::async_run([req, fcb = std::move(fcb), fccb = std::move(fccb), token]() -> Task<void> {
+        auto _authService = AuthService::Instance();
+        auto result = co_await _authService->VerifyToken(token);
+        
+        if (result.code == 0) {
+            if (result.jsondata["tokenType"].asString() == "token") {
+                // 验证成功，将 userId 注入请求属性中
+                req->getAttributes()->insert("userId", result.jsondata["userId"].asInt());
+                fccb();
+            } else {
+                result.setResult(UEAdminAPI::ApiErrorCode::ApiError_InvalidTokenType, "不是token");
+                auto resp = HttpResponse::newHttpResponse();
+                resp->setBody(result.toJsonString());
+                resp->setStatusCode(k200OK);
+                fcb(resp);
+            }
+        } else {
+            // 验证失败，直接返回错误信息
+            auto resp = HttpResponse::newHttpResponse();
+            resp->setBody(result.toJsonString());
+            resp->setStatusCode(k401Unauthorized);
+            fcb(resp);
+        }
+    });
+}

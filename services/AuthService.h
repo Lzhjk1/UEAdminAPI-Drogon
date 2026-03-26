@@ -176,24 +176,24 @@ public:
 
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginByFlashToken(const std::string &flashToken);
 
-    drogon::Task<UEAdminAPI::utils::HttpResult> GetSelfInfo(const std::string &token);
+    drogon::Task<UEAdminAPI::utils::HttpResult> GetSelfInfo(int userId);
 
     // 验证Token并返回解析信息
     drogon::Task<UEAdminAPI::utils::HttpResult> VerifyToken(const std::string &token);
 
     // 注销登录 (使当前 Token 失效)
-    drogon::Task<UEAdminAPI::utils::HttpResult> Logout(const std::string &token);
+    drogon::Task<UEAdminAPI::utils::HttpResult> Logout(int userId);
 
     // 更新当前登录用户的信息（直接接收 PostParamMap）
     // 特殊情况说明: 如果当前用户未绑定邮箱和电话(如第三方登录创建的初始账号), 
     // 则可以直接绑定邮箱或电话, 此时不需要提供 mfaCode 和 target 参数.
     drogon::Task<UEAdminAPI::utils::HttpResult> UpdateUserInfo(
-        const std::string &token,
+        int userId,
         const UEAdminAPI::PostParamMap &pm);
 
     // 删除当前登录用户
     drogon::Task<UEAdminAPI::utils::HttpResult> DeleteUser(
-        const std::string &token,
+        int userId,
         const std::string &target,
         const std::string &mfaCode);
 

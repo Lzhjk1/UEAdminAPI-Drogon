@@ -44,11 +44,6 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     pm.readParamsFromJson(*reqJson);
     auto missings = pm.checkRequiredParams();
 
-    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    if(token.empty()){
-        missings.push_back("Authorization in header");
-    }
-
     if(pm.hasParam("email") && pm.hasParam("tel")){
         missings.push_back("email和tel不可同时修改");
     }
@@ -74,7 +69,8 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
         co_return resp;
     }
 
-    result = co_await _authService->UpdateUserInfo(token, pm);
+    int userId = req->getAttributes()->get<int>("userId");
+    result = co_await _authService->UpdateUserInfo(userId, pm);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
     co_return resp;
@@ -85,8 +81,8 @@ Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req, const std::
 
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
-    auto [authType2, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    result = co_await _authService->DeleteUser(token, target, mfaCode);
+    int userId = req->getAttributes()->get<int>("userId");
+    result = co_await _authService->DeleteUser(userId, target, mfaCode);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
     co_return resp;

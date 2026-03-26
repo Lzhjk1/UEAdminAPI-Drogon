@@ -156,14 +156,14 @@ public:
     drogon::Task<UEAdminAPI::utils::HttpResult> GetLoginUrl(const std::string &platform);
     drogon::Task<UEAdminAPI::utils::HttpResult> Callback(const std::string &platform, const std::string &code, const std::string &state);
     drogon::Task<drogon::HttpResponsePtr> CallbackRedirect(const std::string &platform, const std::string &code, const std::string &state);
-    drogon::Task<UEAdminAPI::utils::HttpResult> BindAccount(const std::string &token, const std::string &platform, const std::string &code, const std::string &verifyCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> BindAccount(int userId, const std::string &platform, const std::string &code, const std::string &verifyCode);
     drogon::Task<UEAdminAPI::utils::HttpResult> VerifyLogin(const std::string &platform, const std::string &code, const std::string &verifyCode, bool onlyCheck = true);
     drogon::Task<UEAdminAPI::utils::HttpResult> CreateUserFromThirdParty(const std::string &platform, const std::string &code, const std::string &verifyCode);
     
     // 直接通过第三方平台登录
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginWithThirdParty(const std::string &platform, const std::string &code, const std::string &verifyCode);
 
-    drogon::Task<UEAdminAPI::utils::HttpResult> UnbindAccount(const std::string &token, const std::string &platform, const std::string &target, const std::string &mfaCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> UnbindAccount(int userId, const std::string &platform, const std::string &target, const std::string &mfaCode);
 
 private:
     std::mutex mutex;

@@ -47,8 +47,8 @@ Task<HttpResponsePtr> Login::Logout(HttpRequestPtr req) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
 
-    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    HttpResult result = co_await _authService->Logout(token);
+    int userId = req->getAttributes()->get<int>("userId");
+    HttpResult result = co_await _authService->Logout(userId);
 
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
@@ -102,11 +102,9 @@ Task<HttpResponsePtr> Login::LoginByFlashToken(HttpRequestPtr req) {
 }
 
 Task<HttpResponsePtr> Login::VerifyToken(HttpRequestPtr req) {
-    auto _authService = AuthService::Instance();
-
     auto resp = HttpResponse::newHttpResponse();
-    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    HttpResult result = co_await _authService->VerifyToken(token);
+    HttpResult result(0, "Token验证成功");
+    result.jsondata["userId"] = req->getAttributes()->get<int>("userId");
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
     co_return resp;
@@ -118,8 +116,8 @@ Task<HttpResponsePtr> Login::GetSelfInfo(HttpRequestPtr req) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
 
-    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    HttpResult result = co_await _authService->GetSelfInfo(token);
+    int userId = req->getAttributes()->get<int>("userId");
+    HttpResult result = co_await _authService->GetSelfInfo(userId);
 
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);

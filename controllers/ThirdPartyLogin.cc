@@ -52,8 +52,8 @@ Task<HttpResponsePtr> ThirdPartyLogin::bindAccount(HttpRequestPtr req,
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
-    auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    auto result = co_await _thirdPartyLoginService->BindAccount(token, platform, code, verifyCode);
+    int userId = req->getAttributes()->get<int>("userId");
+    auto result = co_await _thirdPartyLoginService->BindAccount(userId, platform, code, verifyCode);
     resp->setBody(result.toJsonString());
     co_return resp;
 }
@@ -99,8 +99,8 @@ Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req,
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
-    auto [authType2, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
-    result = co_await _thirdPartyLoginService->UnbindAccount(token, platform, mfaTarget, mfaCode);
+    int userId = req->getAttributes()->get<int>("userId");
+    result = co_await _thirdPartyLoginService->UnbindAccount(userId, platform, mfaTarget, mfaCode);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
     co_return resp;

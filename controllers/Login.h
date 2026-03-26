@@ -29,9 +29,9 @@ class Login : public drogon::HttpController<Login>
     ADD_METHOD_TO(Login::LoginByEmail, "/user/login/email?email={1}&mfaCode={2}", Get);
     ADD_METHOD_TO(Login::LoginByPhone, "/user/login/phone?phone={1}&mfaCode={2}", Get);
     ADD_METHOD_TO(Login::LoginByFlashToken, "/user/login/flashtoken", Get);
-    ADD_METHOD_TO(Login::VerifyToken, "/user/token/verify", Get);
-    ADD_METHOD_TO(Login::GetSelfInfo, "/user/self", Get);
-    ADD_METHOD_TO(Login::Logout, "/user/logout", Post);
+    ADD_METHOD_TO(Login::VerifyToken, "/user/token/verify", Get, "AuthFilter");
+    ADD_METHOD_TO(Login::GetSelfInfo, "/user/self", Get, "AuthFilter");
+    ADD_METHOD_TO(Login::Logout, "/user/logout", Post, "AuthFilter");
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
