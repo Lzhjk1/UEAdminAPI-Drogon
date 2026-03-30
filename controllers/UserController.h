@@ -10,7 +10,7 @@ public:
     // 注意: 修改敏感信息时，需在请求头携带通过 /user/action_token 获取的 X-Action-Token
     ADD_METHOD_TO(UserController::updateUser, "/user/update", Post, "AuthFilter", "ActionTokenFilter");
     ADD_METHOD_TO(UserController::deleteUser, "/user/delete", Delete, "AuthFilter", "ActionTokenFilter");
-    ADD_METHOD_TO(UserController::generateActionToken, "/user/action_token?mfaType={1}&mfaCode={2}&target={3}", Post, "AuthFilter");
+    ADD_METHOD_TO(UserController::generateActionToken, "/user/action_token?mfaType={1}&mfaCode={2}&target={3}", Post);
     METHOD_LIST_END
 
     Task<HttpResponsePtr> updateUser(HttpRequestPtr req);

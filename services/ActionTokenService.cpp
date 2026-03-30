@@ -17,6 +17,12 @@ ActionTokenService::ActionTokenService() {
     _routeToActionMap["/user/delete"] = eMFAType::DeleteUser;
     _routeToActionMap["/api/third/unbind"] = eMFAType::Unbind;
     _routeToActionMap["/user/update"] = eMFAType::ModifyUser;
+    _routeToActionMap["/api/third/bind"] = eMFAType::ThirdPartyBind;
+    _routeToActionMap["/user/login/email"] = eMFAType::Login;
+    _routeToActionMap["/user/login/phone"] = eMFAType::Login;
+    _routeToActionMap["/user/create"] = eMFAType::Register;
+    _routeToActionMap["/user/create/phone"] = eMFAType::Register;
+    _routeToActionMap["/api/third/register"] = eMFAType::Register;
 }
 
 eMFAType ActionTokenService::GetActionByRoute(const std::string& path) const {

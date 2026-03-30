@@ -3,8 +3,10 @@
 - 回复请用中文
 
 - 在/doc目录下有文档, 包含API参考文档, 错误码说明文档等. 如果修改涉及这些文档, 请同步修改. 现有文档如下:
-    - API_Error_Codes.md: 包含所有接口的错误码(接口响应里的"code"字段)说明.
-    - API_Reference_Documentation.md: 包含所有接口的说明.
+    - [API_Error_Codes.md](../../docs/API_Error_Codes.md): 包含所有接口的错误码(接口响应里的"code"字段)说明.
+    - [API_Reference_Documentation.md](../../docs/API_Reference_Documentation.md): 包含所有接口的说明.
+    - [SingletonWithInitUsage.md](../../docs/SingletonWithInitUsage.md): 单例模式的使用说明.
+    - [ActionToken_Architecture.md](../../docs/ActionToken_Architecture.md): ActionToken架构说明.
 
 - 本项目基于 Drogon 框架构建，数据库选用 PostgreSQL；所有数据库操作均通过 ORM 完成，不直接编写 SQL 语句，项目整体结构遵循 Drogon 官方示例规范。  
 - 修改代码后请勿触发 CMake 编译流程，因本人使用其他编译器，不会在 VSCode 内执行编译。

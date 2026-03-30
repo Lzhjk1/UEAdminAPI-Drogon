@@ -338,18 +338,11 @@ Task<HttpResult> AuthService::RegisterByEmail(
     const std::string &username, 
     const std::string &password, 
     const std::string &email, 
-    const std::string &mfaCode,
     const UserPrivileges &privilege, 
     const bool &isMale, 
     const std::string &nickname) {
     HttpResult result;
     auto _mfaService = MFAService::Instance();
-    // 1. 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, mfaCode, eMFAType::Register);
-    if(!isSuccess) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
-        co_return result;
-    }
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
@@ -382,7 +375,6 @@ Task<HttpResult> AuthService::RegisterByPhone(
         const std::string &username, 
         const std::string &password, 
         const std::string &phoneNumber, 
-        const std::string &mfaCode, 
         const UserPrivileges &privilege, 
         const bool &isMale, 
         const std::string &nickname) {
@@ -391,12 +383,6 @@ Task<HttpResult> AuthService::RegisterByPhone(
     
     HttpResult result;
 
-    // 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, mfaCode, eMFAType::Register);
-    if(!isSuccess) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
-        co_return result;
-    }
     // 数据库初始化
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
@@ -429,7 +415,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     const std::string &username, 
     const std::string &password, 
     const std::string &email, 
-    const std::string &mfaCode, 
     const std::string &third_platform_name, 
     const std::string &third_code, 
     const std::string &third_verifyCode, 
@@ -442,12 +427,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     auto _mfaService = MFAService::Instance();
 
     HttpResult result;
-    // 1. 检查验证码 (这里可以用 co_await 是因为 VerifyTheCode 返回的是 Task 或者 Awaitable)
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(email, mfaCode, eMFAType::Register);
-    if(!isSuccess) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
-        co_return result;
-    }
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
@@ -512,7 +491,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     const std::string &username, 
     const std::string &password, 
     const std::string &phoneNumber, 
-    const std::string &mfaCode, 
     const std::string &third_platform_name, 
     const std::string &third_code, 
     const std::string &third_verifyCode, 
@@ -525,16 +503,10 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     auto _mfaService = MFAService::Instance();
 
     HttpResult result;
-    // 1. 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(phoneNumber, mfaCode, eMFAType::Register);
-    if(!isSuccess) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg);
-        co_return result;
-    }
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
-    // 使用同步辅助函数
+    // 查重
     if (co_await CheckIfExist(mapperUsers, Criteria(User::Cols::_name, CompareOperator::EQ, username))) {
         result.setResult(ApiErrorCode::ApiError_UsernameAlreadyExists);
         co_return result;
@@ -669,7 +641,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::s
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std::string &target, const std::string &targetDBColName, const std::string &mfaCode) {
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std::string &target, const std::string &targetDBColName) {
     auto _mfaService = MFAService::Instance();
     HttpResult result;
 
@@ -693,14 +665,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
         co_return result;
     }
 
-    // 检查验证码
-    auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, mfaCode, eMFAType::Login);
-    if(!isSuccess) {
-        LOG_ERROR << "登录验证码验证错误: " << errMsg;
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, "验证码错误");
-        co_return result;
-    }
-
     auto [token2, flashToken2, status2] = co_await NewTokenPair(targetUser.getValueOfId());
     if (status2 == -1) {
         result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新状态失败");
@@ -713,6 +677,14 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
     result.setResult(ApiErrorCode::ApiError_Success, "登录成功");
 
     co_return result;
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByEmail(const std::string &email) {
+    co_return co_await LoginByOther(email, User::Cols::_email);
+}
+
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPhone(const std::string &phone) {
+    co_return co_await LoginByOther(phone, User::Cols::_telephone_number);
 }
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userId) {
@@ -746,14 +718,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userI
     result.setResult(ApiErrorCode::ApiError_Success, "登录成功");
 
     co_return result;
-}
-
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByEmail(const std::string &email, const std::string &mfaCode){
-    co_return co_await LoginByOther(email, User::Cols::_email, mfaCode);
-}
-
-drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPhone(const std::string &phone, const std::string &mfaCode) {
-    co_return co_await LoginByOther(phone, User::Cols::_telephone_number, mfaCode);
 }
 
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByFlashToken(const std::string &flashToken) {
@@ -961,10 +925,14 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     User user;
     
     // 2. 获取当前用户信息
+    bool isError = false;
     try {
         user = mapperUser.findByPrimaryKey(userId);
     } catch (const UnexpectedRows &) {
         result.setResult(ApiErrorCode::ApiError_UserNotFound);
+        isError = true;
+    }
+    if (isError) {
         co_return result;
     }
 

@@ -86,7 +86,6 @@ public:
         const std::string &username, 
         const std::string &password, 
         const std::string &email, 
-        const std::string &mfaCode, 
         const UserPrivileges &privilege = UserPrivileges::User, 
         const bool &isMale = true, 
         const std::string &nickname = "");
@@ -96,7 +95,6 @@ public:
         const std::string &username, 
         const std::string &password, 
         const std::string &phoneNumber, 
-        const std::string &mfaCode, 
         const UserPrivileges &privilege = UserPrivileges::User, 
         const bool &isMale = true, 
         const std::string &nickname = "");
@@ -113,7 +111,6 @@ public:
        const std::string &username, 
        const std::string &password, 
        const std::string &email, 
-       const std::string &mfaCode, 
        const std::string &third_platform_name,
        const std::string &third_code,
        const std::string &third_verifyCode,
@@ -128,7 +125,6 @@ public:
        const std::string &username, 
        const std::string &password, 
        const std::string &phoneNumber, 
-       const std::string &mfaCode, 
        const std::string &third_platform_name,
        const std::string &third_code,
        const std::string &third_verifyCode,
@@ -160,19 +156,17 @@ public:
     /// @param targetDBColName 目标在数据库的列名, 建议通过orm对象获取, 如User::Cols::_email
     /// @param mfaCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
-    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByOther(const std::string &target, const std::string &targetDBColName, const std::string &mfaCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByOther(const std::string &target, const std::string &targetDBColName);
 
     /// @brief 通过邮箱验证码登录
     /// @param email 邮箱
-    /// @param mfaCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
-    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByEmail(const std::string &email, const std::string &mfaCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByEmail(const std::string &email);
 
     /// @brief 通过手机验证码登录
     /// @param phone 手机号
-    /// @param mfaCode 预先通过验证码SendVerifyCode控制器发送的验证码
     /// @return
-    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByPhone(const std::string &phone, const std::string &mfaCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> LoginByPhone(const std::string &phone);
 
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginByFlashToken(const std::string &flashToken);
 

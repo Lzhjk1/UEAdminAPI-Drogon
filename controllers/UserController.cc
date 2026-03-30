@@ -1,10 +1,14 @@
 #include "UserController.h"
-#include "services/ThirdPartyLoginService.h"
-#include "services/AuthService.h"
-#include "services/ActionTokenService.h"
 #include <utils/PostParamMap.h>
 #include <utils/DataFormatUtils.h>
 #include <utils/HttpResult.h>
+
+
+#include "services/ThirdPartyLoginService.h"
+#include "services/AuthService.h"
+#include "services/ActionTokenService.h"
+#include "services/MFAService.h"
+
 #include <numeric>
 
 using namespace drogon;
@@ -66,7 +70,11 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
         co_return resp;
     }
 
-    int userId = req->getAttributes()->get<int>("userId");
+    int userId = -1;
+    auto attributes = req->getAttributes();
+    if (attributes->find("userId")) {
+        userId = attributes->get<int>("userId");
+    }
     result = co_await _authService->UpdateUserInfo(userId, pm);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
@@ -78,7 +86,11 @@ Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req) {
 
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
-    int userId = req->getAttributes()->get<int>("userId");
+    int userId = -1;
+    auto attributes = req->getAttributes();
+    if (attributes->find("userId")) {
+        userId = attributes->get<int>("userId");
+    }
     
     // 因为已经通过了 ActionTokenFilter 校验，不再需要传入 mfaCode 和 target 再次验证
     // 所以我们调用原本的 DeleteUserForce 直接进行删除
@@ -91,6 +103,7 @@ Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req) {
 Task<HttpResponsePtr> UserController::generateActionToken(HttpRequestPtr req, std::string mfaTypeStr, std::string mfaCode, std::string target) {
     auto _authService = AuthService::Instance();
     auto _actionTokenService = ActionTokenService::Instance();
+    auto _mfaService = MFAService::Instance();
     
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
@@ -102,7 +115,11 @@ Task<HttpResponsePtr> UserController::generateActionToken(HttpRequestPtr req, st
         co_return resp;
     }
 
-    int userId = req->getAttributes()->get<int>("userId");
+    int userId = -1;
+    auto attributes = req->getAttributes();
+    if (attributes->find("userId")) {
+        userId = attributes->get<int>("userId");
+    }
     eMFAType mfaType = stringToMFAType(mfaTypeStr);
 
     if (mfaType == eMFAType::Error) {
@@ -116,20 +133,40 @@ Task<HttpResponsePtr> UserController::generateActionToken(HttpRequestPtr req, st
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<drogon_model::UEAdminAPI::User> mapperUser(dbClientPtr);
     drogon_model::UEAdminAPI::User user;
-    try {
-        user = mapperUser.findByPrimaryKey(userId);
-    } catch (...) {
-        result.setResult(ApiErrorCode::ApiError_UserNotFound);
-        resp->setBody(result.toJsonString());
-        resp->setStatusCode(k200OK);
-        co_return resp;
-    }
 
-    bool hasEmail = user.getEmail() && !user.getValueOfEmail().empty();
-    bool hasPhone = user.getTelephoneNumber() && !user.getValueOfTelephoneNumber().empty();
+    if (userId > 0) {
+        try {
+            user = mapperUser.findByPrimaryKey(userId);
+        } catch (...) {
+            result.setResult(ApiErrorCode::ApiError_UserNotFound);
+            resp->setBody(result.toJsonString());
+            resp->setStatusCode(k200OK);
+            co_return resp;
+        }
 
-    if (hasEmail || hasPhone) {
-        // 如果绑定了邮箱或手机号，必须进行 MFA 验证
+        bool hasEmail = user.getEmail() && !user.getValueOfEmail().empty();
+        bool hasPhone = user.getTelephoneNumber() && !user.getValueOfTelephoneNumber().empty();
+
+        if (hasEmail || hasPhone) {
+            // 如果绑定了邮箱或手机号，必须进行 MFA 验证
+            if (mfaCode.empty() || target.empty()) {
+                result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "需要提供 mfaCode 和 target");
+                resp->setBody(result.toJsonString());
+                resp->setStatusCode(k200OK);
+                co_return resp;
+            }
+
+            // 验证 MFA
+            auto [mfaOk, mfaErr] = co_await _authService->VerifyUserTargetMFA(target, mfaCode, user, mfaType);
+            if (!mfaOk) {
+                result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
+                resp->setBody(result.toJsonString());
+                resp->setStatusCode(k200OK);
+                co_return resp;
+            }
+        }
+    } else {
+        // 未登录状态，只需验证验证码是否正确，无需校验归属
         if (mfaCode.empty() || target.empty()) {
             result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "需要提供 mfaCode 和 target");
             resp->setBody(result.toJsonString());
@@ -137,10 +174,9 @@ Task<HttpResponsePtr> UserController::generateActionToken(HttpRequestPtr req, st
             co_return resp;
         }
 
-        // 验证 MFA
-        auto [mfaOk, mfaErr] = co_await _authService->VerifyUserTargetMFA(target, mfaCode, user, mfaType);
-        if (!mfaOk) {
-            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
+        auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, mfaCode, mfaType);
+        if (!isSuccess) {
+            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg.empty() ? std::string("验证码错误") : errMsg);
             resp->setBody(result.toJsonString());
             resp->setStatusCode(k200OK);
             co_return resp;

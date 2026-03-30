@@ -38,17 +38,12 @@ void ActionTokenFilter::doFilter(const HttpRequestPtr &req,
     }
 
     // 3. 提取当前登录用户的 userId
-    // 注意：ActionTokenFilter 必须在 AuthFilter 之后执行，所以这里应该能拿到 userId
+    // 登录或注册等无需预先登录的接口可能没有 userId
     auto attributes = req->getAttributes();
-    if (!attributes->find("userId")) {
-        auto resp = HttpResponse::newHttpResponse();
-        HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_TokenInvalidOrExpired), "未登录或未获取到用户状态");
-        resp->setBody(result.toJsonString());
-        resp->setStatusCode(k401Unauthorized);
-        fcb(resp);
-        return;
+    int userId = -1;
+    if (attributes->find("userId")) {
+        userId = attributes->get<int>("userId");
     }
-    int userId = attributes->get<int>("userId");
 
     // 4. 校验并消耗 Token
     bool isValid = _actionTokenService->VerifyAndConsumeToken(actionToken, expectedAction, userId);

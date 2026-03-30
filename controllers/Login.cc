@@ -4,9 +4,12 @@
 
 #include "services/AuthService.h"
 
+#include "models/User.h"
+using namespace drogon_model::UEAdminAPI;
 
 using namespace UEAdminAPI;
 using namespace UEAdminAPI::utils;
+
 // Add definition of your processing function here
 
 Task<HttpResponsePtr> Login::LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd) 
@@ -25,19 +28,19 @@ Task<HttpResponsePtr> Login::LoginByPwd(HttpRequestPtr req, std::string userName
 	co_return resp;
 }
 
-Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target, std::string targetDBColName, std::string mfaCode) {
-    // 依赖
+Task<HttpResponsePtr> Login::LoginByOther(HttpRequestPtr req, std::string target, std::string targetDBColName) {
     auto _authService = AuthService::Instance();
-
-    // 用于返回结果的相关变量预定义
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
 
-    HttpResult result = co_await _authService->LoginByOther(target, targetDBColName, mfaCode);
-
+    HttpResult result;
+    if (target.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 target");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+    result = co_await _authService->LoginByOther(target, targetDBColName);
     resp->setBody(result.toJsonString());
-    resp->setStatusCode(k200OK);
-
     co_return resp;
 }
 
@@ -56,34 +59,12 @@ Task<HttpResponsePtr> Login::Logout(HttpRequestPtr req) {
     co_return resp;
 }
 
-Task<HttpResponsePtr> Login::LoginByEmail(HttpRequestPtr req, std::string email, std::string mfaCode){
-    // 依赖
-    auto _authService = AuthService::Instance();
-    
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-    
-    HttpResult result = co_await _authService->LoginByEmail(email, mfaCode);
-    
-    resp->setBody(result.toJsonString());
-    resp->setStatusCode(k200OK);
-    
-    co_return resp;
+Task<HttpResponsePtr> Login::LoginByEmail(HttpRequestPtr req, std::string email){
+    co_return co_await LoginByOther(req, email, User::Cols::_email);
 }
 
-Task<HttpResponsePtr> Login::LoginByPhone(HttpRequestPtr req, std::string phone, std::string mfaCode) {
-    // 依赖
-    auto _authService = AuthService::Instance();
-    
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-    
-    HttpResult result = co_await _authService->LoginByPhone(phone, mfaCode);
-    
-    resp->setBody(result.toJsonString());
-    resp->setStatusCode(k200OK);
-    
-    co_return resp;
+Task<HttpResponsePtr> Login::LoginByPhone(HttpRequestPtr req, std::string phone) {
+    co_return co_await LoginByOther(req, phone, User::Cols::_telephone_number);
 }
 
 Task<HttpResponsePtr> Login::LoginByFlashToken(HttpRequestPtr req) {

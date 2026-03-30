@@ -19,7 +19,7 @@ public:
     // 直接通过第三方平台登录
     ADD_METHOD_TO(ThirdPartyLogin::loginWithThirdParty, "/api/third/login?platform={1}&code={2}&verifyCode={3}", Get);
     // 第三方绑定已有账号
-    ADD_METHOD_TO(ThirdPartyLogin::bindAccount, "/api/third/bind?platform={1}&code={2}&verifyCode={3}", Post, "AuthFilter");
+    ADD_METHOD_TO(ThirdPartyLogin::bindAccount, "/api/third/bind?platform={1}&code={2}&verifyCode={3}", Post, "AuthFilter", "ActionTokenFilter");
     // 第三方直接注册账号并完成登录
     ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdParty, "/api/third/register?platform={1}&code={2}&verifyCode={3}", Post);
     ADD_METHOD_TO(ThirdPartyLogin::unbindAccount, "/api/third/unbind?platform={1}", Post, "AuthFilter", "ActionTokenFilter");
