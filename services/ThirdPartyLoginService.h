@@ -163,7 +163,7 @@ public:
     // 直接通过第三方平台登录
     drogon::Task<UEAdminAPI::utils::HttpResult> LoginWithThirdParty(const std::string &platform, const std::string &code, const std::string &verifyCode);
 
-    drogon::Task<UEAdminAPI::utils::HttpResult> UnbindAccount(int userId, const std::string &platform, const std::string &target, const std::string &mfaCode);
+    drogon::Task<UEAdminAPI::utils::HttpResult> UnbindAccount(int userId, const std::string &platform);
 
 private:
     std::mutex mutex;

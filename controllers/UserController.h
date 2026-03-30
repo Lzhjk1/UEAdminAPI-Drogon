@@ -7,12 +7,18 @@ class UserController : public drogon::HttpController<UserController> {
 public:
     METHOD_LIST_BEGIN
     // 更新用户信息接口
-    // 特殊情况说明: 如果当前用户未绑定邮箱和电话(如第三方登录创建的初始账号), 
-    // 则可以直接绑定邮箱或电话, 此时不需要提供 mfaCode 和 target 参数.
-    ADD_METHOD_TO(UserController::updateUser, "/user/update", Post, "AuthFilter");
-    ADD_METHOD_TO(UserController::deleteUser, "/user/delete?mfaCode={1}&target={2}", Delete, "AuthFilter");
+    // 注意: 修改敏感信息时，需在请求头携带通过 /user/action_token 获取的 X-Action-Token
+    ADD_METHOD_TO(UserController::updateUser, "/user/update", Post, "AuthFilter", "ActionTokenFilter");
+    ADD_METHOD_TO(UserController::deleteUser, "/user/delete", Delete, "AuthFilter", "ActionTokenFilter");
+    ADD_METHOD_TO(UserController::generateActionToken, "/user/action_token?mfaType={1}&mfaCode={2}&target={3}", Post, "AuthFilter");
     METHOD_LIST_END
 
     Task<HttpResponsePtr> updateUser(HttpRequestPtr req);
-    Task<HttpResponsePtr> deleteUser(HttpRequestPtr req, const std::string mfaCode, const std::string target);
+
+    // 删除当前登录用户
+    // 现在不需要 query 参数了，因为已经被 ActionToken 替代
+    Task<HttpResponsePtr> deleteUser(HttpRequestPtr req);
+
+    // 获取操作授权令牌 (ActionToken)
+    Task<HttpResponsePtr> generateActionToken(HttpRequestPtr req, std::string mfaType, std::string mfaCode, std::string target);
 };

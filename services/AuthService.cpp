@@ -968,19 +968,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
         co_return result;
     }
 
-    // 3. 验证操作本身的 MFA (确保是本人操作)
-    // 如果用户没有绑定邮箱和手机号(第三方登录创建的初始账号), 则跳过此验证, 允许直接绑定
-    bool hasEmail = user.getEmail() && !user.getValueOfEmail().empty();
-    bool hasPhone = user.getTelephoneNumber() && !user.getValueOfTelephoneNumber().empty();
-
-    if (hasEmail || hasPhone) {
-        auto [mfaOk, mfaErr] = co_await VerifyUserTargetMFA(pm.getParam("target"), pm.getParam("mfaCode"), userId, eMFAType::ModifyUser);
-        if (!mfaOk) {
-            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
-            co_return result;
-        }
-    }
-
     // 4. 处理邮箱或电话修改/解绑
     bool unbindEmail = pm.hasParam("unbindEmail") && pm.getParam("unbindEmail") == "true";
     bool unbindPhone = pm.hasParam("unbindPhone") && pm.getParam("unbindPhone") == "true";

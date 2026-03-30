@@ -185,8 +185,7 @@ public:
     drogon::Task<UEAdminAPI::utils::HttpResult> Logout(int userId);
 
     // 更新当前登录用户的信息（直接接收 PostParamMap）
-    // 特殊情况说明: 如果当前用户未绑定邮箱和电话(如第三方登录创建的初始账号), 
-    // 则可以直接绑定邮箱或电话, 此时不需要提供 mfaCode 和 target 参数.
+    // 注意: 操作权限已经由 ActionTokenFilter 验证。
     drogon::Task<UEAdminAPI::utils::HttpResult> UpdateUserInfo(
         int userId,
         const UEAdminAPI::PostParamMap &pm);

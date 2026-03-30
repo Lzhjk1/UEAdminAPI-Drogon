@@ -93,14 +93,13 @@ Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr r
 }
 
 Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req,
-                                                    const std::string platform,
-                                                    const std::string mfaTarget,
-                                                    const std::string mfaCode) {
+                                                    const std::string platform) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
     int userId = req->getAttributes()->get<int>("userId");
-    result = co_await _thirdPartyLoginService->UnbindAccount(userId, platform, mfaTarget, mfaCode);
+    // 不再需要传入 mfaTarget 和 mfaCode，因为 ActionToken 已经做了校验
+    result = co_await _thirdPartyLoginService->UnbindAccount(userId, platform);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
     co_return resp;

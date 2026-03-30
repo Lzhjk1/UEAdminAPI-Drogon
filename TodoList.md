@@ -43,6 +43,8 @@
 - ✅规范了返回的json里的code, 在一个枚举里
 - ✅增加一个接口, 用于手机号直接注册账号完成登录
 - AuthService下, DeleteUserForce不完善, 在删除用户对应的Gitlab账号时, 没有完善的异常处理
+- ✅改为通过HttpFilter来验证Token, 并在Filter中解析UserId, 并将其设置到Request中, 后续控制器可以直接从Request中获取UserId, 如果Token无效或过期, 则直接返回401响应
+- 增加ActionTokenFilter, MFA验证后获得指定接口的ActionToken后, 凭次Token访问受限接口, 文档在 docs\ActionToken_Architecture.md
 
 PDMS 测试
 - ✅登录

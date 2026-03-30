@@ -284,18 +284,17 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 3.1 更新用户信息
 - **URL**: `/user/update`
 - **Method**: `POST`
-- **Headers**: `Authorization`
+- **Headers**: 
+  - `Authorization`: Bearer Token
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token` (mfaType: "ModifyUser") 获取
 - **Body**:
   ```json
   {
-    // 当账号既没有手机号码也没有邮箱时, 不需要头两个参数
-    "mfaCode": "...",                // (Required) 当前绑定方式的验证码
-    "target": "...",                 // (Required) 验证码发送的目标(邮箱/手机)
     "username": "new_name",          // (Optional)
     "nickname": "new_nick",          // (Optional)
     "email": "new@ex.com",           // (Optional)
     "tel": "139...",                 // (Optional)
-    "newMfaCode": "...",             // (Required if email/tel changed) 新邮箱/手机的验证码
+    "newMfaCode": "...",             // (Required if email/tel changed or unbind) 新邮箱/手机的验证码或解绑操作对应的验证码
     "unbindEmail": "false",          // (Optional) 是否解绑邮箱
     "unbindPhone": "false",          // (Optional) 是否解绑手机
     "isMale": "false",               // (Optional)
@@ -314,17 +313,38 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 3.2 删除用户
 - **URL**: `/user/delete`
 - **Method**: `DELETE`
-- **Headers**: `Authorization`
-- **Params (Query)**:
-  - `mfaCode` (string, required if email/phone bound): 验证码
-  - `target` (string, required if email/phone bound): 验证码目标
-- **Description**: 删除当前登录用户。如果用户绑定了邮箱或手机号，则需要提供 `target` 和 `mfaCode` 进行验证。如果用户未绑定邮箱或手机号（例如仅通过第三方登录），则可以直接调用此接口删除，无需提供 `mfaCode` 和 `target`。用户的基本信息将被移动到 `user_deleted` 表中进行软删除，而第三方、GitLab 等关联信息将被彻底删除。
+- **Headers**: 
+  - `Authorization`: Bearer Token
+  - `X-Action-Token`: ActionToken (需先通过 `/user/action_token` 获取)
+- **Description**: 删除当前登录用户。需要先获取 `Action_DeleteUser` 类型的 ActionToken。用户的基本信息将被移动到 `user_deleted` 表中进行软删除，而第三方、GitLab 等关联信息将被彻底删除。
 - **Response**:
   ```json
   {
     "code": 0,
     "msg": "删除成功",
     "data": null
+  }
+  ```
+
+### 3.3 获取操作授权令牌 (ActionToken)
+- **URL**: `/user/action_token`
+- **Method**: `POST`
+- **Headers**: `Authorization`
+- **Params (Query)**:
+  - `mfaType` (string, required): 业务类别，如 "DeleteUser", "Unbind", "ModifyUser"
+  - `mfaCode` (string, optional): MFA 验证码 (如果用户绑定了邮箱或手机号则必填)
+  - `target` (string, optional): 验证码发送的目标(邮箱/手机) (如果用户绑定了邮箱或手机号则必填)
+- **Description**: 为高危操作（如删除用户、解绑第三方账号等）申请一个一次性的不透明随机 Token。如果用户未绑定邮箱或手机号，无需提供 `mfaCode` 和 `target`。该 Token 的有效期为 5 分钟。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "ActionToken 颁发成功",
+    "data": {
+      "actionToken": "...",
+      "mfaType": "...",
+      "expiresIn": 300
+    }
   }
   ```
 

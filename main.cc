@@ -13,6 +13,7 @@
 #include "services/GitlabService.h"
 #include "services/ThirdPartyLoginService.h"
 #include "services/SystemService.h"
+#include "services/ActionTokenService.h"
 
 
 
@@ -71,6 +72,7 @@ int main() {
         UEAdminAPI::GitlabService::Init(app.getCustomConfig());
         UEAdminAPI::Services::ThirdPartyLoginService::Init(app.getCustomConfig());
         SystemService::Init();
+        UEAdminAPI::Services::ActionTokenService::Init();
 
         LOG_INFO << "服务初始化完成";
     });

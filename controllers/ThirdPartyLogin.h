@@ -22,7 +22,7 @@ public:
     ADD_METHOD_TO(ThirdPartyLogin::bindAccount, "/api/third/bind?platform={1}&code={2}&verifyCode={3}", Post, "AuthFilter");
     // 第三方直接注册账号并完成登录
     ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdParty, "/api/third/register?platform={1}&code={2}&verifyCode={3}", Post);
-    ADD_METHOD_TO(ThirdPartyLogin::unbindAccount, "/api/third/unbind?platform={1}&mfaTarget={2}&mfaCode={3}", Post, "AuthFilter");
+    ADD_METHOD_TO(ThirdPartyLogin::unbindAccount, "/api/third/unbind?platform={1}", Post, "AuthFilter", "ActionTokenFilter");
     METHOD_LIST_END
 
     // GET
@@ -52,7 +52,7 @@ public:
     // 从第三方账号注册账号, 不登录, 不消耗第三方登陆值, 以便注册好后直接使用原登录值登录
     Task<HttpResponsePtr> createUserFromThirdParty(HttpRequestPtr req, const std::string platform, const std::string code, const std::string verifyCode);
 
-    Task<HttpResponsePtr> unbindAccount(HttpRequestPtr req, const std::string platform, const std::string mfaTarget, const std::string mfaCode);
+    Task<HttpResponsePtr> unbindAccount(HttpRequestPtr req, const std::string platform);
 
 
 };

@@ -1213,22 +1213,13 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::LoginWithThi
     co_return result;
 }
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccount(int userId, const std::string &platform, const std::string &target, const std::string &mfaCode) {
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccount(int userId, const std::string &platform) {
     auto _authService = AuthService::Instance();
-    auto _mfaService = MFAService::Instance();
 
     UEAdminAPI::utils::HttpResult result;
 
     if (platform.empty()) {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 platform");
-        co_return result;
-    }
-    if (target.empty()) {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 target");
-        co_return result;
-    }
-    if (mfaCode.empty()) {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 mfaCode");
         co_return result;
     }
 
@@ -1239,51 +1230,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::UnbindAccoun
     }
 
     auto dbClientPtr = drogon::app().getDbClient();
-    Mapper<User> mapperUser(dbClientPtr);
     Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
-    // 获取用户信息以推断默认目标
-    User user;
-    try {
-        user = mapperUser.findByPrimaryKey(userId);
-    } catch (const drogon::orm::UnexpectedRows &e) {
-        result.setResult(ApiErrorCode::ApiError_DatabaseError);
-        co_return result;
-    }
-
-    std::string realTarget = target;
-    if (realTarget.empty()) {
-        if (user.getEmail()) {
-            realTarget = user.getValueOfEmail();
-        } else if (user.getTelephoneNumber()) {
-            realTarget = user.getValueOfTelephoneNumber();
-        } else {
-            result.setResult(ApiErrorCode::ApiError_UnknownChannelType, "无法确定MFA目标，请提供target");
-            co_return result;
-        }
-    }
-
-    auto chType = MFAChannelBase::DetermineChannelType(realTarget);
-    if (chType == eChannelType::Email) {
-        if (!user.getEmail() || user.getValueOfEmail() != realTarget) {
-            result.setResult(ApiErrorCode::ApiError_TargetNotBoundToUser);
-            co_return result;
-        }
-    } else if (chType == eChannelType::SMS) {
-        auto [cc, pn] = CodePairBase::SMSCodePair::ParsePhoneNumber(realTarget);
-        if (!user.getTelephoneNumber() || user.getValueOfTelephoneNumber() != pn) {
-            result.setResult(ApiErrorCode::ApiError_TargetNotBoundToUser);
-            co_return result;
-        }
-    } else {
-        result.setResult(ApiErrorCode::ApiError_UnknownChannelType);
-        co_return result;
-    }
-
-    auto [ok, msg] = co_await _mfaService->VerifyTheCode(realTarget, mfaCode, eMFAType::ThirdPartyBind);
-    if (!ok) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, msg.empty() ? "验证码错误" : msg);
-        co_return result;
-    }
 
     bool notBound = false;
     try {
