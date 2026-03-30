@@ -6,6 +6,8 @@
 MFAService::MFAService(IEmailService* emailService, ISmsService* smsService) {
     _channels.push_back(std::make_shared<MFA_SMSChannel>(smsService));
     _channels.push_back(std::make_shared<MFA_EmailChannel>(emailService));
+    
+    LOG_INFO << "MFAService 初始化完成";
 }
 
 std::shared_ptr<IMFAChannel> MFAService::GetChannel(eChannelType type) {

@@ -42,7 +42,8 @@ AuthService::AuthService(const Json::Value &config) {
         LOG_ERROR << "UserManage:jwt_secert or jwt_issuer unset";
         throw std::runtime_error("UserManage:jwt_secert or jwt_issuer unset");
     }
-
+    
+    LOG_INFO << "AuthService 初始化完成";
 }
 
 std::vector<unsigned char> AuthService::stringToVector(const std::string &str) {

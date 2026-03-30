@@ -184,12 +184,12 @@ Task<HttpResponsePtr> UserController::generateActionToken(HttpRequestPtr req, st
     }
 
     // 验证成功 (或者无需验证)，颁发 ActionToken
-    std::string token = _actionTokenService->GenerateToken(userId, mfaType, 300); // 5分钟有效期
+    std::string token = _actionTokenService->GenerateToken(userId, mfaType); // 过期时间在内部配置
 
     result.setResult(ApiErrorCode::ApiError_Success, "ActionToken 颁发成功");
     result.jsondata["actionToken"] = token;
     result.jsondata["mfaType"] = mfaTypeStr;
-    result.jsondata["expiresIn"] = 300;
+    result.jsondata["expiresIn"] = _actionTokenService->GetExpireSeconds();
 
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);

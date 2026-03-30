@@ -48,7 +48,7 @@ GitlabService::GitlabService(const Json::Value &config) {
     _httpClient = HttpClient::newHttpClient("https://" + _gitlabApiHost);
     _httpClient->setUserAgent("UEAdminAPI/1.0");
 
-    LOG_INFO << "GitLab服务初始化完成，API地址: " << _gitlabApiHost;
+    LOG_INFO << "GitLabService 初始化完成，API地址: " << _gitlabApiHost;
 }
 
 bool GitlabService::checkAdminConfig() {

@@ -66,6 +66,8 @@ TencentSMSService::TencentSMSService(const Json::Value& config) {
     Credential cred = Credential(_secretId, _secretKey);
 
     _smsClient = std::make_unique<SmsClient>(cred, _region);
+    
+    LOG_INFO << "TencentSMSService 初始化完成";
 }
 
 Task<bool> TencentSMSService::SendSms(const string &phoneNumber, eMFAType type, const vector<string> &templateParams) {

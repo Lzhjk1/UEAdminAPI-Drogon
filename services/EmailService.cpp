@@ -32,6 +32,7 @@ EmailService::EmailService(IEmailSender *emailSender, const Json::Value& config)
         throw std::invalid_argument("EmailService: 发件人名称未配置");
     }
 
+    LOG_INFO << "EmailService 初始化完成";
 }
 
 drogon::Task<std::string> EmailService::SendEmailCoro(const std::string &to, const std::string &subject, const std::string &content) {

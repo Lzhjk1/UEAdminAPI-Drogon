@@ -5,9 +5,8 @@
 
 class SystemService : public SingletonWithInit<SystemService> {
     friend class SingletonWithInit<SystemService>;
-private:
-    SystemService() = default;
 
 public:
+    SystemService();
     drogon::Task<UEAdminAPI::utils::HttpResult> Ping();
 };

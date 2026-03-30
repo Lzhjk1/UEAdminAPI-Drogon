@@ -4,7 +4,17 @@
 namespace UEAdminAPI {
 namespace Services {
 
-ActionTokenService::ActionTokenService() {
+ActionTokenService::ActionTokenService(const Json::Value& config) {
+    if (!config.isMember("UserManage")) {
+        LOG_FATAL << "配置中缺少 UserManage 节点";
+        return;
+    }
+    if (config["UserManage"].isMember("ActionTokenSec") && config["UserManage"]["ActionTokenSec"].isInt()) {
+        _expireSeconds = config["UserManage"]["ActionTokenSec"].asInt();
+    } else {
+        _expireSeconds = 300; // 默认5分钟
+    }
+
     // 初始化 CacheMap，主循环通过 drogon 自身的事件循环来清理过期项
     _tokenCache = std::make_unique<drogon::CacheMap<std::string, ActionTokenInfo>>(
         drogon::app().getLoop(), 
@@ -23,6 +33,8 @@ ActionTokenService::ActionTokenService() {
     _routeToActionMap["/user/create"] = eMFAType::Register;
     _routeToActionMap["/user/create/phone"] = eMFAType::Register;
     _routeToActionMap["/api/third/register"] = eMFAType::Register;
+
+    LOG_INFO << "ActionTokenService 初始化完成";
 }
 
 eMFAType ActionTokenService::GetActionByRoute(const std::string& path) const {
@@ -33,7 +45,7 @@ eMFAType ActionTokenService::GetActionByRoute(const std::string& path) const {
     return eMFAType::Error;
 }
 
-std::string ActionTokenService::GenerateToken(int userId, eMFAType mfaType, int expireSeconds) {
+std::string ActionTokenService::GenerateToken(int userId, eMFAType mfaType) {
     // 使用 Drogon 的 getUuid 生成一个 UUID，去掉连字符作为不透明 Token
     std::string token = drogon::utils::getUuid();
     token.erase(std::remove(token.begin(), token.end(), '-'), token.end());
@@ -43,7 +55,7 @@ std::string ActionTokenService::GenerateToken(int userId, eMFAType mfaType, int 
     info.mfaType = mfaType;
 
     // 存入缓存并设置过期时间
-    _tokenCache->insert(token, info, expireSeconds);
+    _tokenCache->insert(token, info, _expireSeconds);
 
     return token;
 }

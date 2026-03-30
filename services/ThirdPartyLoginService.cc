@@ -784,6 +784,8 @@ ThirdPartyLoginService::ThirdPartyLoginService(const Json::Value& config) {
 
     // 添加微信平台
     platforms[EnumThirdPartyPlatform::WeChat] = std::make_unique<ThirdPartyLoginPlatform_WeChat>(config);
+
+    LOG_INFO << "ThirdPartyLoginService 初始化完成";
 }
 
 drogon::Task<IThirdPartyLoginPlatform*> ThirdPartyLoginService::getPlatform(UEAdminAPI::utils::EnumThirdPartyPlatform platform) {
