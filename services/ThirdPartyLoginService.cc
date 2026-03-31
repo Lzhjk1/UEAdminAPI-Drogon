@@ -800,14 +800,23 @@ drogon::Task<IThirdPartyLoginPlatform*> ThirdPartyLoginService::getPlatform(cons
 }
 
 drogon::Task<std::tuple<UEAdminAPI::utils::EnumThirdPartyPlatform, std::shared_ptr<ThirdPartyLoginValue>>> ThirdPartyLoginService::getCodeAndItsPlatform(const std::string &code) {
-    std::lock_guard<std::mutex> lock(mutex);
-    for(const auto& platform: platforms) {
+    std::vector<std::pair<UEAdminAPI::utils::EnumThirdPartyPlatform, IThirdPartyLoginPlatform*>> platformsCopy;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for(const auto& pair : platforms) {
+            platformsCopy.push_back({pair.first, pair.second.get()});
+        }
+    }
+
+    for(const auto& platform: platformsCopy) {
         auto value = co_await platform.second->getLoginValue(code);
         if(!value){
             continue;
         }
         co_return std::make_tuple(platform.first, value);
     }
+    
+    co_return std::make_tuple(UEAdminAPI::utils::EnumThirdPartyPlatform::None, nullptr);
 }
 
 drogon::Task<void> ThirdPartyLoginService::deletePlatform(UEAdminAPI::utils::EnumThirdPartyPlatform platform) {
