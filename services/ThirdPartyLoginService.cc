@@ -117,7 +117,7 @@ drogon::Task<bool> ThirdPartyLoginPlatformBase::verifyTheCode(const std::string&
         co_return false;
     }
 
-    auto& value = *it;
+    auto value = *it;
     std::lock_guard<std::recursive_mutex> valueLock(value->mutex);
     if (value->isExpired()) {
         loginValues.erase(it);
