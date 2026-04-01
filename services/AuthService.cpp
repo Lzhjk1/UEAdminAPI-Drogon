@@ -839,10 +839,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(int userId)
     }
     result.jsondata["gitlab_token"] = gitlabToken;
 
-    result.jsondata["emails"] = Json::Value(Json::arrayValue);
-    if(user.getEmail()){
-        result.jsondata["emails"].append(user.getValueOfEmail());
-    }
+    result.jsondata["emails"] = user.getValueOfEmail();
 
     result.setResult(ApiErrorCode::ApiError_Success, "success");
     co_return result;

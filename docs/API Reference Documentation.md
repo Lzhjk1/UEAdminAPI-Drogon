@@ -146,17 +146,18 @@ GitLab 相关接口目前使用独立的响应格式：
   ```json
   {
     "code": 0,
-    "msg": "获取成功",
     "data": {
-      "id": 1,
-      "name": "user1",
-      "nickname": "Nick",
-      "email": "test@ex.com",
-      "telephoneNumber": "13800000000",
-      "privilege": 0,
-      "is_male": true,
-      "create_at": "2023-10-01 12:00:00"
-    }
+        "configured_third_platform_name": [],
+        "created_at": "20260331 10:01:45",
+        "emails": "everspace@qq.com",
+        "gitlab_token": "glpat-xxxxxxxxxxxxxxxxx",
+        "id": 33,
+        "sex": "man",
+        "tel": "",
+        "userName": "TestAccount",
+        "userNick": "TestAccount"
+    },
+    "msg": "success"
   }
   ```
 
