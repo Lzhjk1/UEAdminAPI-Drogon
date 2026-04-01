@@ -163,3 +163,5 @@
 | :--- | :--- | :--- | :--- |
 | **/system/ping** (GET) | 0 | `ApiError_Success` | Pong |
 | | -104 | `ApiError_DatabaseError` | 数据库错误 |
+| | -105 | `ApiError_InvalidOperation` | 无效操作 |
+| | -106 | `ApiError_TooManyRequests` | 访问过于频繁，请稍后再试 |
