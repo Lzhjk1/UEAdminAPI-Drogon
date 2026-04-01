@@ -22,23 +22,37 @@ ActionTokenService::ActionTokenService(const Json::Value& config) {
     );
 
     // ========================================
-    // 路由 -> Action 类别 (复用 eMFAType)
+    // 路由+Method -> Action 类别 (复用 eMFAType)
+    // 格式: "METHOD:PATH"
     // ========================================
-    _routeToActionMap["/user/delete"] = eMFAType::DeleteUser;
-    _routeToActionMap["/api/third/unbind"] = eMFAType::Unbind;
-    _routeToActionMap["/user/update"] = eMFAType::ModifyUser;
-    _routeToActionMap["/api/third/bind"] = eMFAType::ThirdPartyBind;
-    _routeToActionMap["/user/login/email"] = eMFAType::Login;
-    _routeToActionMap["/user/login/phone"] = eMFAType::Login;
-    _routeToActionMap["/user/create"] = eMFAType::Register;
-    _routeToActionMap["/user/create/phone"] = eMFAType::Register;
-    _routeToActionMap["/api/third/register"] = eMFAType::Register;
+    _routeToActionMap["DELETE:/user/delete"] = eMFAType::DeleteUser;
+    _routeToActionMap["POST:/api/third/unbind"] = eMFAType::Unbind;
+    _routeToActionMap["POST:/user/update"] = eMFAType::ModifyUser;
+    _routeToActionMap["POST:/api/third/bind"] = eMFAType::ThirdPartyBind;
+    _routeToActionMap["GET:/user/login/email"] = eMFAType::Login;
+    _routeToActionMap["GET:/user/login/phone"] = eMFAType::Login;
+    _routeToActionMap["POST:/user/create"] = eMFAType::Register;
+    _routeToActionMap["POST:/user/create/phone"] = eMFAType::Register;
+    _routeToActionMap["POST:/api/third/register"] = eMFAType::Register;
 
     LOG_INFO << "ActionTokenService 初始化完成";
 }
 
-eMFAType ActionTokenService::GetActionByRoute(const std::string& path) const {
-    auto it = _routeToActionMap.find(path);
+eMFAType ActionTokenService::GetActionByRoute(const std::string& path, drogon::HttpMethod method) const {
+    std::string methodStr;
+    switch (method) {
+        case drogon::Get: methodStr = "GET"; break;
+        case drogon::Post: methodStr = "POST"; break;
+        case drogon::Put: methodStr = "PUT"; break;
+        case drogon::Delete: methodStr = "DELETE"; break;
+        case drogon::Patch: methodStr = "PATCH"; break;
+        case drogon::Options: methodStr = "OPTIONS"; break;
+        case drogon::Head: methodStr = "HEAD"; break;
+        default: methodStr = "UNKNOWN"; break;
+    }
+    
+    std::string key = methodStr + ":" + path;
+    auto it = _routeToActionMap.find(key);
     if (it != _routeToActionMap.end()) {
         return it->second;
     }

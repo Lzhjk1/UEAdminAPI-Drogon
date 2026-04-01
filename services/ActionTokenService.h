@@ -36,8 +36,9 @@ public:
 
     /// @brief 获取路由对应的 Action 类别
     /// @param path 路由路径 (例如: "/user/delete")
+    /// @param method HTTP 请求方法
     /// @return 对应的 Action 类别 (eMFAType)，如果不存在则返回 eMFAType::Error
-    eMFAType GetActionByRoute(const std::string& path) const;
+    eMFAType GetActionByRoute(const std::string& path, drogon::HttpMethod method) const;
 
     /// @brief 获取 ActionToken 过期时间
     int GetExpireSeconds() const { return _expireSeconds; }

@@ -19,10 +19,15 @@ void ActionTokenFilter::doFilter(const HttpRequestPtr &req,
     auto _actionTokenService = ActionTokenService::Instance();
 
     // 1. 获取当前请求需要的 Action 类别 (直接向 Service 查询)
-    eMFAType expectedAction = _actionTokenService->GetActionByRoute(req->path());
+    eMFAType expectedAction = _actionTokenService->GetActionByRoute(req->path(), req->method());
     if (expectedAction == eMFAType::Error) {
-        // 如果当前路由不需要 ActionToken，直接放行
-        fccb();
+        // 如果当前路由没有注册, 表示有请求路径忘记注册或是路径更改, 拒绝请求并LOG_FATAL
+        LOG_FATAL << "ActionTokenFilter: 未注册的路由: "<< req->method() << ":" << req->path() <<" 应用了 ActionTokenFilter, 请检查是否忘记在 ActionTokenService 的构造函数里注册或更改了路由!" << req->path();
+        auto resp = HttpResponse::newHttpResponse();
+        HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_AuthenticationFailed), "认证失败");
+        resp->setBody(result.toJsonString());
+        resp->setStatusCode(k401Unauthorized);
+        fcb(resp);
         return;
     }
 
@@ -32,7 +37,7 @@ void ActionTokenFilter::doFilter(const HttpRequestPtr &req,
         auto resp = HttpResponse::newHttpResponse();
         HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_MissingRequiredArgs), "缺少 X-Action-Token 请求头");
         resp->setBody(result.toJsonString());
-        resp->setStatusCode(k200OK);
+        resp->setStatusCode(k401Unauthorized);
         fcb(resp);
         return;
     }
