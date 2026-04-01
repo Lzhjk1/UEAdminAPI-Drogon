@@ -77,24 +77,33 @@ public:
     /// @param password 密码
     /// @param email 邮箱
     /// @param mfaCode 验证码
+    /// @param privilege 权限
+    /// @param isMale 性别
     /// @param nickname 昵称, 默认为空, 为空时使用用户名
-    /// @return std::tuple<int, std::string, int> 
-    /// 1: 返回码, 0表示成功, 
-    /// 2: 字符串信息, 
-    /// 3: 用户Id
+    /// @return HttpResult
     drogon::Task<UEAdminAPI::utils::HttpResult> RegisterByEmail(
         const std::string &username, 
         const std::string &password, 
         const std::string &email, 
+        const std::string &mfaCode,
         const UserPrivileges &privilege = UserPrivileges::User, 
         const bool &isMale = true, 
         const std::string &nickname = "");
 
-    /// @brief 手机号注册用户, 其余与邮箱注册相同
+    /// @brief 手机号注册用户
+    /// @param username 用户名
+    /// @param password 密码
+    /// @param phoneNumber 手机号
+    /// @param mfaCode 验证码
+    /// @param privilege 权限
+    /// @param isMale 性别
+    /// @param nickname 昵称, 默认为空, 为空时使用用户名
+    /// @return HttpResult
     drogon::Task<UEAdminAPI::utils::HttpResult> RegisterByPhone(
         const std::string &username, 
         const std::string &password, 
         const std::string &phoneNumber, 
+        const std::string &mfaCode,
         const UserPrivileges &privilege = UserPrivileges::User, 
         const bool &isMale = true, 
         const std::string &nickname = "");
@@ -111,6 +120,7 @@ public:
        const std::string &username, 
        const std::string &password, 
        const std::string &email, 
+       const std::string &mfaCode,
        const std::string &third_platform_name,
        const std::string &third_code,
        const std::string &third_verifyCode,
@@ -125,6 +135,7 @@ public:
        const std::string &username, 
        const std::string &password, 
        const std::string &phoneNumber, 
+       const std::string &mfaCode,
        const std::string &third_platform_name,
        const std::string &third_code,
        const std::string &third_verifyCode,
