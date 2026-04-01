@@ -194,16 +194,15 @@ drogon::Task<std::tuple<std::string, int>> AuthService::NewToken(int userId, int
 
 std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std::string &token) {
     std::string tokenType;
-    int status;
-    int32_t userId;
-    int isFlashToken;
+    int32_t userId = -1;
+    int status = -1;
+    int isFlashToken = -1;
     try{
         // 解码并验证token
         auto decoded = jwt::decode(token);
         auto verifier = jwt::verify()
             .allow_algorithm(jwt::algorithm::hs512{_secret})
             .with_issuer(_jwtIssuer);
-        verifier.verify(decoded);
         tokenType = decoded.get_payload_claim("tokenType").as_string();
         if(tokenType != "token" && tokenType != "flashToken"){
             LOG_ERROR << std::format("对于Token: {}, tokenType 既不是 token, 也不是 flashToken", token);
@@ -212,27 +211,28 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
         isFlashToken = tokenType == "flashToken";
         status = std::stoi(decoded.get_payload_claim("status").as_string());
         userId = std::stoi(decoded.get_payload_claim("id").as_string());
+        verifier.verify(decoded);
         return std::make_tuple(true, userId, status, isFlashToken);
     }
     catch (const jwt::error::token_verification_exception &e) {
         LOG_ERROR << std::format("对于Token: {}, 验证失败: {}", token, e.what());
-        return std::make_tuple(false, -1, -1, -1);
+        return std::make_tuple(false, userId, status, isFlashToken);
     }
     catch (const jwt::error::signature_verification_exception& e) {
         LOG_ERROR << std::format("对于Token: {}, 签名无效: {}", token, e.what());
-        return std::make_tuple(false, -1, -1, -1);
+        return std::make_tuple(false, userId, status, isFlashToken);
     }
     catch (const std::out_of_range &e) {
         LOG_ERROR << std::format("对于Token: {}, 缺失的Claim: {}", token, e.what());
-        return std::make_tuple(false, -1, -1, -1);
+        return std::make_tuple(false, userId, status, isFlashToken);
     }
     catch (const std::invalid_argument &e) {
         LOG_ERROR << std::format("对于Token: {}, Claim解析错误: {}", token, e.what());
-        return std::make_tuple(false, -1, -1, -1);
+        return std::make_tuple(false, userId, status, isFlashToken);
     }
     catch (const std::exception &e) {
         LOG_ERROR << std::format("对于Token: {}, 未知错误: {}", token, e.what());
-        return std::make_tuple(false, -1, -1, -1);
+        return std::make_tuple(false, userId, status, isFlashToken);
     }
 }
 
@@ -246,21 +246,22 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
     auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
     bool valid = true;
     // 只有FlashToken才检查状态
-    if(isFlashToken){
+    if(isFlashToken == 1){
         valid = co_await CheckTokenStatus(userId, status, isFlashToken);
+        result.jsondata["valid"] = valid;
     }
 
-    result.jsondata["valid"] = valid;
     result.jsondata["userId"] = userId;
     result.jsondata["status"] = status;
-    result.jsondata["tokenType"] = isFlashToken == -1 ? "unset" : isFlashToken == 1 ? "flashToken" : "token";
+
+    result.jsondata["tokenType"] = isFlashToken == -1 ? "undefined" : isFlashToken == 1 ? "flashToken" : "token";
 
     if (!isSuccess) {
-        result.setResult(ApiErrorCode::ApiError_AuthenticationFailed, std::format("{}验证失败", result.jsondata["tokenType"].asString()));
+        result.setResult(ApiErrorCode::ApiError_AuthenticationFailed, "Token验证失败");
         co_return result;
     }
     if(!valid){
-        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, std::format("{}已失效", result.jsondata["tokenType"].asString()));
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "FlashToken已失效");
         co_return result;
     }
 

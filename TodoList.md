@@ -44,39 +44,14 @@
 - ✅增加一个接口, 用于手机号直接注册账号完成登录
 - AuthService下, DeleteUserForce不完善, 在删除用户对应的Gitlab账号时, 没有完善的异常处理
 - ✅改为通过HttpFilter来验证Token, 并在Filter中解析UserId, 并将其设置到Request中, 后续控制器可以直接从Request中获取UserId, 如果Token无效或过期, 则直接返回401响应
-- 增加ActionTokenFilter, MFA验证后获得指定接口的ActionToken后, 凭次Token访问受限接口, 文档在 docs\ActionToken_Architecture.md
+- ✅增加ActionTokenFilter, MFA验证后获得指定接口的ActionToken后, 凭次Token访问受限接口, 文档在 docs\ActionToken_Architecture.md
+- 通过flashToken刷新Token的接口目前没有使用Drogon的Filter实现
+- [潜在问题]可能问题: 删除用户时, 因为Gitlab无法立刻删除, 需要等待一段时间后才能删除完毕, 所以删除用户后如果立刻注册同名用户会导致错误
 
-PDMS 测试
-- ✅登录
-- 注册
-
-
-# 客户端调用流程(如需要多步调用)
-- 已绑定第三方的账号, 通过第三方登陆:
-    - 获取登陆页面                  /api/third/[qq/wechat]/login_url 
-    - 调用接口, 确认已完成扫码, 并且检查返回信息, 确认第三方账号是已绑定的状态      /api/third/[qq/wechat]/check
-    - 登录获取Token                 /api/login/third/login
-
-- 通过第三方注册(未完成):
-    - 获取登陆页面                  /api/third/[qq/wechat]/login_url
-    - 调用接口, 确认已完成扫码, 并且检查返回信息, 确认第三方账号是已绑定的状态      /api/third/[qq/wechat]/check
-    - 注册(未完成)
-
-- 绑定第三方账号:
-    - 获取登陆页面                  /api/third/[qq/wechat]/login_url
-    - 调用接口, 确认已完成扫码, 并且检查返回信息, 确认第三方账号是未绑定的状态      /api/third/[qq/wechat]/check
-    - 绑定账号                      /api/third/bind
-
-# 统一定义
-- ✅ 密码登录
-- ✅ 验证码 定义基本相同, 区别在我这个不需要指定平台, 因为目前的情况下还是可以自动判断平台的
-- ✅ 邮箱登录
-- ✅ 电话登录
-
-- ✅ 第三方登陆页面获取 authorUrl有歧义, 改用全称authorizationUrl
-- ✅ 回调
-- ✅ 绑定
-- 确认第三方登录 邱的实现里, 如果没有绑定, 会自动注册一个账号
+# Token相关
+- 普通Token无状态, 有效期在config.yaml中配置 `custom_config:UserManage:tokenExpeirSec`
+- FlashToken有状态, 有效期在config.yaml中配置 `custom_config:UserManage:tokenFlashTokenSec`
+- ActionToken不是JWT, 而是字符串, 在内存中保存, 验证后即失效, 有效期在config.yaml中配置 `custom_config:UserManage:ActionTokenSec`
 
 # 第三方登录流程
 1. 获取第三方登录页面
@@ -85,13 +60,6 @@ PDMS 测试
 4. 调用接口, 
     - 根据第三方账号创建用户, 还未实现
     - 或者绑定现有用户, 即bindAccount接口
-
-# 目前测试进程:
-- 邮箱验证码 
-- 邮箱注册
-- 手机验证码
-- 手机注册
-
 
 # 接口总览
 - 验证码 [SendVerifyCode.h](controllers/SendVerifyCode.h)

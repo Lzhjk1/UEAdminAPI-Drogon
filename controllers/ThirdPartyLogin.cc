@@ -98,7 +98,6 @@ Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req,
     auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
     int userId = req->getAttributes()->get<int>("userId");
-    // 不再需要传入 mfaTarget 和 mfaCode，因为 ActionToken 已经做了校验
     result = co_await _thirdPartyLoginService->UnbindAccount(userId, platform);
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
