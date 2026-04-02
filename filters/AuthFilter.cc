@@ -14,6 +14,24 @@ void AuthFilter::doFilter(const HttpRequestPtr &req,
     auto [authType, token] = UEAdminAPI::DataFormatUtil::parseTokenFromAuthorizationHeader(req->getHeader("Authorization"));
     
     if (token.empty()) {
+        bool allowAnonymous = false;
+        // 如果是获取 ActionToken 的接口，检查是否为无需登录的操作
+        if (req->path() == "/user/action_token") {
+            auto mfaTypeStr = req->getParameter("mfaType");
+            if (!mfaTypeStr.empty()) {
+                eMFAType mfaType = stringToMFAType(mfaTypeStr);
+                // 登录和注册相关的 MFA 操作不需要预先登录
+                if (mfaType == eMFAType::Register || mfaType == eMFAType::Login || mfaType == eMFAType::LoginOrRegister || mfaType == eMFAType::ResetPassword) {
+                    allowAnonymous = true;
+                }
+            }
+        }
+
+        if (allowAnonymous) {
+            fccb();
+            return;
+        }
+
         auto resp = HttpResponse::newHttpResponse();
         UEAdminAPI::utils::HttpResult result(static_cast<int32_t>(UEAdminAPI::ApiErrorCode::ApiError_TokenMissing), "Authorization in header is missing or empty");
         resp->setBody(result.toJsonString());

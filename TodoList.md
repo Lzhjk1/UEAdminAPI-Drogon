@@ -47,6 +47,9 @@
 - ✅增加ActionTokenFilter, MFA验证后获得指定接口的ActionToken后, 凭次Token访问受限接口, 文档在 docs\ActionToken_Architecture.md
 - 通过flashToken刷新Token的接口目前没有使用Drogon的Filter实现
 - [潜在问题]可能问题: 删除用户时, 因为Gitlab无法立刻删除, 需要等待一段时间后才能删除完毕, 所以删除用户后如果立刻注册同名用户会导致错误
+- /user/create (通用注册): 存在偏差 。当尝试使用常规接口注册时，如果只传手机号且留空 email ，接口会返回 -102 缺少必填项: , email or phone 错误。
+- /user/check_exist 返回当前手机号是否已注册, 但是需要已登录, 需要考虑这个接口设计是否合理
+
 
 # Token相关
 - 普通Token无状态, 有效期在config.yaml中配置 `custom_config:UserManage:tokenExpeirSec`

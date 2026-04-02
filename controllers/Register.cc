@@ -40,8 +40,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     PostParamMap paramMap;
     // 设置需要的参数
     paramMap.addParam("username", true)
-        .addParam("user_password", true)
-        .addParam("mfaCode", true)
+        .addParam("password", true)
         .addParam("privilege", false, "User")
         .addParam("nickname", false)
         .addParam("isMale", false, "true")
@@ -101,9 +100,8 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         if(isWithThirdPlatform){
             result = co_await _authService->RegisterWithThirdPartyByEmail(
                 paramMap.getParam("username"),
-                paramMap.getParam("user_password"),
+                paramMap.getParam("password"),
                 paramMap.getParam("email"),
-                paramMap.getParam("mfaCode"),
                 paramMap.getParam("third_platform_name"),
                 paramMap.getParam("third_code"),
                 paramMap.getParam("third_verifyCode"),
@@ -115,9 +113,8 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         else{
             result = co_await _authService->RegisterByEmail(
                 paramMap.getParam("username"),
-                paramMap.getParam("user_password"),
+                paramMap.getParam("password"),
                 paramMap.getParam("email"),
-                paramMap.getParam("mfaCode"),
                 privileges,
                 paramMap.getParam("isMale") == "true",
                 paramMap.getParam("nickname")
@@ -128,9 +125,8 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         if(isWithThirdPlatform){
             result = co_await _authService->RegisterWithThirdPartyByPhone(
                 paramMap.getParam("username"), 
-                paramMap.getParam("user_password"), 
+                paramMap.getParam("password"), 
                 paramMap.getParam("phone"), 
-                paramMap.getParam("mfaCode"),
                 paramMap.getParam("third_platform_name"),
                 paramMap.getParam("third_code"),
                 paramMap.getParam("third_verifyCode"),
@@ -142,9 +138,8 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         else{
             result = co_await _authService->RegisterByPhone(
                 paramMap.getParam("username"),
-                paramMap.getParam("user_password"),
+                paramMap.getParam("password"),
                 paramMap.getParam("phone"),
-                paramMap.getParam("mfaCode"),
                 privileges,
                 paramMap.getParam("isMale") == "true",
                 paramMap.getParam("nickname")   
@@ -157,15 +152,15 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     co_return resp;
 }
 
-Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::string phone, std::string mfaCode) {
+Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::string phone) {
     auto _authService = AuthService::Instance();
 
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     HttpResult result;
 
-    if (phone.empty() || mfaCode.empty()) {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: phone 或 mfaCode");
+    if (phone.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: phone");
         resp->setBody(result.toJsonString());
         co_return resp;
     }
@@ -177,7 +172,6 @@ Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::str
         username,
         password,
         phone,
-        mfaCode,
         UserPrivileges::User,
         true,
         username

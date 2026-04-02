@@ -340,20 +340,11 @@ Task<HttpResult> AuthService::RegisterByEmail(
     const std::string &username, 
     const std::string &password, 
     const std::string &email, 
-    const std::string &mfaCode,
     const UserPrivileges &privilege, 
     const bool &isMale, 
     const std::string &nickname) {
     HttpResult result;
-    auto _mfaService = MFAService::Instance();
     
-    // 1. 验证验证码
-    auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(email, mfaCode, eMFAType::Register);
-    if (!mfaOk) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
-        co_return result;
-    }
-
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
@@ -386,21 +377,11 @@ Task<HttpResult> AuthService::RegisterByPhone(
         const std::string &username, 
         const std::string &password, 
         const std::string &phoneNumber, 
-        const std::string &mfaCode,
         const UserPrivileges &privilege, 
         const bool &isMale, 
         const std::string &nickname) {
-    // 依赖
-    auto _mfaService = MFAService::Instance();
     
     HttpResult result;
-
-    // 1. 验证验证码
-    auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(phoneNumber, mfaCode, eMFAType::Register);
-    if (!mfaOk) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
-        co_return result;
-    }
 
     // 数据库初始化
     auto dbClientPtr = drogon::app().getDbClient();
@@ -434,7 +415,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     const std::string &username, 
     const std::string &password, 
     const std::string &email, 
-    const std::string &mfaCode,
     const std::string &third_platform_name, 
     const std::string &third_code, 
     const std::string &third_verifyCode, 
@@ -444,17 +424,9 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
 {
     // 依赖
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto _mfaService = MFAService::Instance();
 
     HttpResult result;
     
-    // 1. 验证验证码
-    auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(email, mfaCode, eMFAType::Register);
-    if (!mfaOk) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
-        co_return result;
-    }
-
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);
@@ -519,7 +491,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     const std::string &username, 
     const std::string &password, 
     const std::string &phoneNumber, 
-    const std::string &mfaCode,
     const std::string &third_platform_name, 
     const std::string &third_code, 
     const std::string &third_verifyCode, 
@@ -529,17 +500,9 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
 {
     // 依赖
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto _mfaService = MFAService::Instance();
 
     HttpResult result;
     
-    // 1. 验证验证码
-    auto [mfaOk, mfaErr] = co_await _mfaService->VerifyTheCode(phoneNumber, mfaCode, eMFAType::Register);
-    if (!mfaOk) {
-        result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
-        co_return result;
-    }
-
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
     drogon::orm::Mapper<User> mapperUsers(dbClientPtr);

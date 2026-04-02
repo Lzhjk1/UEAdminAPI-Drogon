@@ -13,6 +13,7 @@
 大多数接口需要鉴权，鉴权方式为在 HTTP Header 中添加 `Authorization` 字段。
 - **Header**: `Authorization: Bearer <token>`
 - **FlashToken**: 部分接口（如 `LoginByFlashToken`）使用 `AuthorizationFlashToken` 头。
+- **ActionToken**: 部分高危操作（如修改敏感信息、注销、绑定解绑第三方、验证码登录等）还需要在 HTTP Header 中添加 `X-Action-Token` 字段。
 
 ### 1.3 响应格式 (Response Format)
 
@@ -65,9 +66,11 @@ GitLab 相关接口目前使用独立的响应格式：
 #### 2.1.2 邮箱验证码登录
 - **URL**: `/user/login/email`
 - **Method**: `GET`
+- **Headers**:
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: "Login") 获取
+- **Description**: `X-Action-Token` 绑定了申请时的 `target`，此处 `email` 必须与申请匿名 ActionToken 时使用的 `target` 一致（邮箱大小写不敏感）。
 - **Params**:
   - `email` (string, required): 邮箱地址
-  - `mfaCode` (string, required): 验证码
 - **Response**:
   ```json
   {
@@ -84,9 +87,11 @@ GitLab 相关接口目前使用独立的响应格式：
 #### 2.1.3 手机验证码登录
 - **URL**: `/user/login/phone`
 - **Method**: `GET`
+- **Headers**:
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: "Login") 获取
+- **Description**: `X-Action-Token` 绑定了申请时的 `target`，此处 `phone` 必须与申请匿名 ActionToken 时使用的 `target` 一致。
 - **Params**:
   - `phone` (string, required): 手机号
-  - `mfaCode` (string, required): 验证码
 - **Response**:
   ```json
   {
@@ -180,13 +185,15 @@ GitLab 相关接口目前使用独立的响应格式：
 #### 2.2.1 账号注册 (通用)
 - **URL**: `/user/create`
 - **Method**: `POST`
+- **Headers**:
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: "Register") 获取
+- **Description**: `X-Action-Token` 绑定了申请时的 `target`，请求体中的 `email` 或 `phone/tel` 需与该 `target` 一致。
 - **Content-Type**: `application/json`
 - **Body**:
   ```json
   {
     "username": "user1",       // (Required) 用户名
     "user_password": "pwd",    // (Required) 密码
-    "mfaCode": "123456",       // (Required) MFA验证码
     "email": "test@ex.com",    // (Required if phone missing) 邮箱
     "tel": "13800000000",      // (Required if email missing) 手机号
     "nickname": "Nick",        // (Optional) 昵称
@@ -209,11 +216,13 @@ GitLab 相关接口目前使用独立的响应格式：
   ```
 
 #### 2.2.2 手机快速注册
-- **URL**: `/user/create/phone?phone={phone}&mfaCode={code}`
+- **URL**: `/user/create/phone?phone={phone}`
 - **Method**: `POST`
+- **Headers**:
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: "Register") 获取
+- **Description**: `X-Action-Token` 绑定了申请时的 `target`，此处 `phone` 必须与申请匿名 ActionToken 时使用的 `target` 一致。
 - **Params**:
   - `phone` (string, required): 手机号
-  - `mfaCode` (string, required): 验证码
 - **Response**:
   ```json
   {
@@ -328,11 +337,12 @@ GitLab 相关接口目前使用独立的响应格式：
   ```
 
 ### 3.3 获取操作授权令牌 (ActionToken)
+#### 3.3.1 获取操作授权令牌 - 登录后
 - **URL**: `/user/action_token`
-- **Method**: `POST`
+- **Method**: `GET`
 - **Headers**: `Authorization`
 - **Params (Query)**:
-  - `mfaType` (string, required): 业务类别，如 "DeleteUser", "Unbind", "ModifyUser"
+  - `mfaType` (string, required): 业务类别，如 "DeleteUser", "Unbind", "ModifyUser", "ThirdPartyBind"
   - `mfaCode` (string, optional): MFA 验证码 (如果用户绑定了邮箱或手机号则必填)
   - `target` (string, optional): 验证码发送的目标(邮箱/手机) (如果用户绑定了邮箱或手机号则必填)
 - **Description**: 为高危操作（如删除用户、解绑第三方账号等）申请一个一次性的不透明随机 Token。如果用户未绑定邮箱或手机号，无需提供 `mfaCode` 和 `target`。该 Token 的有效期为 5 分钟。
@@ -349,6 +359,16 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
+#### 3.3.2 获取操作授权令牌 - 登录前 (匿名)
+- **URL**: `/user/action_token/anonymous`
+- **Method**: `GET`
+- **Params (Query)**:
+  - `mfaType` (string, required): 业务类别，必须为 "Login", "Register", "LoginOrRegister", 或 "ResetPassword"
+  - `mfaCode` (string, required): MFA 验证码
+  - `target` (string, required): 验证码发送的目标(邮箱/手机)
+- **Description**: 在未登录状态下（如登录、注册前）验证手机/邮箱验证码，并获取 ActionToken。获取的 Token 与 `userId = -1` 绑定，并绑定到本次传入的 `target`；后续受保护接口中提交的目标值必须与该 `target` 一致。
+- **Response**: 同上。
+
 ---
 
 ## 4. 第三方登录 (Third-Party Login)
@@ -357,7 +377,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **URL**: `/api/third/authorization_url`
 - **Method**: `GET`
 - **Params**:
-  - `platform` (string, required): 平台名称 (如 `github`, `gitlab`, `qq`, `wechat` 等)
+  - `platform` (string, required): 平台名称 (目前有 `qq`, `wechat` 两个平台)
 - **Response**:
   ```json
   {
@@ -455,6 +475,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `POST`
 - **Headers**:
   - `Authorization`: Bearer Token (必须已登录)
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token` (mfaType: "ThirdPartyBind") 获取
 - **Params (Query)**:
   - `platform` (string, required): 平台名称
   - `code` (string, required): 4.1 接口返回的 `code`
@@ -474,6 +495,8 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 4.6 第三方注册 (Register via Third-Party)
 - **URL**: `/api/third/register`
 - **Method**: `POST`
+- **Headers**:
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: "Register") 获取
 - **Params (Query)**:
   - `platform` (string, required): 平台名称
   - `code` (string, required): 4.1 接口返回的 `code`
@@ -498,10 +521,9 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `POST`
 - **Headers**:
   - `Authorization`: Bearer Token
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token` (mfaType: "Unbind") 获取
 - **Params (Query)**:
   - `platform` (string, required): 平台名称
-  - `mfaTarget` (string, required): 接收验证码的邮箱或手机号
-  - `mfaCode` (string, required): MFA 验证码 (通过 `/user/mfa` 获取，type 为 `Unbind`)
 - **Description**: 解除当前用户与指定第三方平台的绑定。
 - **Response**:
   ```json
@@ -514,7 +536,7 @@ GitLab 相关接口目前使用独立的响应格式：
 
 ---
 
-## 5. GitLab 集成 (GitLab Integration)
+## 5. GitLab 集成 (GitLab Integration) (未使用, 不测试)
 
 > 注意：本模块返回格式为 `{ "success": true/false, "message": "..." }`
 

@@ -50,8 +50,28 @@ void ActionTokenFilter::doFilter(const HttpRequestPtr &req,
         userId = attributes->get<int>("userId");
     }
 
-    // 4. 校验并消耗 Token
-    bool isValid = _actionTokenService->VerifyAndConsumeToken(actionToken, expectedAction, userId);
+    std::string requestTarget;
+    if (userId <= 0) {
+        const std::string& path = req->path();
+        if (path == "/user/login/email") {
+            requestTarget = req->getParameter("email");
+        } else if (path == "/user/login/phone" || path == "/user/create/phone") {
+            requestTarget = req->getParameter("phone");
+        } else if (path == "/user/create") {
+            auto reqJson = req->getJsonObject();
+            if (reqJson) {
+                if (reqJson->isMember("email") && (*reqJson)["email"].isString()) {
+                    requestTarget = (*reqJson)["email"].asString();
+                } else if (reqJson->isMember("phone") && (*reqJson)["phone"].isString()) {
+                    requestTarget = (*reqJson)["phone"].asString();
+                } else if (reqJson->isMember("tel") && (*reqJson)["tel"].isString()) {
+                    requestTarget = (*reqJson)["tel"].asString();
+                }
+            }
+        }
+    }
+
+    bool isValid = _actionTokenService->VerifyAndConsumeToken(actionToken, expectedAction, userId, requestTarget);
 
     if (isValid) {
         // 校验通过，放行

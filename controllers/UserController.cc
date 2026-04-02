@@ -101,95 +101,27 @@ Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req) {
 }
 
 Task<HttpResponsePtr> UserController::generateActionToken(HttpRequestPtr req, std::string mfaTypeStr, std::string mfaCode, std::string target) {
-    auto _authService = AuthService::Instance();
     auto _actionTokenService = ActionTokenService::Instance();
-    auto _mfaService = MFAService::Instance();
-    
     auto resp = HttpResponse::newHttpResponse();
-    HttpResult result;
-
-    if (mfaTypeStr.empty()) {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数: mfaType");
-        resp->setBody(result.toJsonString());
-        resp->setStatusCode(k200OK);
-        co_return resp;
-    }
-
+    
     int userId = -1;
     auto attributes = req->getAttributes();
     if (attributes->find("userId")) {
         userId = attributes->get<int>("userId");
     }
-    eMFAType mfaType = stringToMFAType(mfaTypeStr);
 
-    if (mfaType == eMFAType::Error) {
-        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "未知的操作类别 (mfaType)");
-        resp->setBody(result.toJsonString());
-        resp->setStatusCode(k200OK);
-        co_return resp;
-    }
+    HttpResult result = co_await _actionTokenService->GenerateTokenForUser(userId, mfaTypeStr, mfaCode, target);
 
-    // 检查用户是否绑定了邮箱或手机号
-    auto dbClientPtr = drogon::app().getDbClient();
-    drogon::orm::Mapper<drogon_model::UEAdminAPI::User> mapperUser(dbClientPtr);
-    drogon_model::UEAdminAPI::User user;
+    resp->setBody(result.toJsonString());
+    resp->setStatusCode(k200OK);
+    co_return resp;
+}
 
-    if (userId > 0) {
-        try {
-            user = mapperUser.findByPrimaryKey(userId);
-        } catch (...) {
-            result.setResult(ApiErrorCode::ApiError_UserNotFound);
-            resp->setBody(result.toJsonString());
-            resp->setStatusCode(k200OK);
-            co_return resp;
-        }
+Task<HttpResponsePtr> UserController::generateActionTokenBeforeLogin(HttpRequestPtr req, std::string mfaTypeStr, std::string mfaCode, std::string target) {
+    auto _actionTokenService = ActionTokenService::Instance();
+    auto resp = HttpResponse::newHttpResponse();
 
-        bool hasEmail = user.getEmail() && !user.getValueOfEmail().empty();
-        bool hasPhone = user.getTelephoneNumber() && !user.getValueOfTelephoneNumber().empty();
-
-        if (hasEmail || hasPhone) {
-            // 如果绑定了邮箱或手机号，必须进行 MFA 验证
-            if (mfaCode.empty() || target.empty()) {
-                result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "需要提供 mfaCode 和 target");
-                resp->setBody(result.toJsonString());
-                resp->setStatusCode(k200OK);
-                co_return resp;
-            }
-
-            // 验证 MFA
-            auto [mfaOk, mfaErr] = co_await _authService->VerifyUserTargetMFA(target, mfaCode, user, mfaType);
-            if (!mfaOk) {
-                result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, mfaErr.empty() ? std::string("验证码错误") : mfaErr);
-                resp->setBody(result.toJsonString());
-                resp->setStatusCode(k200OK);
-                co_return resp;
-            }
-        }
-    } else {
-        // 未登录状态，只需验证验证码是否正确，无需校验归属
-        if (mfaCode.empty() || target.empty()) {
-            result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "需要提供 mfaCode 和 target");
-            resp->setBody(result.toJsonString());
-            resp->setStatusCode(k200OK);
-            co_return resp;
-        }
-
-        auto [isSuccess, errMsg] = co_await _mfaService->VerifyTheCode(target, mfaCode, mfaType);
-        if (!isSuccess) {
-            result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg.empty() ? std::string("验证码错误") : errMsg);
-            resp->setBody(result.toJsonString());
-            resp->setStatusCode(k200OK);
-            co_return resp;
-        }
-    }
-
-    // 验证成功 (或者无需验证)，颁发 ActionToken
-    std::string token = _actionTokenService->GenerateToken(userId, mfaType); // 过期时间在内部配置
-
-    result.setResult(ApiErrorCode::ApiError_Success, "ActionToken 颁发成功");
-    result.jsondata["actionToken"] = token;
-    result.jsondata["mfaType"] = mfaTypeStr;
-    result.jsondata["expiresIn"] = _actionTokenService->GetExpireSeconds();
+    HttpResult result = co_await _actionTokenService->GenerateAnonymousToken(mfaTypeStr, mfaCode, target);
 
     resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);

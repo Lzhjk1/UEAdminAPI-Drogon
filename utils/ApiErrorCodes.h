@@ -13,6 +13,7 @@
     X(ApiError_InternalError, -103, "内部错误 ") \
     X(ApiError_DatabaseError, -104, "数据库错误 ") \
     X(ApiError_InvalidOperation, -105, "无效操作 ") \
+    X(ApiError_TooManyRequests, -106, "访问过于频繁，请稍后再试 ") \
     /* --- Authentication & Token Errors (-2xx) --- */ \
     X(ApiError_TokenInvalidOrExpired, -201, "Token已失效 ") \
     X(ApiError_InvalidTokenType, -202, "Token类型错误 ") \

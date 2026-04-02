@@ -23,8 +23,8 @@ ActionToken 架构由以下三个核心组件构成：
 - **存储机制**：利用 Drogon 内置的线程安全缓存 `drogon::CacheMap`，将 Token 存储在内存中。依靠框架底层的 Event Loop 自动清理过期数据，无需引入 Redis 等外部依赖，轻量且高效。
 - **Token 形式**：使用去除了连字符的 UUID 作为不透明随机字符串，不包含任何可解析的明文信息。
 - **核心接口**：
-  - `GenerateToken(int userId, eMFAType actionCategory, int expireSeconds = 300)`：生成 Token。
-  - `VerifyAndConsumeToken(const std::string& token, eMFAType expectedAction, int userId)`：校验 Token（包括所属用户、业务类别和有效性），一旦校验成功立即从缓存中删除（消耗）。
+  - `GenerateToken(int userId, eMFAType actionCategory, const std::string& boundTarget = "")`：生成 Token。匿名场景下会绑定 `target`。
+  - `VerifyAndConsumeToken(const std::string& token, eMFAType expectedAction, int userId, const std::string& requestTarget = "")`：校验 Token（包括所属用户、业务类别、有效性，以及匿名场景下的目标一致性），一旦校验成功立即从缓存中删除（消耗）。
 
 ### 2.2 ActionTokenFilter (拦截层)
 作为 Drogon 的 `HttpFilter`，充当鉴权网关。
@@ -36,7 +36,11 @@ ActionToken 架构由以下三个核心组件构成：
   4. 校验通过则放行（`fccb()`），否则直接拦截并返回错误响应。
 
 ### 2.3 统一 Token 颁发接口 (入口层)
-- **`/user/action_token`**：客户端通过此接口，在 Query 参数中提供当前绑定方式的 `mfaCode`、`target` 以及期望执行的 `mfaType` (如 "DeleteUser")。后端验证 MFA 成功后，调用 `ActionTokenService` 颁发 Token。
+后端提供了两个入口用于颁发 Token：
+- **`/user/action_token` (登录后)**：需要 `AuthFilter` 验证。用于诸如 "DeleteUser", "ModifyUser", "Unbind" 等需要已知用户身份的高危操作。
+- **`/user/action_token/anonymous` (登录前/匿名)**：无需登录。专门用于诸如 "Login", "Register", "ResetPassword" 等用户尚未建立登录会话的场景，该接口颁发的 Token 会固定绑定到 `userId = -1`，并绑定申请时传入的 `target`（邮箱/手机号）。
+
+客户端通过此接口，在 Query 参数中提供当前绑定方式的 `mfaCode`、`target` 以及期望执行的 `mfaType` (如 "DeleteUser" 或 "Login")。后端验证 MFA 成功后，调用 `ActionTokenService` 颁发 Token。该接口的方法是 `GET`。
 
 ---
 
@@ -53,7 +57,7 @@ sequenceDiagram
     participant Service as ActionTokenService
 
     Note over Client,Service: 阶段 1：申请 ActionToken
-    Client->>API: POST /user/action_token?mfaType=DeleteUser&mfaCode=xxx&target=xxx
+    Client->>API: GET /user/action_token?mfaType=DeleteUser&mfaCode=xxx&target=xxx
     API->>API: 校验 MFA 验证码
     API->>Service: GenerateToken(userId, eMFAType::DeleteUser)
     Service-->>API: 返回随机字符串 Token (如 "abcd1234efgh")
@@ -85,12 +89,13 @@ ActionTokenService::ActionTokenService() {
 
     // ========================================
     // 统一配置：路由 -> Action 类别 (复用 eMFAType)
+    // 格式: "METHOD:PATH"
     // ========================================
-    _routeToActionMap["/user/delete"] = eMFAType::DeleteUser;
-    _routeToActionMap["/api/third/unbind"] = eMFAType::Unbind;
+    _routeToActionMap["DELETE:/user/delete"] = eMFAType::DeleteUser;
+    _routeToActionMap["POST:/api/third/unbind"] = eMFAType::Unbind;
     
     // 新增：修改密码接口需要 eMFAType::ModifyUser 权限
-    _routeToActionMap["/user/password/update"] = eMFAType::ModifyUser;
+    _routeToActionMap["POST:/user/password/update"] = eMFAType::ModifyUser;
 }
 ```
 
