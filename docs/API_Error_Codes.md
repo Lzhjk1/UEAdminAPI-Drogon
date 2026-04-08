@@ -19,13 +19,16 @@
 | | -204 | `ApiError_FlashTokenInvalidType` | 不是FlashToken |
 | | -205 | `ApiError_FlashTokenVerificationFailed` | FlashToken验证失败 |
 | | -206 | `ApiError_FlashTokenExpired` | FlashToken已失效 |
-| **/user/token/verify** (GET)<br>**/user/self** (GET) | 0 | `ApiError_Success` | Token验证成功 / Success |
+| **/user/token/verify/flash** (GET) | 0 | `ApiError_Success` | FlashToken验证成功 |
 | | -101 | `ApiError_InvalidJsonFormat` | invalid token (格式错误) |
-| | -203 | `ApiError_TokenMissing` | 缺少Token (仅限 /user/self) |
-| | -202 | `ApiError_InvalidTokenType` | Token类型错误 (不是普通token) |
-| | -207 | `ApiError_AuthenticationFailed` | 验证失败 |
+| | -201 | `ApiError_TokenInvalidOrExpired` | 不是有效的 FlashToken / FlashToken已失效 |
+| **/user/token/verify/auth** (GET) | 0 | `ApiError_Success` | Token验证成功 |
+| | -101 | `ApiError_InvalidJsonFormat` | invalid token (格式错误) |
+| | -201 | `ApiError_TokenInvalidOrExpired` | 不是有效的 Token / Token已失效 |
+| **/user/self** (GET) | 0 | `ApiError_Success` | Success |
+| | -203 | `ApiError_TokenMissing` | 缺少Token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
-| | -104 | `ApiError_DatabaseError` | 数据库错误 (仅限 /user/self) |
+| | -104 | `ApiError_DatabaseError` | 数据库错误 |
 
 ### 2. 注册模块 (Register Controller)
 

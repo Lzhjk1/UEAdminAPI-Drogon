@@ -82,12 +82,33 @@ Task<HttpResponsePtr> Login::LoginByFlashToken(HttpRequestPtr req) {
     co_return resp;
 }
 
-Task<HttpResponsePtr> Login::VerifyToken(HttpRequestPtr req) {
+Task<HttpResponsePtr> Login::VerifyFlashToken(HttpRequestPtr req, std::string token) {
+    auto _authService = AuthService::Instance();
     auto resp = HttpResponse::newHttpResponse();
-    HttpResult result(0, "Token验证成功");
-    result.jsondata["userId"] = req->getAttributes()->get<int>("userId");
-    resp->setBody(result.toJsonString());
     resp->setStatusCode(k200OK);
+
+    HttpResult result = co_await _authService->VerifyToken(token);
+
+    if (result.code == 0 && result.jsondata["tokenType"].asString() != "flashToken") {
+        result.setResult(ApiErrorCode::ApiError_FlashTokenVerificationFailed, "不是有效的 FlashToken");
+    }
+
+    resp->setBody(result.toJsonString());
+    co_return resp;
+}
+
+Task<HttpResponsePtr> Login::VerifyAuthToken(HttpRequestPtr req, std::string token) {
+    auto _authService = AuthService::Instance();
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+
+    HttpResult result = co_await _authService->VerifyToken(token);
+
+    if (result.code == 0 && result.jsondata["tokenType"].asString() != "token") {
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "不是有效的 Token");
+    }
+
+    resp->setBody(result.toJsonString());
     co_return resp;
 }
 

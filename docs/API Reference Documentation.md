@@ -123,12 +123,31 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
-#### 2.1.5 验证 Token
-- **URL**: `/user/token/verify`
+#### 2.1.5 验证 FlashToken
+- **URL**: `/user/token/verify/flash`
 - **Method**: `GET`
-- **Headers**:
-  - `Authorization`: Token
-- **Description**: 验证 Token 是否有效，并返回 Token 相关信息。
+- **Params**:
+  - `token` (string, required): FlashToken 字符串
+- **Description**: 验证 FlashToken 是否有效。
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "FlashToken验证成功",
+    "data": {
+      "userId": 1,
+      "tokenType": "flashToken",
+      "status": 123
+    }
+  }
+  ```
+
+#### 2.1.6 验证 AuthToken
+- **URL**: `/user/token/verify/auth`
+- **Method**: `GET`
+- **Params**:
+  - `token` (string, required): AuthToken 字符串
+- **Description**: 验证 AuthToken 是否有效。
 - **Response**:
   ```json
   {
@@ -137,12 +156,12 @@ GitLab 相关接口目前使用独立的响应格式：
     "data": {
       "userId": 1,
       "tokenType": "token",
-      "exp": 1698765432
+      "status": 123
     }
   }
   ```
 
-#### 2.1.6 获取个人信息
+#### 2.1.7 获取个人信息
 - **URL**: `/user/self`
 - **Method**: `GET`
 - **Headers**:
@@ -166,7 +185,7 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
-#### 2.1.7 注销登录
+#### 2.1.8 注销登录
 - **URL**: `/user/logout`
 - **Method**: `POST`
 - **Headers**:
