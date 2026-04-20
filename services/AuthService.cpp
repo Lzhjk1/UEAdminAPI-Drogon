@@ -1184,7 +1184,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::DeleteUserForce(int use
         if (user.getPasswordHash()) deletedUser.setPasswordHash(user.getValueOfPasswordHash());
         if (user.getPrivilege()) deletedUser.setPrivilege(user.getValueOfPrivilege());
         if (user.getNickName()) deletedUser.setNickname(user.getValueOfNickName());
-        if (user.getTelephoneNumber()) deletedUser.setTelephonenumber(user.getValueOfTelephoneNumber());
+        if (user.getTelephoneNumber()) deletedUser.setTelephoneNumber(user.getValueOfTelephoneNumber());
         if (user.getEmail()) deletedUser.setEmail(user.getValueOfEmail());
         if (user.getIsMale()) deletedUser.setIsMale(user.getValueOfIsMale());
         if (user.getCreateAt()) deletedUser.setCreateAt(user.getValueOfCreateAt());

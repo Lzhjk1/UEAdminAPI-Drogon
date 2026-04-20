@@ -121,6 +121,7 @@ class ThirdPartyPlatforms
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
+    std::string toString() const;
     Json::Value toMasqueradedJson(const std::vector<std::string> &pMasqueradingVector) const;
     /// Relationship interfaces
     std::vector<std::pair<User,UserThirdPartyInfo>> getUser(const drogon::orm::DbClientPtr &clientPtr) const;

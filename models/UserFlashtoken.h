@@ -50,7 +50,7 @@ class UserFlashtoken
         static const std::string _token_desc;
         static const std::string _expire_at;
         static const std::string _status;
-        static const std::string _status_for_Token;
+        static const std::string _status_for_token;
     };
 
     static const int primaryKeyNumber;
@@ -118,6 +118,7 @@ class UserFlashtoken
     ///Set the value of the column flash_token
     void setFlashToken(const std::string &pFlashToken) noexcept;
     void setFlashToken(std::string &&pFlashToken) noexcept;
+    void setFlashTokenToNull() noexcept;
 
     /**  For column token_desc  */
     ///Get the value of the column token_desc, returns the default value if the column is null
@@ -127,6 +128,7 @@ class UserFlashtoken
     ///Set the value of the column token_desc
     void setTokenDesc(const std::string &pTokenDesc) noexcept;
     void setTokenDesc(std::string &&pTokenDesc) noexcept;
+    void setTokenDescToNull() noexcept;
 
     /**  For column expire_at  */
     ///Get the value of the column expire_at, returns the default value if the column is null
@@ -135,6 +137,7 @@ class UserFlashtoken
     const std::shared_ptr<::trantor::Date> &getExpireAt() const noexcept;
     ///Set the value of the column expire_at
     void setExpireAt(const ::trantor::Date &pExpireAt) noexcept;
+    void setExpireAtToNull() noexcept;
 
     /**  For column status  */
     ///Get the value of the column status, returns the default value if the column is null
@@ -145,12 +148,12 @@ class UserFlashtoken
     void setStatus(const int32_t &pStatus) noexcept;
     void setStatusToNull() noexcept;
 
-    /**  For column status_for_Token  */
-    ///Get the value of the column status_for_Token, returns the default value if the column is null
+    /**  For column status_for_token  */
+    ///Get the value of the column status_for_token, returns the default value if the column is null
     const int32_t &getValueOfStatusForToken() const noexcept;
     ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
     const std::shared_ptr<int32_t> &getStatusForToken() const noexcept;
-    ///Set the value of the column status_for_Token
+    ///Set the value of the column status_for_token
     void setStatusForToken(const int32_t &pStatusForToken) noexcept;
     void setStatusForTokenToNull() noexcept;
 
@@ -159,6 +162,7 @@ class UserFlashtoken
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
+    std::string toString() const;
     Json::Value toMasqueradedJson(const std::vector<std::string> &pMasqueradingVector) const;
     /// Relationship interfaces
     User getUser(const drogon::orm::DbClientPtr &clientPtr) const;
@@ -242,7 +246,7 @@ class UserFlashtoken
         }
         if(dirtyFlag_[5])
         {
-            sql += "status_for_Token,";
+            sql += "status_for_token,";
             ++parametersCount;
         }
         if(parametersCount > 0)

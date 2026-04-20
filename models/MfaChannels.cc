@@ -8,6 +8,7 @@
 #include "MfaChannels.h"
 #include "MfaRecords.h"
 #include <drogon/utils/Utilities.h>
+#include <codecvt>
 #include <string>
 
 using namespace drogon;
@@ -271,6 +272,11 @@ Json::Value MfaChannels::toJson() const
     return ret;
 }
 
+std::string MfaChannels::toString() const
+{
+    return toJson().toStyledString();
+}
+
 Json::Value MfaChannels::toMasqueradedJson(
     const std::vector<std::string> &pMasqueradingVector) const
 {
@@ -467,14 +473,14 @@ bool MfaChannels::validJsonOfField(size_t index,
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 30)
+            if(pJson.isString() && std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t>{}
+                .from_bytes(pJson.asCString()).size() > 30)
             {
                 err="String length exceeds limit for the " +
                     fieldName +
                     " field (the maximum value is 30)";
                 return false;
             }
-
             break;
         default:
             err="Internal error in the server";

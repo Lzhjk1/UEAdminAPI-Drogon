@@ -7,6 +7,7 @@
 
 #include "UserDeleted.h"
 #include <drogon/utils/Utilities.h>
+#include <codecvt>
 #include <string>
 
 using namespace drogon;
@@ -19,7 +20,7 @@ const std::string UserDeleted::Cols::_password_salt = "\"password_salt\"";
 const std::string UserDeleted::Cols::_password_hash = "\"password_hash\"";
 const std::string UserDeleted::Cols::_privilege = "\"privilege\"";
 const std::string UserDeleted::Cols::_nickname = "\"nickname\"";
-const std::string UserDeleted::Cols::_telephoneNumber = "\"telephoneNumber\"";
+const std::string UserDeleted::Cols::_telephone_number = "\"telephone_number\"";
 const std::string UserDeleted::Cols::_email = "\"email\"";
 const std::string UserDeleted::Cols::_is_male = "\"is_male\"";
 const std::string UserDeleted::Cols::_create_at = "\"create_at\"";
@@ -35,8 +36,8 @@ const std::vector<typename UserDeleted::MetaData> UserDeleted::metaData_={
 {"password_hash","std::vector<char>","bytea",0,0,0,1},
 {"privilege","int32_t","integer",4,0,0,1},
 {"nickname","std::string","character varying",30,0,0,1},
-{"telephoneNumber","std::string","character varying",15,0,0,1},
-{"email","std::string","character varying",100,0,0,1},
+{"telephone_number","std::string","character varying",15,0,0,0},
+{"email","std::string","character varying",100,0,0,0},
 {"is_male","bool","boolean",1,0,0,1},
 {"create_at","::trantor::Date","timestamp with time zone",0,0,0,1},
 {"delete_at","::trantor::Date","timestamp with time zone",0,0,0,1}
@@ -84,9 +85,9 @@ UserDeleted::UserDeleted(const Row &r, const ssize_t indexOffset) noexcept
         {
             nickname_=std::make_shared<std::string>(r["nickname"].as<std::string>());
         }
-        if(!r["telephoneNumber"].isNull())
+        if(!r["telephone_number"].isNull())
         {
-            telephonenumber_=std::make_shared<std::string>(r["telephoneNumber"].as<std::string>());
+            telephoneNumber_=std::make_shared<std::string>(r["telephone_number"].as<std::string>());
         }
         if(!r["email"].isNull())
         {
@@ -193,7 +194,7 @@ UserDeleted::UserDeleted(const Row &r, const ssize_t indexOffset) noexcept
         index = offset + 6;
         if(!r[index].isNull())
         {
-            telephonenumber_=std::make_shared<std::string>(r[index].as<std::string>());
+            telephoneNumber_=std::make_shared<std::string>(r[index].as<std::string>());
         }
         index = offset + 7;
         if(!r[index].isNull())
@@ -317,7 +318,7 @@ UserDeleted::UserDeleted(const Json::Value &pJson, const std::vector<std::string
         dirtyFlag_[6] = true;
         if(!pJson[pMasqueradingVector[6]].isNull())
         {
-            telephonenumber_=std::make_shared<std::string>(pJson[pMasqueradingVector[6]].asString());
+            telephoneNumber_=std::make_shared<std::string>(pJson[pMasqueradingVector[6]].asString());
         }
     }
     if(!pMasqueradingVector[7].empty() && pJson.isMember(pMasqueradingVector[7]))
@@ -442,12 +443,12 @@ UserDeleted::UserDeleted(const Json::Value &pJson) noexcept(false)
             nickname_=std::make_shared<std::string>(pJson["nickname"].asString());
         }
     }
-    if(pJson.isMember("telephoneNumber"))
+    if(pJson.isMember("telephone_number"))
     {
         dirtyFlag_[6]=true;
-        if(!pJson["telephoneNumber"].isNull())
+        if(!pJson["telephone_number"].isNull())
         {
-            telephonenumber_=std::make_shared<std::string>(pJson["telephoneNumber"].asString());
+            telephoneNumber_=std::make_shared<std::string>(pJson["telephone_number"].asString());
         }
     }
     if(pJson.isMember("email"))
@@ -582,7 +583,7 @@ void UserDeleted::updateByMasqueradedJson(const Json::Value &pJson,
         dirtyFlag_[6] = true;
         if(!pJson[pMasqueradingVector[6]].isNull())
         {
-            telephonenumber_=std::make_shared<std::string>(pJson[pMasqueradingVector[6]].asString());
+            telephoneNumber_=std::make_shared<std::string>(pJson[pMasqueradingVector[6]].asString());
         }
     }
     if(!pMasqueradingVector[7].empty() && pJson.isMember(pMasqueradingVector[7]))
@@ -706,12 +707,12 @@ void UserDeleted::updateByJson(const Json::Value &pJson) noexcept(false)
             nickname_=std::make_shared<std::string>(pJson["nickname"].asString());
         }
     }
-    if(pJson.isMember("telephoneNumber"))
+    if(pJson.isMember("telephone_number"))
     {
         dirtyFlag_[6] = true;
-        if(!pJson["telephoneNumber"].isNull())
+        if(!pJson["telephone_number"].isNull())
         {
-            telephonenumber_=std::make_shared<std::string>(pJson["telephoneNumber"].asString());
+            telephoneNumber_=std::make_shared<std::string>(pJson["telephone_number"].asString());
         }
     }
     if(pJson.isMember("email"))
@@ -925,25 +926,30 @@ void UserDeleted::setNickname(std::string &&pNickname) noexcept
     dirtyFlag_[5] = true;
 }
 
-const std::string &UserDeleted::getValueOfTelephonenumber() const noexcept
+const std::string &UserDeleted::getValueOfTelephoneNumber() const noexcept
 {
     static const std::string defaultValue = std::string();
-    if(telephonenumber_)
-        return *telephonenumber_;
+    if(telephoneNumber_)
+        return *telephoneNumber_;
     return defaultValue;
 }
-const std::shared_ptr<std::string> &UserDeleted::getTelephonenumber() const noexcept
+const std::shared_ptr<std::string> &UserDeleted::getTelephoneNumber() const noexcept
 {
-    return telephonenumber_;
+    return telephoneNumber_;
 }
-void UserDeleted::setTelephonenumber(const std::string &pTelephonenumber) noexcept
+void UserDeleted::setTelephoneNumber(const std::string &pTelephoneNumber) noexcept
 {
-    telephonenumber_ = std::make_shared<std::string>(pTelephonenumber);
+    telephoneNumber_ = std::make_shared<std::string>(pTelephoneNumber);
     dirtyFlag_[6] = true;
 }
-void UserDeleted::setTelephonenumber(std::string &&pTelephonenumber) noexcept
+void UserDeleted::setTelephoneNumber(std::string &&pTelephoneNumber) noexcept
 {
-    telephonenumber_ = std::make_shared<std::string>(std::move(pTelephonenumber));
+    telephoneNumber_ = std::make_shared<std::string>(std::move(pTelephoneNumber));
+    dirtyFlag_[6] = true;
+}
+void UserDeleted::setTelephoneNumberToNull() noexcept
+{
+    telephoneNumber_.reset();
     dirtyFlag_[6] = true;
 }
 
@@ -966,6 +972,11 @@ void UserDeleted::setEmail(const std::string &pEmail) noexcept
 void UserDeleted::setEmail(std::string &&pEmail) noexcept
 {
     email_ = std::make_shared<std::string>(std::move(pEmail));
+    dirtyFlag_[7] = true;
+}
+void UserDeleted::setEmailToNull() noexcept
+{
+    email_.reset();
     dirtyFlag_[7] = true;
 }
 
@@ -1033,7 +1044,7 @@ const std::vector<std::string> &UserDeleted::insertColumns() noexcept
         "password_hash",
         "privilege",
         "nickname",
-        "telephoneNumber",
+        "telephone_number",
         "email",
         "is_male",
         "create_at",
@@ -1112,9 +1123,9 @@ void UserDeleted::outputArgs(drogon::orm::internal::SqlBinder &binder) const
     }
     if(dirtyFlag_[6])
     {
-        if(getTelephonenumber())
+        if(getTelephoneNumber())
         {
-            binder << getValueOfTelephonenumber();
+            binder << getValueOfTelephoneNumber();
         }
         else
         {
@@ -1287,9 +1298,9 @@ void UserDeleted::updateArgs(drogon::orm::internal::SqlBinder &binder) const
     }
     if(dirtyFlag_[6])
     {
-        if(getTelephonenumber())
+        if(getTelephoneNumber())
         {
-            binder << getValueOfTelephonenumber();
+            binder << getValueOfTelephoneNumber();
         }
         else
         {
@@ -1392,13 +1403,13 @@ Json::Value UserDeleted::toJson() const
     {
         ret["nickname"]=Json::Value();
     }
-    if(getTelephonenumber())
+    if(getTelephoneNumber())
     {
-        ret["telephoneNumber"]=getValueOfTelephonenumber();
+        ret["telephone_number"]=getValueOfTelephoneNumber();
     }
     else
     {
-        ret["telephoneNumber"]=Json::Value();
+        ret["telephone_number"]=Json::Value();
     }
     if(getEmail())
     {
@@ -1433,6 +1444,11 @@ Json::Value UserDeleted::toJson() const
         ret["delete_at"]=Json::Value();
     }
     return ret;
+}
+
+std::string UserDeleted::toString() const
+{
+    return toJson().toStyledString();
 }
 
 Json::Value UserDeleted::toMasqueradedJson(
@@ -1509,9 +1525,9 @@ Json::Value UserDeleted::toMasqueradedJson(
         }
         if(!pMasqueradingVector[6].empty())
         {
-            if(getTelephonenumber())
+            if(getTelephoneNumber())
             {
-                ret[pMasqueradingVector[6]]=getValueOfTelephonenumber();
+                ret[pMasqueradingVector[6]]=getValueOfTelephoneNumber();
             }
             else
             {
@@ -1613,13 +1629,13 @@ Json::Value UserDeleted::toMasqueradedJson(
     {
         ret["nickname"]=Json::Value();
     }
-    if(getTelephonenumber())
+    if(getTelephoneNumber())
     {
-        ret["telephoneNumber"]=getValueOfTelephonenumber();
+        ret["telephone_number"]=getValueOfTelephoneNumber();
     }
     else
     {
-        ret["telephoneNumber"]=Json::Value();
+        ret["telephone_number"]=Json::Value();
     }
     if(getEmail())
     {
@@ -1718,25 +1734,15 @@ bool UserDeleted::validateJsonForCreation(const Json::Value &pJson, std::string 
         err="The nickname column cannot be null";
         return false;
     }
-    if(pJson.isMember("telephoneNumber"))
+    if(pJson.isMember("telephone_number"))
     {
-        if(!validJsonOfField(6, "telephoneNumber", pJson["telephoneNumber"], err, true))
+        if(!validJsonOfField(6, "telephone_number", pJson["telephone_number"], err, true))
             return false;
-    }
-    else
-    {
-        err="The telephoneNumber column cannot be null";
-        return false;
     }
     if(pJson.isMember("email"))
     {
         if(!validJsonOfField(7, "email", pJson["email"], err, true))
             return false;
-    }
-    else
-    {
-        err="The email column cannot be null";
-        return false;
     }
     if(pJson.isMember("is_male"))
     {
@@ -1865,11 +1871,6 @@ bool UserDeleted::validateMasqueradedJsonForCreation(const Json::Value &pJson,
               if(!validJsonOfField(6, pMasqueradingVector[6], pJson[pMasqueradingVector[6]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[6] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[7].empty())
       {
@@ -1878,11 +1879,6 @@ bool UserDeleted::validateMasqueradedJsonForCreation(const Json::Value &pJson,
               if(!validJsonOfField(7, pMasqueradingVector[7], pJson[pMasqueradingVector[7]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[7] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[8].empty())
       {
@@ -1968,9 +1964,9 @@ bool UserDeleted::validateJsonForUpdate(const Json::Value &pJson, std::string &e
         if(!validJsonOfField(5, "nickname", pJson["nickname"], err, false))
             return false;
     }
-    if(pJson.isMember("telephoneNumber"))
+    if(pJson.isMember("telephone_number"))
     {
-        if(!validJsonOfField(6, "telephoneNumber", pJson["telephoneNumber"], err, false))
+        if(!validJsonOfField(6, "telephone_number", pJson["telephone_number"], err, false))
             return false;
     }
     if(pJson.isMember("email"))
@@ -2104,14 +2100,14 @@ bool UserDeleted::validJsonOfField(size_t index,
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 30)
+            if(pJson.isString() && std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t>{}
+                .from_bytes(pJson.asCString()).size() > 30)
             {
                 err="String length exceeds limit for the " +
                     fieldName +
                     " field (the maximum value is 30)";
                 return false;
             }
-
             break;
         case 2:
             if(pJson.isNull())
@@ -2160,54 +2156,52 @@ bool UserDeleted::validJsonOfField(size_t index,
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 30)
+            if(pJson.isString() && std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t>{}
+                .from_bytes(pJson.asCString()).size() > 30)
             {
                 err="String length exceeds limit for the " +
                     fieldName +
                     " field (the maximum value is 30)";
                 return false;
             }
-
             break;
         case 6:
             if(pJson.isNull())
             {
-                err="The " + fieldName + " column cannot be null";
-                return false;
+                return true;
             }
             if(!pJson.isString())
             {
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 15)
+            if(pJson.isString() && std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t>{}
+                .from_bytes(pJson.asCString()).size() > 15)
             {
                 err="String length exceeds limit for the " +
                     fieldName +
                     " field (the maximum value is 15)";
                 return false;
             }
-
             break;
         case 7:
             if(pJson.isNull())
             {
-                err="The " + fieldName + " column cannot be null";
-                return false;
+                return true;
             }
             if(!pJson.isString())
             {
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 100)
+            if(pJson.isString() && std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t>{}
+                .from_bytes(pJson.asCString()).size() > 100)
             {
                 err="String length exceeds limit for the " +
                     fieldName +
                     " field (the maximum value is 100)";
                 return false;
             }
-
             break;
         case 8:
             if(pJson.isNull())

@@ -120,6 +120,7 @@ class MfaChannels
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
+    std::string toString() const;
     Json::Value toMasqueradedJson(const std::vector<std::string> &pMasqueradingVector) const;
     /// Relationship interfaces
     std::vector<MfaRecords> getMfa_records(const drogon::orm::DbClientPtr &clientPtr) const;

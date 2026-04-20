@@ -50,7 +50,7 @@ class UserDeleted
         static const std::string _password_hash;
         static const std::string _privilege;
         static const std::string _nickname;
-        static const std::string _telephoneNumber;
+        static const std::string _telephone_number;
         static const std::string _email;
         static const std::string _is_male;
         static const std::string _create_at;
@@ -162,14 +162,15 @@ class UserDeleted
     void setNickname(const std::string &pNickname) noexcept;
     void setNickname(std::string &&pNickname) noexcept;
 
-    /**  For column telephoneNumber  */
-    ///Get the value of the column telephoneNumber, returns the default value if the column is null
-    const std::string &getValueOfTelephonenumber() const noexcept;
+    /**  For column telephone_number  */
+    ///Get the value of the column telephone_number, returns the default value if the column is null
+    const std::string &getValueOfTelephoneNumber() const noexcept;
     ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
-    const std::shared_ptr<std::string> &getTelephonenumber() const noexcept;
-    ///Set the value of the column telephoneNumber
-    void setTelephonenumber(const std::string &pTelephonenumber) noexcept;
-    void setTelephonenumber(std::string &&pTelephonenumber) noexcept;
+    const std::shared_ptr<std::string> &getTelephoneNumber() const noexcept;
+    ///Set the value of the column telephone_number
+    void setTelephoneNumber(const std::string &pTelephoneNumber) noexcept;
+    void setTelephoneNumber(std::string &&pTelephoneNumber) noexcept;
+    void setTelephoneNumberToNull() noexcept;
 
     /**  For column email  */
     ///Get the value of the column email, returns the default value if the column is null
@@ -179,6 +180,7 @@ class UserDeleted
     ///Set the value of the column email
     void setEmail(const std::string &pEmail) noexcept;
     void setEmail(std::string &&pEmail) noexcept;
+    void setEmailToNull() noexcept;
 
     /**  For column is_male  */
     ///Get the value of the column is_male, returns the default value if the column is null
@@ -209,6 +211,7 @@ class UserDeleted
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
+    std::string toString() const;
     Json::Value toMasqueradedJson(const std::vector<std::string> &pMasqueradingVector) const;
     /// Relationship interfaces
   private:
@@ -232,7 +235,7 @@ class UserDeleted
     std::shared_ptr<std::vector<char>> passwordHash_;
     std::shared_ptr<int32_t> privilege_;
     std::shared_ptr<std::string> nickname_;
-    std::shared_ptr<std::string> telephonenumber_;
+    std::shared_ptr<std::string> telephoneNumber_;
     std::shared_ptr<std::string> email_;
     std::shared_ptr<bool> isMale_;
     std::shared_ptr<::trantor::Date> createAt_;
@@ -298,7 +301,7 @@ class UserDeleted
         }
         if(dirtyFlag_[6])
         {
-            sql += "telephoneNumber,";
+            sql += "telephone_number,";
             ++parametersCount;
         }
         if(dirtyFlag_[7])

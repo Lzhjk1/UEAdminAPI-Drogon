@@ -8,6 +8,7 @@
 #include "UserGitlabInfo.h"
 #include "User.h"
 #include <drogon/utils/Utilities.h>
+#include <codecvt>
 #include <string>
 
 using namespace drogon;
@@ -488,6 +489,11 @@ Json::Value UserGitlabInfo::toJson() const
     return ret;
 }
 
+std::string UserGitlabInfo::toString() const
+{
+    return toJson().toStyledString();
+}
+
 Json::Value UserGitlabInfo::toMasqueradedJson(
     const std::vector<std::string> &pMasqueradingVector) const
 {
@@ -817,14 +823,14 @@ bool UserGitlabInfo::validJsonOfField(size_t index,
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 200)
+            if(pJson.isString() && std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t>{}
+                .from_bytes(pJson.asCString()).size() > 200)
             {
                 err="String length exceeds limit for the " +
                     fieldName +
                     " field (the maximum value is 200)";
                 return false;
             }
-
             break;
         default:
             err="Internal error in the server";

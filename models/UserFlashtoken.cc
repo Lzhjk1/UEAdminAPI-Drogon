@@ -8,6 +8,7 @@
 #include "UserFlashtoken.h"
 #include "User.h"
 #include <drogon/utils/Utilities.h>
+#include <codecvt>
 #include <string>
 
 using namespace drogon;
@@ -19,18 +20,18 @@ const std::string UserFlashtoken::Cols::_flash_token = "\"flash_token\"";
 const std::string UserFlashtoken::Cols::_token_desc = "\"token_desc\"";
 const std::string UserFlashtoken::Cols::_expire_at = "\"expire_at\"";
 const std::string UserFlashtoken::Cols::_status = "\"status\"";
-const std::string UserFlashtoken::Cols::_status_for_Token = "\"status_for_Token\"";
+const std::string UserFlashtoken::Cols::_status_for_token = "\"status_for_token\"";
 const std::string UserFlashtoken::primaryKeyName = "user_id";
 const bool UserFlashtoken::hasPrimaryKey = true;
 const std::string UserFlashtoken::tableName = "\"user_flashtoken\"";
 
 const std::vector<typename UserFlashtoken::MetaData> UserFlashtoken::metaData_={
 {"user_id","int32_t","integer",4,0,1,1},
-{"flash_token","std::string","character varying",300,0,0,1},
-{"token_desc","std::string","character varying",500,0,0,1},
-{"expire_at","::trantor::Date","timestamp with time zone",0,0,0,1},
+{"flash_token","std::string","character varying",300,0,0,0},
+{"token_desc","std::string","character varying",500,0,0,0},
+{"expire_at","::trantor::Date","timestamp with time zone",0,0,0,0},
 {"status","int32_t","integer",4,0,0,0},
-{"status_for_Token","int32_t","integer",4,0,0,0}
+{"status_for_token","int32_t","integer",4,0,0,0}
 };
 const std::string &UserFlashtoken::getColumnName(size_t index) noexcept(false)
 {
@@ -79,9 +80,9 @@ UserFlashtoken::UserFlashtoken(const Row &r, const ssize_t indexOffset) noexcept
         {
             status_=std::make_shared<int32_t>(r["status"].as<int32_t>());
         }
-        if(!r["status_for_Token"].isNull())
+        if(!r["status_for_token"].isNull())
         {
-            statusForToken_=std::make_shared<int32_t>(r["status_for_Token"].as<int32_t>());
+            statusForToken_=std::make_shared<int32_t>(r["status_for_token"].as<int32_t>());
         }
     }
     else
@@ -280,12 +281,12 @@ UserFlashtoken::UserFlashtoken(const Json::Value &pJson) noexcept(false)
             status_=std::make_shared<int32_t>((int32_t)pJson["status"].asInt64());
         }
     }
-    if(pJson.isMember("status_for_Token"))
+    if(pJson.isMember("status_for_token"))
     {
         dirtyFlag_[5]=true;
-        if(!pJson["status_for_Token"].isNull())
+        if(!pJson["status_for_token"].isNull())
         {
-            statusForToken_=std::make_shared<int32_t>((int32_t)pJson["status_for_Token"].asInt64());
+            statusForToken_=std::make_shared<int32_t>((int32_t)pJson["status_for_token"].asInt64());
         }
     }
 }
@@ -424,12 +425,12 @@ void UserFlashtoken::updateByJson(const Json::Value &pJson) noexcept(false)
             status_=std::make_shared<int32_t>((int32_t)pJson["status"].asInt64());
         }
     }
-    if(pJson.isMember("status_for_Token"))
+    if(pJson.isMember("status_for_token"))
     {
         dirtyFlag_[5] = true;
-        if(!pJson["status_for_Token"].isNull())
+        if(!pJson["status_for_token"].isNull())
         {
-            statusForToken_=std::make_shared<int32_t>((int32_t)pJson["status_for_Token"].asInt64());
+            statusForToken_=std::make_shared<int32_t>((int32_t)pJson["status_for_token"].asInt64());
         }
     }
 }
@@ -477,6 +478,11 @@ void UserFlashtoken::setFlashToken(std::string &&pFlashToken) noexcept
     flashToken_ = std::make_shared<std::string>(std::move(pFlashToken));
     dirtyFlag_[1] = true;
 }
+void UserFlashtoken::setFlashTokenToNull() noexcept
+{
+    flashToken_.reset();
+    dirtyFlag_[1] = true;
+}
 
 const std::string &UserFlashtoken::getValueOfTokenDesc() const noexcept
 {
@@ -499,6 +505,11 @@ void UserFlashtoken::setTokenDesc(std::string &&pTokenDesc) noexcept
     tokenDesc_ = std::make_shared<std::string>(std::move(pTokenDesc));
     dirtyFlag_[2] = true;
 }
+void UserFlashtoken::setTokenDescToNull() noexcept
+{
+    tokenDesc_.reset();
+    dirtyFlag_[2] = true;
+}
 
 const ::trantor::Date &UserFlashtoken::getValueOfExpireAt() const noexcept
 {
@@ -514,6 +525,11 @@ const std::shared_ptr<::trantor::Date> &UserFlashtoken::getExpireAt() const noex
 void UserFlashtoken::setExpireAt(const ::trantor::Date &pExpireAt) noexcept
 {
     expireAt_ = std::make_shared<::trantor::Date>(pExpireAt);
+    dirtyFlag_[3] = true;
+}
+void UserFlashtoken::setExpireAtToNull() noexcept
+{
+    expireAt_.reset();
     dirtyFlag_[3] = true;
 }
 
@@ -573,7 +589,7 @@ const std::vector<std::string> &UserFlashtoken::insertColumns() noexcept
         "token_desc",
         "expire_at",
         "status",
-        "status_for_Token"
+        "status_for_token"
     };
     return inCols;
 }
@@ -792,13 +808,18 @@ Json::Value UserFlashtoken::toJson() const
     }
     if(getStatusForToken())
     {
-        ret["status_for_Token"]=getValueOfStatusForToken();
+        ret["status_for_token"]=getValueOfStatusForToken();
     }
     else
     {
-        ret["status_for_Token"]=Json::Value();
+        ret["status_for_token"]=Json::Value();
     }
     return ret;
+}
+
+std::string UserFlashtoken::toString() const
+{
+    return toJson().toStyledString();
 }
 
 Json::Value UserFlashtoken::toMasqueradedJson(
@@ -918,11 +939,11 @@ Json::Value UserFlashtoken::toMasqueradedJson(
     }
     if(getStatusForToken())
     {
-        ret["status_for_Token"]=getValueOfStatusForToken();
+        ret["status_for_token"]=getValueOfStatusForToken();
     }
     else
     {
-        ret["status_for_Token"]=Json::Value();
+        ret["status_for_token"]=Json::Value();
     }
     return ret;
 }
@@ -944,39 +965,24 @@ bool UserFlashtoken::validateJsonForCreation(const Json::Value &pJson, std::stri
         if(!validJsonOfField(1, "flash_token", pJson["flash_token"], err, true))
             return false;
     }
-    else
-    {
-        err="The flash_token column cannot be null";
-        return false;
-    }
     if(pJson.isMember("token_desc"))
     {
         if(!validJsonOfField(2, "token_desc", pJson["token_desc"], err, true))
             return false;
-    }
-    else
-    {
-        err="The token_desc column cannot be null";
-        return false;
     }
     if(pJson.isMember("expire_at"))
     {
         if(!validJsonOfField(3, "expire_at", pJson["expire_at"], err, true))
             return false;
     }
-    else
-    {
-        err="The expire_at column cannot be null";
-        return false;
-    }
     if(pJson.isMember("status"))
     {
         if(!validJsonOfField(4, "status", pJson["status"], err, true))
             return false;
     }
-    if(pJson.isMember("status_for_Token"))
+    if(pJson.isMember("status_for_token"))
     {
-        if(!validJsonOfField(5, "status_for_Token", pJson["status_for_Token"], err, true))
+        if(!validJsonOfField(5, "status_for_token", pJson["status_for_token"], err, true))
             return false;
     }
     return true;
@@ -1011,11 +1017,6 @@ bool UserFlashtoken::validateMasqueradedJsonForCreation(const Json::Value &pJson
               if(!validJsonOfField(1, pMasqueradingVector[1], pJson[pMasqueradingVector[1]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[1] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[2].empty())
       {
@@ -1024,11 +1025,6 @@ bool UserFlashtoken::validateMasqueradedJsonForCreation(const Json::Value &pJson
               if(!validJsonOfField(2, pMasqueradingVector[2], pJson[pMasqueradingVector[2]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[2] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[3].empty())
       {
@@ -1037,11 +1033,6 @@ bool UserFlashtoken::validateMasqueradedJsonForCreation(const Json::Value &pJson
               if(!validJsonOfField(3, pMasqueradingVector[3], pJson[pMasqueradingVector[3]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[3] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[4].empty())
       {
@@ -1099,9 +1090,9 @@ bool UserFlashtoken::validateJsonForUpdate(const Json::Value &pJson, std::string
         if(!validJsonOfField(4, "status", pJson["status"], err, false))
             return false;
     }
-    if(pJson.isMember("status_for_Token"))
+    if(pJson.isMember("status_for_token"))
     {
-        if(!validJsonOfField(5, "status_for_Token", pJson["status_for_Token"], err, false))
+        if(!validJsonOfField(5, "status_for_token", pJson["status_for_token"], err, false))
             return false;
     }
     return true;
@@ -1182,48 +1173,45 @@ bool UserFlashtoken::validJsonOfField(size_t index,
         case 1:
             if(pJson.isNull())
             {
-                err="The " + fieldName + " column cannot be null";
-                return false;
+                return true;
             }
             if(!pJson.isString())
             {
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 300)
+            if(pJson.isString() && std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t>{}
+                .from_bytes(pJson.asCString()).size() > 300)
             {
                 err="String length exceeds limit for the " +
                     fieldName +
                     " field (the maximum value is 300)";
                 return false;
             }
-
             break;
         case 2:
             if(pJson.isNull())
             {
-                err="The " + fieldName + " column cannot be null";
-                return false;
+                return true;
             }
             if(!pJson.isString())
             {
                 err="Type error in the "+fieldName+" field";
                 return false;
             }
-            if(pJson.isString() && std::strlen(pJson.asCString()) > 500)
+            if(pJson.isString() && std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t>{}
+                .from_bytes(pJson.asCString()).size() > 500)
             {
                 err="String length exceeds limit for the " +
                     fieldName +
                     " field (the maximum value is 500)";
                 return false;
             }
-
             break;
         case 3:
             if(pJson.isNull())
             {
-                err="The " + fieldName + " column cannot be null";
-                return false;
+                return true;
             }
             if(!pJson.isString())
             {
