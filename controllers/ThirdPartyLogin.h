@@ -11,18 +11,34 @@ class ThirdPartyLogin : public drogon::HttpController<ThirdPartyLogin> {
 public:
     METHOD_LIST_BEGIN
     // 获取第三方登录URL
-    ADD_METHOD_TO(ThirdPartyLogin::getLoginUrl, "/api/third/authorization_url?platform={1}", Get);
+    ADD_METHOD_TO(ThirdPartyLogin::getLoginUrl,                 "/api/third/authorization_url?platform={1}", 
+        Get);
+
     // 第三方登录回调
-    ADD_METHOD_TO(ThirdPartyLogin::callback, "/api/third/{1}?code={2}&state={3}", Get);
+    ADD_METHOD_TO(ThirdPartyLogin::callback,                    "/api/third/{1}?code={2}&state={3}", 
+        Get);
+
     // 验证第三方登录
-    ADD_METHOD_TO(ThirdPartyLogin::verifyLogin, "/api/third/login/check?platform={1}&code={2}&verifyCode={3}&onlyCheck={4}", Get);
+    ADD_METHOD_TO(ThirdPartyLogin::verifyLogin,                 "/api/third/login/check?platform={1}&code={2}&verifyCode={3}&onlyCheck={4}", 
+        Get);
+
     // 直接通过第三方平台登录
-    ADD_METHOD_TO(ThirdPartyLogin::loginWithThirdParty, "/api/third/login?platform={1}&code={2}&verifyCode={3}", Get);
+    ADD_METHOD_TO(ThirdPartyLogin::loginWithThirdParty,         "/api/third/login?platform={1}&code={2}&verifyCode={3}", 
+        Get);    
+
     // 第三方绑定已有账号
-    ADD_METHOD_TO(ThirdPartyLogin::bindAccount, "/api/third/bind?platform={1}&code={2}&verifyCode={3}", Post, "AuthFilter", "ActionTokenFilter");
+    ADD_METHOD_TO(ThirdPartyLogin::bindAccount,                 "/api/third/bind?platform={1}&code={2}&verifyCode={3}", 
+        Post, 
+        "AuthFilter", "ActionTokenFilter");
+
     // 第三方直接注册账号并完成登录
-    ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdParty, "/api/third/register?platform={1}&code={2}&verifyCode={3}", Post);
-    ADD_METHOD_TO(ThirdPartyLogin::unbindAccount, "/api/third/unbind?platform={1}", Post, "AuthFilter", "ActionTokenFilter");
+    ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdParty,    "/api/third/register?platform={1}&code={2}&verifyCode={3}", 
+        Post);
+
+    ADD_METHOD_TO(ThirdPartyLogin::unbindAccount,               "/api/third/unbind?platform={1}", 
+        Post, 
+        "AuthFilter", "ActionTokenFilter");
+        
     METHOD_LIST_END
 
     // GET

@@ -1178,6 +1178,8 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
         co_return result;
     }
 
+    result = co_await _authService->LoginByUserId(user.getValueOfId());
+
     co_return result;
 }
 

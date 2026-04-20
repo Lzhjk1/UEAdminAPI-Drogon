@@ -63,7 +63,7 @@ void AuthFilter::doFilter(const HttpRequestPtr &req,
                 result.setResult(UEAdminAPI::ApiErrorCode::ApiError_AuthenticationFailed, "未知token类型");
                 auto resp = HttpResponse::newHttpResponse();
                 resp->setBody(result.toJsonString());
-                resp->setStatusCode(k200OK);
+                resp->setStatusCode(k401Unauthorized);
                 fcb(resp);
             }
         } else {

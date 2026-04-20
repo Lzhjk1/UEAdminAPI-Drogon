@@ -1,0 +1,762 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "UEAdminAPI",
+    "description": "API documentation for UEAdminAPI Drogon Backend.\nThis document is generated based on `API Reference Documentation.md`.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5555",
+      "description": "Local server"
+    },
+    {
+      "url": "https://im.uesoft.com",
+      "description": "Remote server"
+    }
+  ],
+  "paths": {
+    "/user/login/pwd": {
+      "get": {
+        "tags": [
+          "Login"
+        ],
+        "summary": "账号密码登录",
+        "description": "",
+        "parameters": [
+          {
+            "name": "userName",
+            "in": "query",
+            "required": true,
+            "description": "用户名",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "passWord",
+            "in": "query",
+            "required": true,
+            "description": "密码",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "登录成功",
+                  "data": {
+                    "id": 1,
+                    "token": "eyJhbGci...",
+                    "flashToken": "eyJhbGci..."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/login/email": {
+      "get": {
+        "tags": [
+          "Login"
+        ],
+        "summary": "邮箱验证码登录",
+        "description": "`X-Action-Token` 绑定了申请时的 `target`，此处 `email` 必须与申请匿名 ActionToken 时使用的 `target` 一致（邮箱大小写不敏感）。",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "description": "邮箱地址",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "(Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: \"Login\") 获取",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "登录成功",
+                  "data": {
+                    "id": 1,
+                    "token": "eyJhbGci...",
+                    "flashToken": "eyJhbGci..."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/login/phone": {
+      "get": {
+        "tags": [
+          "Login"
+        ],
+        "summary": "手机验证码登录",
+        "description": "`X-Action-Token` 绑定了申请时的 `target`，此处 `phone` 必须与申请匿名 ActionToken 时使用的 `target` 一致。",
+        "parameters": [
+          {
+            "name": "phone",
+            "in": "query",
+            "required": true,
+            "description": "手机号",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "(Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: \"Login\") 获取",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "登录成功",
+                  "data": {
+                    "id": 1,
+                    "token": "eyJhbGci...",
+                    "flashToken": "eyJhbGci..."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/login/flashtoken": {
+      "get": {
+        "tags": [
+          "Login"
+        ],
+        "summary": "FlashToken 登录",
+        "description": "",
+        "parameters": [
+          {
+            "name": "AuthorizationFlashToken",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "登录成功",
+                  "data": {
+                    "id": 1,
+                    "token": "eyJhbGci...",
+                    "flashToken": "eyJhbGci..."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/token/verify": {
+      "get": {
+        "tags": [
+          "User Management"
+        ],
+        "summary": "验证 Token",
+        "description": "验证 Token 是否有效，并返回 Token 相关信息。",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "Token验证成功",
+                  "data": {
+                    "userId": 1,
+                    "tokenType": "token",
+                    "exp": 1698765432
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/user/self": {
+      "get": {
+        "tags": [
+          "User Management"
+        ],
+        "summary": "获取个人信息",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "data": {
+                    "configured_third_platform_name": [],
+                    "created_at": "20260331 10:01:45",
+                    "emails": "everspace@qq.com",
+                    "gitlab_token": "glpat-xxxxxxxxxxxxxxxxx",
+                    "id": 33,
+                    "sex": "man",
+                    "tel": "",
+                    "userName": "TestAccount",
+                    "userNick": "TestAccount"
+                  },
+                  "msg": "success"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/user/logout": {
+      "post": {
+        "tags": [
+          "User Management"
+        ],
+        "summary": "注销登录",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "注销成功",
+                  "data": null
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/user/create": {
+      "post": {
+        "tags": [
+          "User Management"
+        ],
+        "summary": "账号注册 (通用)",
+        "description": "`X-Action-Token` 绑定了申请时的 `target`，请求体中的 `email` 或 `phone/tel` 需与该 `target` 一致。",
+        "parameters": [
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "(Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: \"Register\") 获取",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "创建用户成功",
+                  "data": {
+                    "userId": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "username": "user1",
+                "user_password": "pwd",
+                "email": "test@ex.com",
+                "tel": "13800000000",
+                "nickname": "Nick",
+                "privilege": "User",
+                "isMale": "true",
+                "third_platform_name": "",
+                "third_code": "",
+                "third_verifyCode": ""
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/create/phone": {
+      "post": {
+        "tags": [
+          "User Management"
+        ],
+        "summary": "手机快速注册",
+        "description": "`X-Action-Token` 绑定了申请时的 `target`，此处 `phone` 必须与申请匿名 ActionToken 时使用的 `target` 一致。",
+        "parameters": [
+          {
+            "name": "phone",
+            "in": "query",
+            "required": true,
+            "description": "手机号",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "(Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: \"Register\") 获取",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "注册成功",
+                  "data": {
+                    "username": "...",
+                    "password": "..."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/check_exist": {
+      "get": {
+        "tags": [
+          "User Management"
+        ],
+        "summary": "检查用户是否存在",
+        "description": "",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "description": "邮箱或手机号",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/user/mfa": {
+      "get": {
+        "tags": [
+          "VerificationCode"
+        ],
+        "summary": "发送验证码",
+        "description": "",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "description": "邮箱或手机号",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "description": "类型 (通常由后端自动识别，但参数名为 type)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "验证码发送成功.",
+                  "data": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/delete": {
+      "delete": {
+        "tags": [
+          "User Management"
+        ],
+        "summary": "检查验证码",
+        "description": "删除当前登录用户。需要先获取 `Action_DeleteUser` 类型的 ActionToken。用户的基本信息将被移动到 `user_deleted` 表中进行软删除，而第三方、GitLab 等关联信息将被彻底删除。",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "description": "邮箱或手机号",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mfaCode",
+            "in": "query",
+            "required": true,
+            "description": "验证码",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "description": "类型，需与发送验证码时的类型一致",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "(Required) 操作授权令牌，通过 `/user/action_token` (mfaType: \"ModifyUser\") 获取",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "ActionToken (需先通过 `/user/action_token` 获取)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "删除成功",
+                  "data": null
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "username": "new_name",
+                "nickname": "new_nick",
+                "email": "new@ex.com",
+                "tel": "139...",
+                "newMfaCode": "...",
+                "unbindEmail": "false",
+                "unbindPhone": "false",
+                "isMale": "false",
+                "user_password": "..."
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/user/action_token": {
+      "get": {
+        "tags": [
+          "User Management"
+        ],
+        "summary": "获取操作授权令牌 - 登录后",
+        "description": "为高危操作（如删除用户、解绑第三方账号等）申请一个一次性的不透明随机 Token。如果用户未绑定邮箱或手机号，无需提供 `mfaCode` 和 `target`。该 Token 的有效期为 5 分钟。",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "ActionToken 颁发成功",
+                  "data": {
+                    "actionToken": "...",
+                    "mfaType": "...",
+                    "expiresIn": 300
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/ping": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "获取操作授权令牌 - 登录前 (匿名)",
+        "description": "解除当前用户与指定第三方平台的绑定。",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": true,
+            "description": "平台名称 (目前有 `qq`, `wechat` 两个平台)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": true,
+            "description": "平台名称",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "description": "4.1 接口返回的 `code`",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "verifyCode",
+            "in": "query",
+            "required": true,
+            "description": "4.1 接口返回的 `verifyCode`",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "onlyCheck",
+            "in": "query",
+            "required": false,
+            "description": "默认为 `true`。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": true,
+            "description": "平台名称",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "description": "4.1 接口返回的 `code`",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "verifyCode",
+            "in": "query",
+            "required": true,
+            "description": "4.1 接口返回的 `verifyCode`",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "(Required) 操作授权令牌，通过 `/user/action_token` (mfaType: \"ThirdPartyBind\") 获取",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "(Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: \"Register\") 获取",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Action-Token",
+            "in": "header",
+            "required": true,
+            "description": "(Required) 操作授权令牌，通过 `/user/action_token` (mfaType: \"Unbind\") 获取",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": "Pong"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "userId": 123,
+                "projectId": 456,
+                "accessLevel": 30
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "FlashToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "AuthorizationFlashToken",
+        "description": "FlashToken for login"
+      },
+      "ActionToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Action-Token",
+        "description": "Action Token obtained from /user/action_token"
+      }
+    }
+  }
+}

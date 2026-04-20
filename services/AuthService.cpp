@@ -257,7 +257,7 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
     result.jsondata["tokenType"] = isFlashToken == -1 ? "undefined" : isFlashToken == 1 ? "flashToken" : "token";
 
     if (!isSuccess) {
-        result.setResult(ApiErrorCode::ApiError_AuthenticationFailed, "Token验证失败");
+        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "Token验证失败");
         co_return result;
     }
     if(!valid){
@@ -803,7 +803,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::GetSelfInfo(int userId)
     }
     result.jsondata["gitlab_token"] = gitlabToken;
 
-    result.jsondata["emails"] = user.getValueOfEmail();
+    result.jsondata["email"] = user.getValueOfEmail();
 
     result.setResult(ApiErrorCode::ApiError_Success, "success");
     co_return result;

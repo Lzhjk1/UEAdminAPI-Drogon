@@ -514,8 +514,6 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 4.6 第三方注册 (Register via Third-Party)
 - **URL**: `/api/third/register`
 - **Method**: `POST`
-- **Headers**:
-  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: "Register") 获取
 - **Params (Query)**:
   - `platform` (string, required): 平台名称
   - `code` (string, required): 4.1 接口返回的 `code`
@@ -525,11 +523,12 @@ GitLab 相关接口目前使用独立的响应格式：
   ```json
   {
     "code": 0,
-    "msg": "success",
     "data": {
-      "token": "...",
-      "user": { ... }
-    }
+        "flashToken": "eyJhb...",
+        "id": 37,
+        "token": "eyJhb..."
+    },
+    "msg": "登录成功"
   }
   ```
 - **Error Codes**:

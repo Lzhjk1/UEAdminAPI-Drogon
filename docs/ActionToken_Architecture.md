@@ -42,6 +42,9 @@ ActionToken 架构由以下三个核心组件构成：
 
 客户端通过此接口，在 Query 参数中提供当前绑定方式的 `mfaCode`、`target` 以及期望执行的 `mfaType` (如 "DeleteUser" 或 "Login")。后端验证 MFA 成功后，调用 `ActionTokenService` 颁发 Token。该接口的方法是 `GET`。
 
+> **特殊场景处理 (无联系方式用户)**：
+> 对于通过第三方登录（如 GitLab/OAuth2）直接注册且尚未绑定邮箱或手机号的用户，由于缺乏 MFA 验证渠道，`/user/action_token` 接口会跳过 MFA 校验并直接颁发 ActionToken。这允许此类用户执行敏感操作，如绑定第一个邮箱或手机号。一旦用户完成绑定，后续的所有敏感操作将恢复强制性的 MFA 校验。
+
 ---
 
 ## 3. 请求交互流程

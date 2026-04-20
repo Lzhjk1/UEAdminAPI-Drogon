@@ -50,6 +50,8 @@ void ActionTokenFilter::doFilter(const HttpRequestPtr &req,
         userId = attributes->get<int>("userId");
     }
 
+    // 匿名状态(未登录)下, 提取请求中的操作目标, 用于后续校验给出的ActionToken中包含的操作目标是否匹配
+    // 防止A目标的验证码被B目标使用, 或者B目标的验证码被A目标使用
     std::string requestTarget;
     if (userId <= 0) {
         const std::string& path = req->path();
