@@ -95,7 +95,7 @@ target_sources(${PROJECT_NAME}
                ${MODEL_SRC} ${MODEL_HDRS}
                ${UTILS_SRC} ${UTILS_HDRS}
                ${MFA_SRC} ${MFA_HDRS}
-               main.cc ${ROOT_HDRS})
+               main.cc ${ROOT_HDRS} )
 
 # 动态加载视图（按需启用）
 # set_property(TARGET ${PROJECT_NAME} PROPERTY ENABLE_EXPORTS ON)

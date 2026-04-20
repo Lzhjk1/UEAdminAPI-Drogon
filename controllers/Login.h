@@ -26,8 +26,8 @@ class Login : public drogon::HttpController<Login>
     // METHOD_ADD(Login::your_method_name, "/{1}/{2}/list", Get); // path is /Login/{arg1}/{arg2}/list
     // ADD_METHOD_TO(Login::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
     ADD_METHOD_TO(Login::LoginByPwd, "/user/login/pwd?userName={1}&passWord={2}", Get);
-    ADD_METHOD_TO(Login::LoginByEmail, "/user/login/email?email={1}", Get, "ActionTokenFilter");
-    ADD_METHOD_TO(Login::LoginByPhone, "/user/login/phone?phone={1}", Get, "ActionTokenFilter");
+    ADD_METHOD_TO(Login::LoginByEmail, "/user/login/email?email={1}", Get, "ActionTokenMiddleware");
+    ADD_METHOD_TO(Login::LoginByPhone, "/user/login/phone?phone={1}", Get, "ActionTokenMiddleware");
     ADD_METHOD_TO(Login::LoginByFlashToken, "/user/login/flashtoken", Get);
     ADD_METHOD_TO(Login::VerifyFlashToken, "/user/token/verify/flash?flashToken={1}", Get);
     ADD_METHOD_TO(Login::VerifyAuthToken, "/user/token/verify/auth?token={1}", Get);

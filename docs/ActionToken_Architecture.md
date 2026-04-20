@@ -34,8 +34,27 @@ ActionToken 架构由以下三个核心组件构成：
   2. 从 HTTP 请求头 `X-Action-Token` 中提取客户端传递的 Token。
   3. 依赖前置的 `AuthFilter` 注入的 `userId`，调用 `ActionTokenService` 进行严格校验。
   4. 校验通过则放行（`fccb()`），否则直接拦截并返回错误响应。
+- **局限性**：由于 Filter 属于前置拦截，它在请求进入业务逻辑前就会消耗（删除）Token。如果业务逻辑由于参数错误等原因执行失败，用户持有的 Token 已被销毁，无法进行重试。
 
-### 2.3 统一 Token 颁发接口 (入口层)
+### 2.3 ActionTokenMiddleware (智能拦截层)
+作为 Drogon 的 `HttpMiddleware`，提供比 Filter 更灵活且安全的消耗策略。
+- **核心能力**：采用“提取-执行-按需恢复”的原子化策略。
+- **安全性设计**：
+  1. **防并发/防重放**：在业务逻辑执行前，通过 `ExtractToken` 立即将令牌从缓存中“提取”并删除。即使多个请求同时到达，也只有一个能获取到令牌并继续执行，彻底杜绝了并发竞争。
+  2. **重试次数限制**：令牌内部维护一个 `retryCount`。当业务逻辑失败触发“恢复”逻辑时，会增加重试计数。一旦超过最大重试次数（默认为 5 次），令牌将永久失效，有效防止暴力破解。
+- **业务匹配逻辑**：
+  利用 `eMFAType` 的位掩码特性。由于后端重载了 `operator&`，校验逻辑统一使用 `(info.mfaType & expectedAction)`。
+  - **单类型匹配**：如 `Login` (1<<1) 匹配 `/user/login/phone` (1<<1)。
+  - **复合类型匹配**：如申请 `LoginOrRegister` (1<<1 | 1<<2) 类型的令牌，可同时满足 `Login` 或 `Register` 接口的校验需求。这完美解决了“登录失败转注册”无需重新获取验证码的场景。
+- **处理流程**：
+  1. **前置阶段**：从缓存中原子提取令牌。若不存在或已在处理中，则直接拦截。
+  2. **执行阶段**：放行请求，执行 Controller 中的业务逻辑。
+  3. **后置阶段**：在业务逻辑执行完成后，检查响应结果。
+     - 若成功（`code == 0`）：令牌已在第一步删除，流程结束。
+     - 若失败（`code != 0`）：调用 `RestoreToken` 将令牌重新放回缓存（需满足重试次数限制），以便用户修正参数后重试。
+- **适用场景**：适用于诸如“用户注册”、“修改密码”等可能因为用户输入错误而需要多次重试的接口。用户在 MFA 验证成功后，只要最终业务没成功，就可以在有限次数内使用同一个 ActionToken 进行尝试，提升了用户体验。
+
+### 2.4 统一 Token 颁发接口 (入口层)
 后端提供了两个入口用于颁发 Token：
 - **`/user/action_token` (登录后)**：需要 `AuthFilter` 验证。用于诸如 "DeleteUser", "ModifyUser", "Unbind" 等需要已知用户身份的高危操作。
 - **`/user/action_token/anonymous` (登录前/匿名)**：无需登录。专门用于诸如 "Login", "Register", "ResetPassword" 等用户尚未建立登录会话的场景，该接口颁发的 Token 会固定绑定到 `userId = -1`，并绑定申请时传入的 `target`（邮箱/手机号）。
@@ -102,13 +121,17 @@ ActionTokenService::ActionTokenService() {
 }
 ```
 
-### 第二步：在 Controller 注册路由时挂载 Filter
-打开你的 Controller 头文件，在 `METHOD_LIST_BEGIN` 宏中，为该接口叠加 `ActionTokenFilter`。
-> **注意**：`ActionTokenFilter` 必须在 `AuthFilter` 之后执行，因为它依赖 `AuthFilter` 注入的 `userId`。
+### 第二步：在 Controller 注册路由时挂载拦截层
+打开你的 Controller 头文件，在 `METHOD_LIST_BEGIN` 宏中，为该接口叠加 `ActionTokenFilter` 或 `ActionTokenMiddleware`。
+
+- **`ActionTokenFilter`**：校验通过立即销毁 Token。适用于一键式操作（如“删除用户”）。
+- **`ActionTokenMiddleware`**：仅在业务成功后销毁 Token。适用于可能重试的操作（如“用户注册”、“修改密码”）。
+
+> **注意**：拦截层必须在 `AuthFilter` 之后执行，因为它依赖 `AuthFilter` 注入的 `userId`。
 
 ```cpp
-// 确保 "ActionTokenFilter" 紧跟在 "AuthFilter" 之后
-ADD_METHOD_TO(UserController::updatePassword, "/user/password/update", Post, "AuthFilter", "ActionTokenFilter");
+// 示例：使用 ActionTokenMiddleware 以支持业务重试
+ADD_METHOD_TO(UserController::updatePassword, "/user/password/update", Post, "AuthFilter", "ActionTokenMiddleware");
 ```
 
 完成以上配置后，你的业务代码（`updatePassword` 的具体实现）就可以完全专注于修改密码的逻辑，彻底摆脱 `mfaCode` 和 `target` 等参数的干扰！

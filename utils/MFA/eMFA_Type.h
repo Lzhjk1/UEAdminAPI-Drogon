@@ -28,7 +28,7 @@ enum class eMFAType : uint32_t {
     DeleteUser = 1 << 7,
     ModifyUser = 1 << 8,
     Unbind = 1 << 9,
-    LoginOrRegister = (1 << 1) | (1 << 2)
+    LoginOrRegister = Login | Register
 };
 
 // 函数声明

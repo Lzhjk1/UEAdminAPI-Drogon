@@ -29,7 +29,7 @@ public:
     // 第三方绑定已有账号
     ADD_METHOD_TO(ThirdPartyLogin::bindAccount,                 "/api/third/bind?platform={1}&code={2}&verifyCode={3}", 
         Post, 
-        "AuthFilter", "ActionTokenFilter");
+        "AuthFilter", "ActionTokenMiddleware");
 
     // 第三方直接注册账号并完成登录
     ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdParty,    "/api/third/register?platform={1}&code={2}&verifyCode={3}", 
@@ -37,7 +37,7 @@ public:
 
     ADD_METHOD_TO(ThirdPartyLogin::unbindAccount,               "/api/third/unbind?platform={1}", 
         Post, 
-        "AuthFilter", "ActionTokenFilter");
+        "AuthFilter", "ActionTokenMiddleware");
         
     METHOD_LIST_END
 

@@ -105,6 +105,14 @@ std::string ActionTokenService::GenerateToken(int userId, eMFAType mfaType, cons
 }
 
 bool ActionTokenService::VerifyAndConsumeToken(const std::string& token, eMFAType expectedAction, int userId, const std::string& requestTarget) {
+    if (VerifyToken(token, expectedAction, userId, requestTarget)) {
+        ConsumeToken(token);
+        return true;
+    }
+    return false;
+}
+
+bool ActionTokenService::VerifyToken(const std::string& token, eMFAType expectedAction, int userId, const std::string& requestTarget) {
     if (token.empty()) {
         return false;
     }
@@ -123,13 +131,58 @@ bool ActionTokenService::VerifyAndConsumeToken(const std::string& token, eMFATyp
         }
     }
 
-    if (info.userId == userId && info.mfaType == expectedAction) {
-        // 校验成功，消耗掉这个 Token（保证单次使用）
-        _tokenCache->erase(token);
+    if (info.userId == userId && (info.mfaType & expectedAction)) {
         return true;
     }
 
     return false;
+}
+
+void ActionTokenService::ConsumeToken(const std::string& token) {
+    _tokenCache->erase(token);
+}
+
+std::optional<ActionTokenInfo> ActionTokenService::ExtractToken(const std::string& token, eMFAType expectedAction, int userId, const std::string& requestTarget) {
+    if (token.empty()) {
+        return std::nullopt;
+    }
+
+    ActionTokenInfo info;
+    bool found = _tokenCache->findAndFetch(token, info);
+    if (!found) {
+        return std::nullopt;
+    }
+
+    // 立即删除，防止并发竞争
+    _tokenCache->erase(token);
+
+    bool needTargetMatch = (info.userId <= 0 && !info.boundTarget.empty());
+    if (needTargetMatch) {
+        std::string normalizedRequestTarget = NormalizeTarget(requestTarget);
+        if (normalizedRequestTarget.empty() || normalizedRequestTarget != info.boundTarget) {
+            return std::nullopt;
+        }
+    }
+
+    if (info.userId == userId && (info.mfaType & expectedAction)) {
+        return info;
+    }
+
+    return std::nullopt;
+}
+
+void ActionTokenService::RestoreToken(const std::string& token, const ActionTokenInfo& info) {
+    // 检查重试次数限制 (例如最多允许 5 次重试)
+    if (info.retryCount >= 5) {
+        LOG_WARN << "ActionToken 达到最大重试次数，不再恢复: " << token;
+        return;
+    }
+
+    ActionTokenInfo newInfo = info;
+    newInfo.retryCount++;
+    
+    // 重新存入缓存，剩余时间会自动重新计算或按原定过期时间（这里简化为重新开始计时）
+    _tokenCache->insert(token, newInfo, _expireSeconds);
 }
 
 drogon::Task<UEAdminAPI::utils::HttpResult> ActionTokenService::GenerateTokenCore(int userId, const std::string& mfaTypeStr, const std::string& mfaCode, const std::string& target) {

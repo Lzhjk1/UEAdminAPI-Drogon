@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include <optional>
 #include "utils/SingletonWithInit.h"
 #include "utils/MFA/eMFA_Type.h"
 #include "utils/HttpResult.h"
@@ -16,6 +17,7 @@ struct ActionTokenInfo {
     int userId;
     eMFAType mfaType;
     std::string boundTarget;
+    int retryCount = 0; // 当前重试次数
 };
 
 class ActionTokenService : public SingletonWithInit<ActionTokenService> {
@@ -35,6 +37,19 @@ public:
     /// @param userId 当前登录用户的ID (用于双重校验)
     /// @return 验证通过返回 true，否则返回 false (Token 不存在、过期、类型不符或所属用户不符都会返回 false)
     bool VerifyAndConsumeToken(const std::string& token, eMFAType expectedAction, int userId, const std::string& requestTarget = "");
+
+    /// @brief 仅验证 ActionToken 是否有效 (不消耗)
+    bool VerifyToken(const std::string& token, eMFAType expectedAction, int userId, const std::string& requestTarget = "");
+
+    /// @brief 消耗 ActionToken
+    void ConsumeToken(const std::string& token);
+
+    /// @brief 提取 ActionToken (获取信息并立即从缓存中删除，用于解决并发安全问题)
+    /// @return 如果 Token 有效则返回 Info，否则返回 std::nullopt
+    std::optional<ActionTokenInfo> ExtractToken(const std::string& token, eMFAType expectedAction, int userId, const std::string& requestTarget = "");
+
+    /// @brief 恢复 ActionToken (用于业务失败时重新放回缓存)
+    void RestoreToken(const std::string& token, const ActionTokenInfo& info);
 
     /// @brief 获取路由对应的 Action 类别
     /// @param path 路由路径 (例如: "/user/delete")
