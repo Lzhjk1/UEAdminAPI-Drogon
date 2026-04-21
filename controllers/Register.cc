@@ -45,7 +45,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         .addParam("nickname", false)
         .addParam("isMale", false, "true")
         .addParam("email", false)
-        .addParam("tel", false)
+        .addParam("phone", false)
         // 支持第三方注册
         .addParam("third_platform_name", false)
         .addParam("third_code", false)
