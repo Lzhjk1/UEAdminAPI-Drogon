@@ -525,7 +525,7 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
         result.setResult(ApiErrorCode::ApiError_PlatformAlreadyBound);
         co_return result;
     }
-    // 4. 组装对象
+    // 5. 组装对象
     auto newUser = User();
     newUser.setName(username);
     auto [passwordHash, passwordSalt] = CreateStrPasswordHash(password);
