@@ -631,5 +631,11 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `GET`
 - **Response**:
   ```json
-  { "code": 0, "msg": "success", "data": "Pong" }
+  {
+    "code": 0,
+    "msg": "pong",
+    "data": {
+      "serverTime": 1714348800
+    }
+  }
   ```

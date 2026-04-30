@@ -22,9 +22,10 @@ Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string t
 
     auto [isSuccess, errMsg] = co_await _mfaService->SendTheCode(target, stringToMFAType(type));
 
-    result.code = isSuccess ? 0 : -1;
-    if(!isSuccess) {
-        result.msg = errMsg;
+    if (!isSuccess) {
+        result.setResult(ApiErrorCode::ApiError_SendVerifyCodeFailed, errMsg);
+    } else {
+        result.setResult(ApiErrorCode::ApiError_Success);
     }
     
     resp->setBody(result.toJsonString());

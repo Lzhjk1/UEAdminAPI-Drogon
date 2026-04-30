@@ -57,8 +57,8 @@ ActionTokenService::ActionTokenService(const Json::Value& config) {
     // ========================================
     _routeToActionMap["DELETE:/user/delete"] = eMFAType::DeleteUser;
     _routeToActionMap["POST:/api/third/unbind"] = eMFAType::ThirdPartyBind;
-    _routeToActionMap["POST:/user/update"] = eMFAType::ModifyUser;
     _routeToActionMap["POST:/api/third/bind"] = eMFAType::ThirdPartyBind;
+    _routeToActionMap["POST:/user/update"] = eMFAType::ModifyUser;
     _routeToActionMap["GET:/user/login/email"] = eMFAType::Login;
     _routeToActionMap["GET:/user/login/phone"] = eMFAType::Login;
     _routeToActionMap["POST:/user/create"] = eMFAType::Register;

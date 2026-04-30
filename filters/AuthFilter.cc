@@ -54,13 +54,13 @@ void AuthFilter::doFilter(const HttpRequestPtr &req,
             else if (result.jsondata["tokenType"].asString() == "flashtoken") {
                 // 这里不应该使用flashToken, 其只应用于刷新token
                 // 提示并返回
-                result.setResult(UEAdminAPI::ApiErrorCode::ApiError_AuthenticationFailed, "flashToken 不能直接用于认证");
+                result.setResult(UEAdminAPI::ApiErrorCode::ApiError_TokenTypeUnexpected, "flashToken 不能直接用于认证");
                 auto resp = HttpResponse::newHttpResponse();
                 resp->setBody(result.toJsonString());
                 resp->setStatusCode(k401Unauthorized);
                 fcb(resp);
             } else {
-                result.setResult(UEAdminAPI::ApiErrorCode::ApiError_AuthenticationFailed, "未知token类型");
+                result.setResult(UEAdminAPI::ApiErrorCode::ApiError_TokenTypeInvalid, "未知token类型");
                 auto resp = HttpResponse::newHttpResponse();
                 resp->setBody(result.toJsonString());
                 resp->setStatusCode(k401Unauthorized);
@@ -68,6 +68,7 @@ void AuthFilter::doFilter(const HttpRequestPtr &req,
             }
         } else {
             // 验证失败，直接返回错误信息
+            result.setResult(UEAdminAPI::ApiErrorCode::ApiError_TokenInvalidOrExpired, "token已失效");
             auto resp = HttpResponse::newHttpResponse();
             resp->setBody(result.toJsonString());
             resp->setStatusCode(k401Unauthorized);

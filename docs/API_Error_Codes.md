@@ -14,6 +14,7 @@
 | **/user/login/email** (GET)<br>**/user/login/phone** (GET) | 0 | `ApiError_Success` | 登录成功 |
 | | -302 | `ApiError_UserNotFound` | 用户不存在 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
+| | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
 | | -308 | `ApiError_UserUpdateFailed` | 更新状态失败 |
 | **/user/login/flashtoken** (GET) | 0 | `ApiError_Success` | 刷新成功 |
 | | -204 | `ApiError_FlashTokenInvalidType` | 不是FlashToken |
@@ -28,7 +29,17 @@
 | **/user/self** (GET) | 0 | `ApiError_Success` | Success |
 | | -203 | `ApiError_TokenMissing` | 缺少Token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
+| | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
+| | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
 | | -104 | `ApiError_DatabaseError` | 数据库错误 |
+| **/user/logout** (POST) | 0 | `ApiError_Success` | 注销成功 |
+| | -103 | `ApiError_InternalError` | 内部错误 |
+| | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
+| | -202 | `ApiError_InvalidTokenType` | 无效的 Token |
+| | -203 | `ApiError_TokenMissing` | 缺少Token |
+| | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
+| | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
+| | -308 | `ApiError_UserUpdateFailed` | 注销失败: 数据库更新错误 |
 
 ### 2. 注册模块 (Register Controller)
 
@@ -39,6 +50,7 @@
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必填项: ... |
 | | -105 | `ApiError_InvalidOperation` | 权限参数错误 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
+| | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
 | | -303 | `ApiError_UsernameAlreadyExists` | 用户名已存在 |
 | | -304 | `ApiError_EmailAlreadyExists` | 邮箱已存在 |
 | | -305 | `ApiError_PhoneAlreadyExists` | 手机号已存在 |
@@ -47,16 +59,23 @@
 | | -309 | `ApiError_UserCreationFailure` | 创建用户失败 (回滚发生) |
 | | -510 | `ApiError_ThirdPartyInfoCreationFailure` | 创建第三方登录信息失败 |
 | | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
+| | -603 | `ApiError_GitLabProjectInvitationFailure` | 邀请用户加入项目失败 |
+| | -604 | `ApiError_GitLabTokenCreationFailure` | 创建 GitLab Impersonation Token失败 |
 | **/user/create/phone** (POST) | 0 | `ApiError_Success` | 注册成功 (返回 username, password) |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必填项: ... |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
+| | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
 | | -305 | `ApiError_PhoneAlreadyExists` | 手机号已存在 |
 | | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
+| | -603 | `ApiError_GitLabProjectInvitationFailure` | 邀请用户加入项目失败 |
+| | -604 | `ApiError_GitLabTokenCreationFailure` | 创建 GitLab Impersonation Token失败 |
 | **/user/check_exist** (GET) | 0 | `ApiError_Success` | 用户已存在/不存在 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少参数: target |
 | | -203 | `ApiError_TokenMissing` | 缺少Token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
 | | -202 | `ApiError_InvalidTokenType` | Token类型错误 |
+| | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
+| | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
 
 ### 3. 用户管理模块 (User Controller)
 
@@ -67,6 +86,9 @@
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必要参数... |
 | | -202 | `ApiError_InvalidTokenType` | 不是token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
+| | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
+| | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
+| | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 | | -302 | `ApiError_UserNotFound` | 用户不存在 |
 | | -311 | `ApiError_ConcurrentModificationError` | 电话或邮箱不能同时修改 |
@@ -79,12 +101,30 @@
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必填项... |
 | | -202 | `ApiError_InvalidTokenType` | 不是token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
+| | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
+| | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
+| | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
 | | -302 | `ApiError_UserNotFound` | 用户不存在 |
 | | -403 | `ApiError_TargetNotBoundToUser` | 目标未绑定到当前用户 |
 | | -404 | `ApiError_UnknownChannelType` | 无法判断渠道类型 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 | | -602 | `ApiError_GitLabAccountDeletionFailure` | 删除 GitLab 用户失败 |
 | | -310 | `ApiError_UserDeletionFailure` | 删除失败 |
+| **/user/action_token** (GET) | 0 | `ApiError_Success` | ActionToken 颁发成功 |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少参数: mfaType / 需要提供 mfaCode 和 target |
+| | -105 | `ApiError_InvalidOperation` | 未知的操作类别 (mfaType) |
+| | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
+| | -202 | `ApiError_InvalidTokenType` | 不是token |
+| | -203 | `ApiError_TokenMissing` | 缺少Token |
+| | -207 | `ApiError_AuthenticationFailed` | 未登录 |
+| | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
+| | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
+| | -302 | `ApiError_UserNotFound` | 用户不存在 |
+| | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
+| **/user/action_token/anonymous** (GET) | 0 | `ApiError_Success` | ActionToken 颁发成功 |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少参数: mfaType / 需要提供 mfaCode 和 target |
+| | -105 | `ApiError_InvalidOperation` | 未知的操作类别 (mfaType) / 此操作类型不允许匿名申请 |
+| | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 
 ### 4. 验证码模块 (SendVerifyCode Controller)
 
@@ -92,12 +132,10 @@
 | :--- | :--- | :--- | :--- |
 | **/user/mfa** (GET) | 0 | `ApiError_Success` | 发送成功 |
 | | -402 | `ApiError_SendVerifyCodeTooFrequent` | 发送过于频繁 |
-| | -1 | (未定义枚举) | 发送失败 (如邮件服务不可用) |
+| | -405 | `ApiError_SendVerifyCodeFailed` | 发送验证码失败 (如邮件服务不可用) |
 | **/user/mfa/check** (GET) | 0 | `ApiError_Success` | 验证码正确 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少参数 target, code 或 type |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
-
-> **注意**: `SendVerifyCode` 接口中仍存在硬编码的 `-1`，建议后续统一为 `ApiError_InternalError` 或新增 `ApiError_SendVerifyCodeFailed`。
 
 ### 5. 第三方登录模块 (ThirdPartyLogin Controller)
 
@@ -118,6 +156,9 @@
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必要参数 |
 | | -202 | `ApiError_InvalidTokenType` | 不是token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
+| | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
+| | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
+| | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
 | | -502 | `ApiError_PlatformAlreadyBound` | 该平台已经绑定过账号 |
 | | -504 | `ApiError_ThirdPartyAuthFailed` | 第三方登陆验证失败 |
 | | -103 | `ApiError_InternalError` | 内部错误 |
@@ -132,6 +173,9 @@
 | | -203 | `ApiError_TokenMissing` | 缺少参数 token |
 | | -202 | `ApiError_InvalidTokenType` | 不是token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
+| | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
+| | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
+| | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
 | | -403 | `ApiError_TargetNotBoundToUser` | 目标未绑定到当前用户 |
 | | -404 | `ApiError_UnknownChannelType` | 无法判断渠道类型 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |

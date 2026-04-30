@@ -22,6 +22,9 @@
     X(ApiError_FlashTokenVerificationFailed, -205, "FlashToken验证失败 ") \
     X(ApiError_FlashTokenExpired, -206, "FlashToken已失效 ") \
     X(ApiError_AuthenticationFailed, -207, "验证失败 ") \
+    X(ApiError_ActionTokenInvalid, -208, "ActionToken 无效、已过期或无权执行此操作 ") \
+    X(ApiError_TokenTypeUnexpected, -209, "Token类型不符 ") \
+    X(ApiError_TokenTypeInvalid, -210, "未知Token类型 ") \
     /* --- User Account Errors (-3xx) --- */ \
     X(ApiError_InvalidCredentials, -301, "用户名或密码错误 ") \
     X(ApiError_UserNotFound, -302, "用户不存在 ") \
@@ -40,6 +43,7 @@
     X(ApiError_SendVerifyCodeTooFrequent, -402, "发送过于频繁 ") \
     X(ApiError_TargetNotBoundToUser, -403, "目标未绑定到当前用户 ") \
     X(ApiError_UnknownChannelType, -404, "无法判断渠道类型 ") \
+    X(ApiError_SendVerifyCodeFailed, -405, "发送验证码失败 ") \
     /* --- Third Party Login Errors (-5xx) --- */ \
     X(ApiError_UnsupportedPlatform, -501, "不支持的第三方平台 ") \
     X(ApiError_PlatformAlreadyBound, -502, "该平台已经绑定过账号 ") \
