@@ -25,6 +25,7 @@
     X(ApiError_ActionTokenInvalid, -208, "ActionToken 无效、已过期或无权执行此操作 ") \
     X(ApiError_TokenTypeUnexpected, -209, "Token类型不符 ") \
     X(ApiError_TokenTypeInvalid, -210, "未知Token类型 ") \
+    X(ApiError_FlashTokenInvalidOrExpired, -211, "不是有效的 FlashToken / FlashToken已失效 ") \
     /* --- User Account Errors (-3xx) --- */ \
     X(ApiError_InvalidCredentials, -301, "用户名或密码错误 ") \
     X(ApiError_UserNotFound, -302, "用户不存在 ") \

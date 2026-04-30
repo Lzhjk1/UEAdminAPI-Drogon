@@ -22,7 +22,7 @@
 | | -206 | `ApiError_FlashTokenExpired` | FlashToken已失效 |
 | **/user/token/verify/flash** (GET) | 0 | `ApiError_Success` | FlashToken验证成功 |
 | | -101 | `ApiError_InvalidJsonFormat` | invalid token (格式错误) |
-| | -201 | `ApiError_TokenInvalidOrExpired` | 不是有效的 FlashToken / FlashToken已失效 |
+| | -211 | `ApiError_FlashTokenInvalidOrExpired` | 不是有效的 FlashToken / FlashToken已失效 |
 | **/user/token/verify/auth** (GET) | 0 | `ApiError_Success` | Token验证成功 |
 | | -101 | `ApiError_InvalidJsonFormat` | invalid token (格式错误) |
 | | -201 | `ApiError_TokenInvalidOrExpired` | 不是有效的 Token / Token已失效 |

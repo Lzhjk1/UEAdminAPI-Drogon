@@ -245,7 +245,7 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
 
     auto [isSuccess, userId, status, isFlashToken] = CheckTokenAndParseUserId(token);
     bool valid = true;
-    // 只有FlashToken才检查状态
+    // 目前只有FlashToken才检查状态
     if(isFlashToken == 1){
         valid = co_await CheckTokenStatus(userId, status, isFlashToken);
         result.jsondata["valid"] = valid;
@@ -261,7 +261,7 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
         co_return result;
     }
     if(!valid){
-        result.setResult(ApiErrorCode::ApiError_TokenInvalidOrExpired, "FlashToken已失效");
+        result.setResult(ApiErrorCode::ApiError_FlashTokenInvalidOrExpired, "FlashToken已失效");
         co_return result;
     }
 
