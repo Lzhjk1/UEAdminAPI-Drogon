@@ -254,7 +254,27 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
-#### 2.2.3 检查用户是否存在
+#### 2.2.3 邮箱快速注册
+- **URL**: `/user/create/email?email={email}`
+- **Method**: `POST`
+- **Headers**:
+  - `X-Action-Token`: (Required) 操作授权令牌，通过 `/user/action_token/anonymous` (mfaType: "Register") 获取
+- **Description**: `X-Action-Token` 绑定了申请时的 `target`，此处 `email` 必须与申请匿名 ActionToken 时使用的 `target` 一致。
+- **Params**:
+  - `email` (string, required): 邮箱
+- **Response**:
+  ```json
+  {
+    "code": 0,
+    "msg": "注册成功",
+    "data": {
+      "username": "...",
+      "password": "..."
+    }
+  }
+  ```
+
+#### 2.2.4 检查用户是否存在
 - **URL**: `/user/check_exist?target={target}`
 - **Method**: `GET`
 - **Headers**:

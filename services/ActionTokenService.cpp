@@ -63,6 +63,7 @@ ActionTokenService::ActionTokenService(const Json::Value& config) {
     _routeToActionMap["GET:/user/login/phone"] = eMFAType::Login;
     _routeToActionMap["POST:/user/create"] = eMFAType::Register;
     _routeToActionMap["POST:/user/create/phone"] = eMFAType::Register;
+    _routeToActionMap["POST:/user/create/email"] = eMFAType::Register;
 
     LOG_INFO << "ActionTokenService 初始化完成";
 }

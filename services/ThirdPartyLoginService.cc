@@ -1180,6 +1180,8 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
 
     result = co_await _authService->LoginByUserId(user.getValueOfId());
 
+    result.msg += ". 登陆后可以修改密码以便后续使用密码登录";
+
     co_return result;
 }
 

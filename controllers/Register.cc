@@ -180,7 +180,42 @@ Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::str
     if (result.code == 0) {
         result.jsondata["username"] = username;
         result.jsondata["password"] = password;
-        result.msg = "注册成功, 请妥善保管您的用户名和密码";
+        result.msg = "注册成功, 请尽快修改您的密码";
+    }
+
+    resp->setBody(result.toJsonString());
+    co_return resp;
+}
+
+Task<HttpResponsePtr> Register::RegisterUserByEmail(HttpRequestPtr req, std::string email) {
+    auto _authService = AuthService::Instance();
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    HttpResult result;
+
+    if (email.empty()) {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: email");
+        resp->setBody(result.toJsonString());
+        co_return resp;
+    }
+
+    std::string username = "User_" + RandomGenerator::getRandNumberStr(8);
+    std::string password = RandomGenerator::generateRandomPassword();
+
+    result = co_await _authService->RegisterByEmail(
+        username,
+        password,
+        email,
+        UserPrivileges::User,
+        true,
+        username
+    );
+
+    if (result.code == 0) {
+        result.jsondata["username"] = username;
+        result.jsondata["password"] = password;
+        result.msg = "注册成功, 请尽快修改您的密码";
     }
 
     resp->setBody(result.toJsonString());

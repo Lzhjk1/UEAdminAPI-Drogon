@@ -55,7 +55,7 @@ void ActionTokenFilter::doFilter(const HttpRequestPtr &req,
     std::string requestTarget;
     if (userId <= 0) {
         const std::string& path = req->path();
-        if (path == "/user/login/email") {
+        if (path == "/user/login/email" || path == "/user/create/email") {
             requestTarget = req->getParameter("email");
         } else if (path == "/user/login/phone" || path == "/user/create/phone") {
             requestTarget = req->getParameter("phone");

@@ -61,10 +61,11 @@
 | | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
 | | -603 | `ApiError_GitLabProjectInvitationFailure` | 邀请用户加入项目失败 |
 | | -604 | `ApiError_GitLabTokenCreationFailure` | 创建 GitLab Impersonation Token失败 |
-| **/user/create/phone** (POST) | 0 | `ApiError_Success` | 注册成功 (返回 username, password) |
+| **/user/create/phone** (POST)<br>**/user/create/email** (POST) | 0 | `ApiError_Success` | 注册成功 (返回 username, password) |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必填项: ... |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 | | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
+| | -304 | `ApiError_EmailAlreadyExists` | 邮箱已存在 |
 | | -305 | `ApiError_PhoneAlreadyExists` | 手机号已存在 |
 | | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
 | | -603 | `ApiError_GitLabProjectInvitationFailure` | 邀请用户加入项目失败 |
