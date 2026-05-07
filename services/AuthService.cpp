@@ -37,6 +37,16 @@ AuthService::AuthService(const Json::Value &config) {
     _secret = config["UserManage"]["jwt_secret"].asString();
     _jwtIssuer = config["UserManage"]["jwt_issuer"].asString();
 
+    if (config["UserManage"].isMember("tokenExpeirSec") && config["UserManage"]["tokenExpeirSec"].isInt()) {
+        _tokenExpireSec = config["UserManage"]["tokenExpeirSec"].asInt();
+    } else if (config["UserManage"].isMember("tokenExpireSec") && config["UserManage"]["tokenExpireSec"].isInt()) {
+        _tokenExpireSec = config["UserManage"]["tokenExpireSec"].asInt();
+    }
+    
+    if (config["UserManage"].isMember("tokenFlashTokenSec") && config["UserManage"]["tokenFlashTokenSec"].isInt()) {
+        _flashTokenExpireSec = config["UserManage"]["tokenFlashTokenSec"].asInt();
+    }
+
     // 检查
     if (_secret.empty() || _jwtIssuer.empty()) {
         LOG_ERROR << "UserManage:jwt_secert or jwt_issuer unset";
@@ -102,6 +112,9 @@ bool AuthService::VerifyPasswordHash(const std::string &password,
 }
 
 std::string AuthService::CreateToken(int id, int status, uint64_t durationSeconds) {
+    if (durationSeconds == 0) {
+        durationSeconds = _tokenExpireSec;
+    }
     auto token = jwt::create()
                      .set_issuer(_jwtIssuer)
                      .set_type("JWS")
@@ -114,6 +127,9 @@ std::string AuthService::CreateToken(int id, int status, uint64_t durationSecond
     return token;
 }
 std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationSeconds) {
+    if (durationSeconds == 0) {
+        durationSeconds = _flashTokenExpireSec;
+    }
     auto token = jwt::create()
                      .set_issuer(_jwtIssuer)
                      .set_type("JWS")

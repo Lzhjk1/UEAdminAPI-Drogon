@@ -15,6 +15,8 @@ class AuthService : public SingletonWithInit<AuthService> {
 private:
     std::string _secret;
     std::string _jwtIssuer;
+    uint64_t _tokenExpireSec = 3600;
+    uint64_t _flashTokenExpireSec = 259200;
 
 public:
     AuthService(const Json::Value &config);
@@ -39,16 +41,16 @@ public:
     /// @brief 创建一个Token
     /// @param id 用户Id
     /// @param status 状态码, 用于在数据库中标记一个Token, 以实现旧Token失效机制
-    /// @param durationSeconds Token有效期, 单位为秒, 默认1小时
+    /// @param durationSeconds Token有效期, 单位为秒, 默认使用配置中的tokenExpeirSec或3600
     /// @return 
-    std::string CreateToken(int id, int status, uint64_t durationSeconds = 3600); // 1小时 = 60 * 60
+    std::string CreateToken(int id, int status, uint64_t durationSeconds = 0); 
     
     /// @brief 创建一个FlashToken
     /// @param id 用户Id
     /// @param status 状态码, 用于在数据库中标记一个Token, 以实现旧Token失效机制
-    /// @param durationSeconds Token有效期, 单位为秒, 默认3天
+    /// @param durationSeconds Token有效期, 单位为秒, 默认使用配置中的tokenFlashTokenSec或259200
     /// @return 
-    std::string CreateFlashToken(int id, int status, uint64_t durationSeconds = 259200); // 3天 = 3 * 24 * 60 * 60
+    std::string CreateFlashToken(int id, int status, uint64_t durationSeconds = 0); 
 
     // 颁发一对 Token 与 FlashToken，并将 status 同步到数据库
     drogon::Task<std::tuple<std::string, std::string, int>> NewTokenPair(int userId);

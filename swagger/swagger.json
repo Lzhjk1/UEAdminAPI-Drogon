@@ -194,14 +194,24 @@
         }
       }
     },
-    "/user/token/verify": {
+    "/user/token/verify/auth": {
       "get": {
         "tags": [
           "User Management"
         ],
         "summary": "验证 Token",
         "description": "验证 Token 是否有效，并返回 Token 相关信息。",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "description": "AuthToken 字符串",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -213,18 +223,13 @@
                   "data": {
                     "userId": 1,
                     "tokenType": "token",
-                    "exp": 1698765432
+                    "status": 123
                   }
                 }
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/user/self": {
