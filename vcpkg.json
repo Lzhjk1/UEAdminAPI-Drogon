@@ -1,0 +1,23 @@
+{
+  "name": "my-drogon-project",
+  "version": "1.0.0",
+  "dependencies": [
+    "jsoncpp",
+    "zlib",
+    "openssl",
+    "sqlite3",
+    "libpq",
+    "libpqxx",
+    "jwt-cpp",
+    {
+      "name": "drogon",
+      "features": [
+        "core",
+        "ctl",
+        "sqlite3",
+        "postgres",
+        "orm"
+      ]
+    }
+  ]
+}
