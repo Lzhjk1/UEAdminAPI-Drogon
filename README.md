@@ -26,7 +26,6 @@ UEAdminAPI-drogon 是一个基于 [Drogon](https://github.com/drogonframework/dr
 - **JSON 处理**：JsonCPP (Drogon 内置)
 - **第三方库集成**：
   - [jwt-cpp](https://github.com/Thalhammer/jwt-cpp)（用于 JSON Web Token 的生成与解析）
-  - 腾讯云 SMS SDK（用于发送手机验证码）
 - **编译工具**：CMake
 
 ## 项目结构概览
@@ -62,7 +61,6 @@ UEAdminAPI-drogon 是一个基于 [Drogon](https://github.com/drogonframework/dr
 
 1. 首先参照 drogon 文档配置 vcpkg 环境，确保所有依赖项已安装. 如 `openssl`, `libpq`, `jwt-cpp`, `drogon`, `trantor` 等. 具体见 drogon 文档.
 2. 依据项目根目录的 `config.yaml` 配置数据库连接、JWT 密钥、SMTP 及短信服务凭证等必要参数.
-3. SMS 服务需要 TencentSDK, 路径默认为 `../TencentSDK`, 具体参见 `CMakeList.txt` 里搜索 `TencentSDK`.
 
 ## 许可证
 暂无

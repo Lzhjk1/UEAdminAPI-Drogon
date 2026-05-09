@@ -1,9 +1,9 @@
 #include <drogon/drogon.h>
-#include "controllers/TestController.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #include "plugins/SMTPMail.h"
+#include <trantor/utils/Logger.h>
 
 // 需要初始化的单例服务
 #include "services/TencentSMSService.h"
@@ -44,13 +44,10 @@ int main() {
     #endif
 
     HttpAppFramework &app = drogon::app();
-    //Set HTTP listener address and port
-    //app.addListener("0.0.0.0", 5555);
-    //Load config file
-    //drogon::app().loadConfigFile("../config.json");
     app.loadConfigFile("../../../config.yaml");
 
-
+    // 设置时间显示
+    trantor::Logger::setDisplayLocalTime(true);
     
     // 因为插件需要启动后才能获取, 所以启动后再初始化
     auto loop = app.getLoop();
