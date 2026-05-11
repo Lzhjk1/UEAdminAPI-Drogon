@@ -66,7 +66,11 @@ public:
         auto now = std::chrono::system_clock::now();
         std::time_t now_c = std::chrono::system_clock::to_time_t(now);
         std::tm now_tm;
+#ifdef _WIN32
         localtime_s(&now_tm, &now_c);
+#else
+        localtime_r(&now_c, &now_tm);
+#endif
         
         std::stringstream ss;
         ss << "NewUser_" << std::put_time(&now_tm, "%y%m%d%H%M%S") << getInt(0, 9);

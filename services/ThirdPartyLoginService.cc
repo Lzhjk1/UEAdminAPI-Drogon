@@ -10,8 +10,8 @@
 #include "utils/DataFormatUtils.h"
 #include <shared_mutex>
 #include "models/User.h"
-#include "models/ThirdpartyPlatforms.h"
-#include "models/UserThirdpartyInfo.h"
+#include "models/ThirdPartyPlatforms.h"
+#include "models/UserThirdPartyInfo.h"
 #include <drogon/orm/Mapper.h>
 #include "services/AuthService.h"
 #include "services/MFAService.h"

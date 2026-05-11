@@ -10,14 +10,14 @@
 
 #include "services/AuthService.h"
 #include "services/MFAService.h"
-#include "services/GitLabService.h"
+#include "services/GitlabService.h"
 #include "services/ThirdPartyLoginService.h"
 
 #include "models/UserFlashtoken.h"
 #include "models/User.h"
 #include "models/UserGitlabInfo.h"
 #include "models/UserThirdPartyInfo.h"
-#include "models/ThirdpartyPlatforms.h"
+#include "models/ThirdPartyPlatforms.h"
 #include "models/UserDeleted.h"
 
 #include "utils/EnumUserPrivileges.h"

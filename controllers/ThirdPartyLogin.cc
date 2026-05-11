@@ -1,8 +1,8 @@
 #include "ThirdPartyLogin.h"
 
 #include "models/User.h"
-#include "models/ThirdpartyPlatforms.h"
-#include "models/UserThirdpartyInfo.h"
+#include "models/ThirdPartyPlatforms.h"
+#include "models/UserThirdPartyInfo.h"
 
 #include "services/ThirdPartyLoginService.h"
 #include "services/MFAService.h"
