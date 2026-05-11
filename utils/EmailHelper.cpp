@@ -1,5 +1,5 @@
 #include "EMailHelper.h"
-#include "plugins\SMTPMail.h"
+#include "plugins/SMTPMail.h"
 
 UEAdminAPI::EmailHelper::EmailHelper() {
 	auto& jsonConfig = drogon::app().getCustomConfig();

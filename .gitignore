@@ -5,6 +5,9 @@
 config.json
 config.yaml
 models/model.json
+vcpkg_installed/
+test/
+drogon_ctl
 
 cert/
 

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
+
 
 
 // // eMFAType 的特化（假设这是一个枚举类型）
