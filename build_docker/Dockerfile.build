@@ -28,7 +28,7 @@ ENV CXX=/usr/bin/g++-16
 
 # 安装 vcpkg 并链接到 PATH (添加重试机制)
 RUN cd /opt && \
-    git clone https://gitcode.com/gh_mirrors/vc/vcpkg.git && \
+    git clone https://github.com/microsoft/vcpkg.git && \
     cd vcpkg && \
     export VCPKG_DOWNLOADS=/opt/vcpkg/downloads && \
     mkdir -p $VCPKG_DOWNLOADS && \

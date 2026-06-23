@@ -1,0 +1,67 @@
+name: C++ Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure optional test directory exists
+        shell: bash
+        run: |
+          if [ ! -d test ]; then
+            mkdir -p test
+            cat > test/CMakeLists.txt <<'EOF'
+            cmake_minimum_required(VERSION 3.5)
+            project(UEAdminAPI_drogon_tests)
+            EOF
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build CI image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./build_docker
+          file: ./build_docker/Dockerfile.build
+          tags: ueadmin-api-drogon-build:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Configure and build
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/mnt/project/ueadmin-api-drogon" \
+            -w /mnt/project/ueadmin-api-drogon \
+            ueadmin-api-drogon-build:ci \
+            bash -lc '
+              cmake . \
+                -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
+                -G Ninja \
+                -B build \
+                -DCMAKE_C_COMPILER=gcc-16 \
+                -DCMAKE_CXX_COMPILER=g++-16 && \
+              cmake --build build --parallel
+            '
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: UEAdminAPI_drogon-linux
+          path: build/UEAdminAPI_drogon
+          if-no-files-found: error
