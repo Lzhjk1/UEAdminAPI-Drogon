@@ -98,5 +98,3 @@ target_sources(${PROJECT_NAME}
 
 # 动态加载视图（按需启用）
 # set_property(TARGET ${PROJECT_NAME} PROPERTY ENABLE_EXPORTS ON)
-
-add_subdirectory(test)
