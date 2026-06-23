@@ -1,0 +1,42 @@
+FROM ubuntu:22.04
+
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 声明构建参数 (代理)，可由外部传入
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy
+ARG https_proxy
+
+# 安装基础软件包及 vcpkg 额外依赖
+RUN apt update && \
+    apt install -y git curl zip unzip tar pkg-config build-essential cmake ninja-build python3 bison flex && \
+    rm -rf /var/lib/apt/lists/*
+
+# 安装 GCC 16.1
+RUN apt update && \
+    apt install -y software-properties-common && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    apt update && \
+    apt install -y gcc-16 g++-16 && \
+    rm -rf /var/lib/apt/lists/*
+
+# 设置环境变量以确保 vcpkg 使用 GCC 16.1
+ENV CC=/usr/bin/gcc-16
+ENV CXX=/usr/bin/g++-16
+
+# 安装 vcpkg 并链接到 PATH (添加重试机制)
+RUN cd /opt && \
+    git clone https://gitcode.com/gh_mirrors/vc/vcpkg.git && \
+    cd vcpkg && \
+    export VCPKG_DOWNLOADS=/opt/vcpkg/downloads && \
+    mkdir -p $VCPKG_DOWNLOADS && \
+    (./bootstrap-vcpkg.sh || ./bootstrap-vcpkg.sh || ./bootstrap-vcpkg.sh) && \
+    ln -s /opt/vcpkg/vcpkg /bin/vcpkg
+
+# vcpkg 安装依赖
+RUN vcpkg install jsoncpp zlib openssl sqlite3 libpq libpqxx jwt-cpp yaml-cpp "drogon[ctl,sqlite3,postgres,orm,yaml]"
+
+# 设置挂载点/工作目录
+WORKDIR /mnt/project/ueadmin-api-drogon

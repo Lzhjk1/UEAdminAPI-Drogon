@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 编译容器
+  build_env:
+    image: ueadmin-api-drogon-build:0.1
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+      args:
+        HTTP_PROXY: [代理服务器地址]
+        HTTPS_PROXY: [代理服务器地址]
+        http_proxy: [代理服务器地址]
+        https_proxy: [代理服务器地址]
+    container_name: UEAdminAPI_drogon_build
+    volumes:
+      - ./ueadmin-api-drogon:/mnt/project/ueadmin-api-drogon
+    deploy:
+      resources:
+        limits:
+          cpus: '6'
+          memory: 2G
+    # 保持容器运行，以便进入容器执行编译命令
+    command: tail -f /dev/null
+
+  # 运行容器
+  run_env:
+    image: ueadmin-api-drogon-run:0.11
+    tty: true
+    build:
+      context: .
+      dockerfile: Dockerfile.run
+    container_name: UEAdminAPI_drogon
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - "6666:6666"
+    volumes:
+      - ./ueadmin-api-drogon:/mnt/project/ueadmin-api-drogon
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
