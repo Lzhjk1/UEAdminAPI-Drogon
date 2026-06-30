@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+﻿cmake_minimum_required(VERSION 3.5)
 project(UEAdminAPI_drogon CXX)
 
 include(CheckIncludeFileCXX)
@@ -32,7 +32,17 @@ add_executable(${PROJECT_NAME} main.cc)
 # 查找依赖
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp CONFIG REQUIRED)
+# SQLite3: 编译环境已经准备好, 直接通过 unofficial-sqlite3 / SQLite3 任一来源链接
+find_package(unofficial-sqlite3 CONFIG QUIET)
+if(NOT unofficial-sqlite3_FOUND)
+    find_package(SQLite3 REQUIRED)
+endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE Drogon::Drogon jwt-cpp::jwt-cpp)
+if(unofficial-sqlite3_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE unofficial::sqlite3::sqlite3)
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE SQLite::SQLite3)
+endif()
 
 # 检查C++标准
 if (CMAKE_CXX_STANDARD LESS 17)
@@ -51,6 +61,7 @@ aux_source_directory(plugins PLUGIN_SRC)
 aux_source_directory(models MODEL_SRC)
 aux_source_directory(utils UTILS_SRC)
 aux_source_directory(utils/MFA MFA_SRC)
+aux_source_directory(utils/SQLite SQLITE_SRC)
 
 # 收集对应目录下的头文件（只包含源文件目录下的.h和.hpp）
 file(GLOB CTL_HDRS "controllers/*.h" "controllers/*.hpp")
@@ -60,6 +71,7 @@ file(GLOB PLUGIN_HDRS "plugins/*.h" "plugins/*.hpp")
 file(GLOB MODEL_HDRS "models/*.h" "models/*.hpp")
 file(GLOB UTILS_HDRS "utils/*.h" "utils/*.hpp")
 file(GLOB MFA_HDRS "utils/MFA/*.h" "utils/MFA/*.hpp")
+file(GLOB SQLITE_HDRS "utils/SQLite/*.h" "utils/SQLite/*.hpp")
 file(GLOB ROOT_HDRS "*.h" "*.hpp")  # 根目录下的头文件（如main.h等）
 
 # 源文件分组（头文件会自动加入对应分组，与源文件放在一起）
@@ -70,6 +82,7 @@ source_group("plugins" FILES ${PLUGIN_SRC} ${PLUGIN_HDRS})
 source_group("models" FILES ${MODEL_SRC} ${MODEL_HDRS})
 source_group("utils" FILES ${UTILS_SRC} ${UTILS_HDRS})
 source_group("utils/MFA" FILES ${MFA_SRC} ${MFA_HDRS})
+source_group("utils/SQLite" FILES ${SQLITE_SRC} ${SQLITE_HDRS})
 source_group("" FILES main.cc ${ROOT_HDRS})  # 根目录文件（主文件+根目录头文件）
 
 # 禁用picojson
@@ -94,6 +107,7 @@ target_sources(${PROJECT_NAME}
                ${MODEL_SRC} ${MODEL_HDRS}
                ${UTILS_SRC} ${UTILS_HDRS}
                ${MFA_SRC} ${MFA_HDRS}
+               ${SQLITE_SRC} ${SQLITE_HDRS}
                main.cc ${ROOT_HDRS})
 
 # 动态加载视图（按需启用）

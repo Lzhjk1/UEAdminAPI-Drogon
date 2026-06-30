@@ -15,6 +15,7 @@
 #include "services/ThirdPartyLoginService.h"
 #include "services/SystemService.h"
 #include "services/ActionTokenService.h"
+#include "services/SQLiteService.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -144,6 +145,7 @@ int main() {
         UEAdminAPI::Services::ThirdPartyLoginService::Init(app.getCustomConfig());
         SystemService::Init();
         UEAdminAPI::Services::ActionTokenService::Init(app.getCustomConfig());
+        UEAdminAPI::Services::SQLiteService::Init(app.getCustomConfig());
 
         LOG_INFO << "服务初始化完成";
     });

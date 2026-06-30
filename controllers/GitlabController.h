@@ -17,15 +17,7 @@ class GitlabController : public drogon::HttpController<GitlabController>
 {
 public:
     METHOD_LIST_BEGIN
-    // 用户管理相关接口
-    ADD_METHOD_TO(GitlabController::createUser, "/api/gitlab/user/create", Post);
-    ADD_METHOD_TO(GitlabController::deleteUser, "/api/gitlab/user/delete", Post);
-    ADD_METHOD_TO(GitlabController::modifyUserPassword, "/api/gitlab/user/password", Post);
-    ADD_METHOD_TO(GitlabController::createImpersonationToken, "/api/gitlab/user/token/create", Post);
-    ADD_METHOD_TO(GitlabController::deleteImpersonationToken, "/api/gitlab/user/token/delete", Post);
-
-    // 项目管理相关接口
-    ADD_METHOD_TO(GitlabController::inviteToProject, "/api/gitlab/project/invite", Post);
+    ADD_METHOD_TO(GitlabController::inviteToProject, "/api/gitlab/project/invite", Post, "AuthFilter");
 
     METHOD_LIST_END
 
