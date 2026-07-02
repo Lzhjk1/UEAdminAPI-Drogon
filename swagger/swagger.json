@@ -155,6 +155,217 @@
           }
         }
       }
+    },
+    "/api/sqlite/query": {
+      "post": {
+        "tags": ["SQLite"],
+        "summary": "参数化查询",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "logicalName": "project.SAM.desi.0001_0001",
+                "sql": "SELECT id, name FROM \"users\" WHERE name = ? LIMIT ?",
+                "params": [
+                  { "type": "text", "value": "alice" },
+                  { "type": "int",  "value": 50 }
+                ],
+                "requestId": "req-2026-06-30-0001",
+                "readOnly": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "rows": [ { "id": 1, "name": "alice" } ],
+                    "rowCount": 1,
+                    "requestId": "req-2026-06-30-0001"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sqlite/exec": {
+      "post": {
+        "tags": ["SQLite"],
+        "summary": "参数化写操作",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "logicalName": "project.SAM.desi.0001_0001",
+                "sql": "UPDATE \"OperInfo\" SET \"User\"=? WHERE \"EnvID\"=? AND \"ElementID\"=?",
+                "params": [
+                  { "type": "text", "value": "alice" },
+                  { "type": "int",  "value": 1024 },
+                  { "type": "int",  "value": 33 }
+                ],
+                "txId": null,
+                "requestId": "req-2026-06-30-0002"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "affectedRows": 1,
+                    "ok": true,
+                    "requestId": "req-2026-06-30-0002"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sqlite/tx/begin": {
+      "post": {
+        "tags": ["SQLite"],
+        "summary": "开启事务",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "logicalName": "project.SAM.desi.0001_0001" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "txId": "b39d...ff",
+                    "expiresInSec": 60
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sqlite/tx/commit": {
+      "post": {
+        "tags": ["SQLite"],
+        "summary": "提交事务",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "txId": "b39d...ff" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": { "txId": "b39d...ff" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sqlite/tx/rollback": {
+      "post": {
+        "tags": ["SQLite"],
+        "summary": "回滚事务",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "txId": "b39d...ff" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": { "txId": "b39d...ff" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sqlite/resolve": {
+      "post": {
+        "tags": ["SQLite"],
+        "summary": "解析逻辑数据库标识",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "scope": "project",
+                "projectCode": "SAM",
+                "templateKind": "desi",
+                "fileName": "0001_0001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "logicalName": "project.SAM.desi.0001_0001"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

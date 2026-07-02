@@ -37,7 +37,40 @@ GitLab 项目接口当前仍使用 `{ "success": true/false, "message": "..." }`
 | | -103 | `ApiError_InternalError` | SQLiteService 未就绪 |
 | | -104 | `ApiError_DatabaseError` | SQLite 查询失败 |
 
-## 4. 已取消注册的接口范围
+## 4. SQLite RPC 模块
+
+所有 `/api/sqlite/*` 接口共享下表错误码：
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **通用** | 0 | `ApiError_Success` | 成功 |
+| | -101 | `ApiError_InvalidJsonFormat` | 请求体必须是 JSON 格式 |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少必要参数 (resolve 时 scope/templateKind) |
+| | -104 | `ApiError_DatabaseError` | SQLite 底层错误 |
+| | -105 | `ApiError_InvalidOperation` | 不合法操作 (如 exec 请求带 readOnly=true) |
+| | -201 / -203 / -209 / -210 | Token 类 | JWT 未通过 AuthFilter |
+| **/api/sqlite/query** (POST) | -701 | `ApiError_SqliteRpc_MissingSql` | 缺少 sql 字段 |
+| | -702 | `ApiError_SqliteRpc_ParamMismatch` | params 与 ? 数量不匹配 |
+| | -703 | `ApiError_SqliteRpc_InvalidParamType` | params 元素格式非法 |
+| | -704 | `ApiError_SqliteRpc_LogicalNameMissing` | 缺少 logicalName |
+| | -705 | `ApiError_SqliteRpc_LogicalNameUnknown` | 未知逻辑数据库 |
+| | -707 | `ApiError_SqliteRpc_TxIdInvalid` | 事务 token 与逻辑库不匹配 |
+| | -709 | `ApiError_SqliteRpc_ExecuteFailed` | SQL 执行失败 |
+| **/api/sqlite/exec** (POST) | (同上) | (同上) | (同上) |
+| **/api/sqlite/tx/begin** (POST) | -704 | `ApiError_SqliteRpc_LogicalNameMissing` | 缺少 logicalName |
+| | -705 | `ApiError_SqliteRpc_LogicalNameUnknown` | 未知逻辑数据库 |
+| | -708 | `ApiError_SqliteRpc_TxAlreadyExists` | 该逻辑库已存在活动事务 |
+| | -104 | `ApiError_DatabaseError` | BEGIN 失败 |
+| **/api/sqlite/tx/commit** (POST) | -706 | `ApiError_SqliteRpc_TxIdMissing` | 缺少 txId |
+| | -707 | `ApiError_SqliteRpc_TxIdInvalid` | 事务 token 无效或已过期 |
+| | -104 | `ApiError_DatabaseError` | COMMIT 失败 |
+| **/api/sqlite/tx/rollback** (POST) | -706 | `ApiError_SqliteRpc_TxIdMissing` | 缺少 txId |
+| | -707 | `ApiError_SqliteRpc_TxIdInvalid` | 事务 token 无效或已过期 |
+| | -104 | `ApiError_DatabaseError` | ROLLBACK 失败 |
+| **/api/sqlite/resolve** (POST) | -102 | `ApiError_MissingRequiredArgs` | 缺少 scope 或 templateKind, scope=project 时缺少 projectCode |
+| | -105 | `ApiError_InvalidOperation` | scope 非 project/global |
+
+## 5. 已取消注册的接口范围
 
 以下接口已取消注册，不再对外提供错误码契约:
 

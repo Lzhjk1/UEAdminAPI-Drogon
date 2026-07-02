@@ -9,6 +9,7 @@
 #include <drogon/drogon.h>
 #include <json/json.h>
 
+#include <chrono>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -18,20 +19,22 @@
 namespace UEAdminAPI {
 namespace Services {
 
+// SQL RPC 请求 DTO. 服务端约定只接收 SQLite 语法.
+struct SqliteRpcRequest {
+    std::string logicalName;                                    // 逻辑库名, 由客户端 resolve 后传入
+    std::string sql;                                            // 必须是 SQLite 兼容 SQL, 含 ? 占位符
+    std::vector<UEAdminAPI::SQLite::SqliteValue> params;         // 与 ? 一一对应, 顺序绑定
+    std::string txId;                                           // 可选, 事务 token
+    std::string requestId;                                      // 可选, 幂等键
+    int64_t limit = -1;                                         // <0 表示不限制
+    int64_t offset = 0;                                         // 翻页偏移
+    int32_t timeoutMs = 0;                                      // 客户端期望的最长执行时间, 0 表示沿用连接默认
+    bool readOnly = false;                                      // 客户端声明只读
+    bool wantColumns = true;                                    // 是否返回列元信息
+};
+
 /**
  * @brief SQLiteService 是 PostgreSQL_Backend 与本地 SQLite 文件交互的统一入口.
- *
- * 角色定位:
- *  - 维护 (逻辑名 -> SqliteConnection) 的连接池, 与桌面端"项目 + 模板"路由模型对齐;
- *  - 所有对 SQLite 的访问统一从这里获取连接, 调用方不直接管理 sqlite3 句柄;
- *  - 默认使用 std::mutex + SqliteConnection 内部的 mutex 双层保护, 串行写, 并发读;
- *  - 对外提供 sync / async 两套接口: 异步 API 在工作线程中执行 SQL, 返回 drogon::Task,
- *    避免阻塞 Drogon 的事件循环线程.
- *
- * 配置:
- *  - 从 config 的 "SQLite" 节点读取 root_dir 与 default_db_name;
- *  - root_dir 为相对路径时, 以可执行文件目录为基准展开;
- *  - default_db_name 在未指定逻辑名时使用.
  */
 class SQLiteService : public SingletonWithInit<SQLiteService> {
     friend class SingletonWithInit<SQLiteService>;
@@ -40,82 +43,90 @@ public:
     SQLiteService(const Json::Value& config);
     ~SQLiteService();
 
-    /**
-     * @brief 取得指定逻辑名对应的连接, 若不存在则按 (root_dir / name + ".sqlite") 打开.
-     * @return 失败返回空指针, 错误信息可由调用方再次调用 lastError 获取.
-     */
+    // ---- 连接池管理 ----
     UEAdminAPI::SQLite::SqliteConnectionPtr getConnection(const std::string& logicalName);
-
-    /**
-     * @brief 取得默认逻辑库的连接, 等价于 getConnection(默认名).
-     */
     UEAdminAPI::SQLite::SqliteConnectionPtr getDefaultConnection();
-
-    /**
-     * @brief 关闭并释放指定逻辑名对应的连接.
-     */
     void releaseConnection(const std::string& logicalName);
-
-    /**
-     * @brief 关闭所有连接, 服务关闭/重启时调用.
-     */
     void closeAll();
 
-    /**
-     * @brief 同步执行写操作.
-     */
+    // ---- 同步 SQL 入口, 供服务端内部直接调用 ----
     bool execute(const std::string& logicalName,
                  const std::string& sql,
                  const std::vector<UEAdminAPI::SQLite::SqliteValue>& params,
                  int64_t* affectedRows);
 
-    /**
-     * @brief 同步执行查询, 返回完整记录集.
-     */
     UEAdminAPI::SQLite::SqliteRecordsetPtr query(
         const std::string& logicalName,
         const std::string& sql,
         const std::vector<UEAdminAPI::SQLite::SqliteValue>& params);
 
-    /**
-     * @brief 异步执行写操作, 在 Drogon 的全局工作线程中实际执行 SQL.
-     *        返回结果 jsondata 包含 affectedRows 与 ok 字段.
-     */
+    // ---- 协程异步 SQL 入口, 面向 controller 层 ----
     drogon::Task<UEAdminAPI::utils::HttpResult> executeAsync(
         std::string logicalName,
         std::string sql,
         std::vector<UEAdminAPI::SQLite::SqliteValue> params);
 
-    /**
-     * @brief 异步执行查询, jsondata 中含 rows(JSON 数组).
-     */
     drogon::Task<UEAdminAPI::utils::HttpResult> queryAsync(
         std::string logicalName,
         std::string sql,
         std::vector<UEAdminAPI::SQLite::SqliteValue> params);
 
-    /**
-     * @brief 简单健康检查: 在默认连接上执行 "SELECT 1".
-     */
+    // ---- SQL RPC 主入口, 由 SqliteController 直接调用 ----
+    // 内部完成参数校验/事务路由/审计, 只接收 SQLite 语法 SQL.
+    drogon::Task<UEAdminAPI::utils::HttpResult> handleQueryRpc(const SqliteRpcRequest& req);
+    drogon::Task<UEAdminAPI::utils::HttpResult> handleExecuteRpc(const SqliteRpcRequest& req);
+
+    // ---- 事务 token 管理 ----
+    // 事务 token 是与 logicalName 绑定的字符串, 有效期由服务端控制.
+    drogon::Task<UEAdminAPI::utils::HttpResult> beginTransaction(const std::string& logicalName);
+    drogon::Task<UEAdminAPI::utils::HttpResult> commitTransaction(const std::string& txId);
+    drogon::Task<UEAdminAPI::utils::HttpResult> rollbackTransaction(const std::string& txId);
+
+    // ---- 逻辑库标识解析 ----
+    // 输入 (scope, projectCode, templateKind, dbNode 等语义信息)返回 logicalName.
+    // 简版实现: 按 "<scope>.<projectCode>.<templateKind>[.<fileName>]" 组合.
+    drogon::Task<UEAdminAPI::utils::HttpResult> resolveLogicalName(
+        const std::string& scope,
+        const std::string& projectCode,
+        const std::string& templateKind,
+        const std::string& fileName);
+
+    // ---- 健康检查 ----
     drogon::Task<UEAdminAPI::utils::HttpResult> ping();
 
-    // 配置只读访问, 方便诊断接口
     std::string rootDir() const { return _rootDir; }
     std::string defaultDbName() const { return _defaultDbName; }
 
 private:
-    // 解析逻辑名 -> 实际文件路径; 若 logicalName 为空使用 default
+    // 逻辑名 -> 物理 .sqlite 文件路径.
     std::string resolveDbPath(const std::string& logicalName) const;
 
-    // 把 SqliteRecordset 转 JSON 数组, 适合在 HTTP 接口里返回
+    // 把 SqliteRecordset 转为 JSON 数组返回.
     Json::Value recordsetToJson(const UEAdminAPI::SQLite::SqliteRecordsetPtr& rs) const;
 
+    // 统计 SQL 中 ? 占位符数量, 用于校验 params 数目匹配.
+    static int countQuestionMarks(const std::string& sql);
+
+    // 生成/校验事务 token
+    std::string newTxToken();
+
+    // 事务表: txId -> (logicalName, expiresAt)
+    struct TxInfo {
+        std::string logicalName;
+        std::chrono::steady_clock::time_point expiresAt;
+    };
+
 private:
-    std::string _rootDir;          // SQLite 文件根目录(绝对路径)
-    std::string _defaultDbName;    // 缺省逻辑库名
+    std::string _rootDir;
+    std::string _defaultDbName;
 
     mutable std::mutex _poolMutex;
     std::map<std::string, UEAdminAPI::SQLite::SqliteConnectionPtr> _pool;
+
+    mutable std::mutex _txMutex;
+    std::map<std::string, TxInfo> _activeTx;                    // txId -> info
+    std::map<std::string, std::string> _logicalToTx;             // logicalName -> txId, 用于防止同库多事务
+    int32_t _txTimeoutSec = 60;                                 // 事务硬超时
 };
 
 }  // namespace Services

@@ -60,7 +60,17 @@
     X(ApiError_GitLabAccountCreationFailure, -601, "创建 GitLab 账号失败 ") \
     X(ApiError_GitLabAccountDeletionFailure, -602, "删除 GitLab 用户失败 ") \
     X(ApiError_GitLabProjectInvitationFailure, -603, "邀请用户加入项目失败 ") \
-    X(ApiError_GitLabTokenCreationFailure, -604, "创建 GitLab Impersonation Token失败 ")
+    X(ApiError_GitLabTokenCreationFailure, -604, "创建 GitLab Impersonation Token失败 ") \
+    /* --- SQLite RPC Errors (-7xx) --- */ \
+    X(ApiError_SqliteRpc_MissingSql, -701, "缺少 sql 字段 ") \
+    X(ApiError_SqliteRpc_ParamMismatch, -702, "params 与 SQL 占位符数量不匹配 ") \
+    X(ApiError_SqliteRpc_InvalidParamType, -703, "params 元素类型不合法 ") \
+    X(ApiError_SqliteRpc_LogicalNameMissing, -704, "缺少数据库逻辑名 ") \
+    X(ApiError_SqliteRpc_LogicalNameUnknown, -705, "未知的逻辑数据库标识 ") \
+    X(ApiError_SqliteRpc_TxIdMissing, -706, "缺少事务 token ") \
+    X(ApiError_SqliteRpc_TxIdInvalid, -707, "事务 token 无效或已过期 ") \
+    X(ApiError_SqliteRpc_TxAlreadyExists, -708, "该逻辑库已存在活动事务 ") \
+    X(ApiError_SqliteRpc_ExecuteFailed, -709, "SQL 执行失败 ")
 
 namespace UEAdminAPI {
 

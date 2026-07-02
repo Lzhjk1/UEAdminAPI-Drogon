@@ -1,10 +1,16 @@
 #include "SQLiteService.h"
 
+#include "utils/ApiErrorCodes.h"
+
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
+#include <iomanip>
+#include <random>
+#include <sstream>
 
 using namespace UEAdminAPI;
 using namespace UEAdminAPI::SQLite;
@@ -252,6 +258,302 @@ drogon::Task<HttpResult> SQLiteService::ping() {
         r.msg = "sqlite ok";
     }
     co_return r;
+}
+
+// ---- SQL RPC ----
+
+int SQLiteService::countQuestionMarks(const std::string& sql) {
+    // 简易版本: 跳过单引号字符串内的 ?, 便于捕获错误参数数量
+    int count = 0;
+    bool inQuote = false;
+    for (size_t i = 0; i < sql.size(); ++i) {
+        char c = sql[i];
+        if (c == '\'') {
+            // SQLite 允许 '' 表示单引号本身
+            if (inQuote && i + 1 < sql.size() && sql[i + 1] == '\'') {
+                ++i;
+                continue;
+            }
+            inQuote = !inQuote;
+            continue;
+        }
+        if (!inQuote && c == '?') {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::string SQLiteService::newTxToken() {
+    // 生成 32 位十六进制字符串, 与 sqlite3 无关, 仅作为服务端 token
+    static thread_local std::mt19937_64 rng(
+        static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count()));
+    std::uniform_int_distribution<uint64_t> dist;
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << dist(rng)
+        << std::setw(16) << std::setfill('0') << dist(rng);
+    return oss.str();
+}
+
+drogon::Task<HttpResult> SQLiteService::handleQueryRpc(const SqliteRpcRequest& req) {
+    HttpResult result;
+
+    // 1. 基础字段校验
+    if (req.sql.empty()) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_MissingSql);
+        co_return result;
+    }
+    if (req.logicalName.empty()) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_LogicalNameMissing);
+        co_return result;
+    }
+
+    // 2. 参数数量校验
+    int qCount = countQuestionMarks(req.sql);
+    if (static_cast<int>(req.params.size()) != qCount) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_ParamMismatch,
+                         std::string("SQL 需要 ") + std::to_string(qCount)
+                             + " 个参数, 实际提供 " + std::to_string(req.params.size()));
+        co_return result;
+    }
+
+    // 3. 如果指定了 txId, 检查它是否属于同一 logicalName
+    if (!req.txId.empty()) {
+        std::lock_guard<std::mutex> lock(_txMutex);
+        auto it = _activeTx.find(req.txId);
+        if (it == _activeTx.end()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid);
+            co_return result;
+        }
+        if (it->second.logicalName != req.logicalName) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid, "事务 token 与逻辑库不匹配");
+            co_return result;
+        }
+    }
+
+    // 4. 拼接可选的 LIMIT/OFFSET; 若 SQL 已有 LIMIT 由客户端负责, 服务端不再重复添加
+    std::string sqlFinal = req.sql;
+    if (req.limit >= 0) {
+        // 仅在 SQL 中不含 LIMIT 时追加, 简单大小写不敏感检查
+        std::string upper = sqlFinal;
+        std::transform(upper.begin(), upper.end(), upper.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        if (upper.find(" LIMIT ") == std::string::npos) {
+            sqlFinal += " LIMIT " + std::to_string(req.limit);
+            if (req.offset > 0) {
+                sqlFinal += " OFFSET " + std::to_string(req.offset);
+            }
+        }
+    }
+
+    // 5. 落到 queryAsync 执行
+    HttpResult r = co_await queryAsync(req.logicalName, sqlFinal, req.params);
+
+    if (r.code == 0 && !req.requestId.empty()) {
+        r.jsondata["requestId"] = req.requestId;
+    }
+    co_return r;
+}
+
+drogon::Task<HttpResult> SQLiteService::handleExecuteRpc(const SqliteRpcRequest& req) {
+    HttpResult result;
+
+    if (req.sql.empty()) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_MissingSql);
+        co_return result;
+    }
+    if (req.logicalName.empty()) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_LogicalNameMissing);
+        co_return result;
+    }
+    if (req.readOnly) {
+        result.setResult(UEAdminAPI::ApiError_InvalidOperation, "readOnly 请求不允许调用 exec 接口");
+        co_return result;
+    }
+
+    int qCount = countQuestionMarks(req.sql);
+    if (static_cast<int>(req.params.size()) != qCount) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_ParamMismatch,
+                         std::string("SQL 需要 ") + std::to_string(qCount)
+                             + " 个参数, 实际提供 " + std::to_string(req.params.size()));
+        co_return result;
+    }
+
+    if (!req.txId.empty()) {
+        std::lock_guard<std::mutex> lock(_txMutex);
+        auto it = _activeTx.find(req.txId);
+        if (it == _activeTx.end()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid);
+            co_return result;
+        }
+        if (it->second.logicalName != req.logicalName) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid, "事务 token 与逻辑库不匹配");
+            co_return result;
+        }
+    }
+
+    HttpResult r = co_await executeAsync(req.logicalName, req.sql, req.params);
+
+    if (r.code == 0 && !req.requestId.empty()) {
+        r.jsondata["requestId"] = req.requestId;
+    }
+    co_return r;
+}
+
+drogon::Task<HttpResult> SQLiteService::beginTransaction(const std::string& logicalName) {
+    HttpResult result;
+
+    if (logicalName.empty()) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_LogicalNameMissing);
+        co_return result;
+    }
+
+    // 每个逻辑库同时只允许一个活动事务, 简化模型
+    {
+        std::lock_guard<std::mutex> lock(_txMutex);
+        auto it = _logicalToTx.find(logicalName);
+        if (it != _logicalToTx.end()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxAlreadyExists);
+            result.jsondata["existingTxId"] = it->second;
+            co_return result;
+        }
+    }
+
+    SqliteConnectionPtr conn = getConnection(logicalName);
+    if (!conn) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_LogicalNameUnknown, logicalName);
+        co_return result;
+    }
+    if (!conn->beginTransaction()) {
+        result.setResult(UEAdminAPI::ApiError_DatabaseError, conn->lastError());
+        co_return result;
+    }
+
+    std::string txId = newTxToken();
+    {
+        std::lock_guard<std::mutex> lock(_txMutex);
+        TxInfo info;
+        info.logicalName = logicalName;
+        info.expiresAt = std::chrono::steady_clock::now() + std::chrono::seconds(_txTimeoutSec);
+        _activeTx[txId] = info;
+        _logicalToTx[logicalName] = txId;
+    }
+
+    result.code = 0;
+    result.msg = "success";
+    result.jsondata["txId"] = txId;
+    result.jsondata["expiresInSec"] = _txTimeoutSec;
+    co_return result;
+}
+
+drogon::Task<HttpResult> SQLiteService::commitTransaction(const std::string& txId) {
+    HttpResult result;
+    if (txId.empty()) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdMissing);
+        co_return result;
+    }
+
+    std::string logicalName;
+    {
+        std::lock_guard<std::mutex> lock(_txMutex);
+        auto it = _activeTx.find(txId);
+        if (it == _activeTx.end()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid);
+            co_return result;
+        }
+        logicalName = it->second.logicalName;
+        _activeTx.erase(it);
+        _logicalToTx.erase(logicalName);
+    }
+
+    SqliteConnectionPtr conn = getConnection(logicalName);
+    if (!conn) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_LogicalNameUnknown, logicalName);
+        co_return result;
+    }
+    if (!conn->commitTransaction()) {
+        result.setResult(UEAdminAPI::ApiError_DatabaseError, conn->lastError());
+        co_return result;
+    }
+
+    result.code = 0;
+    result.msg = "success";
+    result.jsondata["txId"] = txId;
+    co_return result;
+}
+
+drogon::Task<HttpResult> SQLiteService::rollbackTransaction(const std::string& txId) {
+    HttpResult result;
+    if (txId.empty()) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdMissing);
+        co_return result;
+    }
+
+    std::string logicalName;
+    {
+        std::lock_guard<std::mutex> lock(_txMutex);
+        auto it = _activeTx.find(txId);
+        if (it == _activeTx.end()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid);
+            co_return result;
+        }
+        logicalName = it->second.logicalName;
+        _activeTx.erase(it);
+        _logicalToTx.erase(logicalName);
+    }
+
+    SqliteConnectionPtr conn = getConnection(logicalName);
+    if (!conn) {
+        result.setResult(UEAdminAPI::ApiError_SqliteRpc_LogicalNameUnknown, logicalName);
+        co_return result;
+    }
+    if (!conn->rollbackTransaction()) {
+        result.setResult(UEAdminAPI::ApiError_DatabaseError, conn->lastError());
+        co_return result;
+    }
+
+    result.code = 0;
+    result.msg = "success";
+    result.jsondata["txId"] = txId;
+    co_return result;
+}
+
+drogon::Task<HttpResult> SQLiteService::resolveLogicalName(const std::string& scope,
+                                                          const std::string& projectCode,
+                                                          const std::string& templateKind,
+                                                          const std::string& fileName) {
+    HttpResult result;
+    // 简化版本: 直接按 <scope>.<projectCode>.<templateKind>[.<fileName>] 拼装.
+    // 未来接入 core.project_databases 表后可改为查表.
+    if (scope.empty() || templateKind.empty()) {
+        result.setResult(UEAdminAPI::ApiError_MissingRequiredArgs, "scope 和 templateKind 必填");
+        co_return result;
+    }
+
+    std::string logicalName;
+    if (scope == "global") {
+        logicalName = "global." + templateKind;
+        if (!fileName.empty()) {
+            logicalName += "." + fileName;
+        }
+    } else if (scope == "project") {
+        if (projectCode.empty()) {
+            result.setResult(UEAdminAPI::ApiError_MissingRequiredArgs, "scope=project 时 projectCode 必填");
+            co_return result;
+        }
+        logicalName = "project." + projectCode + "." + templateKind;
+        if (!fileName.empty()) {
+            logicalName += "." + fileName;
+        }
+    } else {
+        result.setResult(UEAdminAPI::ApiError_InvalidOperation, "scope 仅支持 project 或 global");
+        co_return result;
+    }
+
+    result.code = 0;
+    result.msg = "success";
+    result.jsondata["logicalName"] = logicalName;
+    co_return result;
 }
 
 }  // namespace Services
