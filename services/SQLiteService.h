@@ -43,6 +43,17 @@ public:
     SQLiteService(const Json::Value& config);
     ~SQLiteService();
 
+    struct RouteInfo {
+        bool found = false;
+        std::string logicalName;
+        std::string scope;
+        std::string projectCode;
+        std::string templateKind;
+        std::string fileName;
+        std::string sourceName;
+        std::string sourcePath;
+    };
+
     // ---- 连接池管理 ----
     UEAdminAPI::SQLite::SqliteConnectionPtr getConnection(const std::string& logicalName);
     UEAdminAPI::SQLite::SqliteConnectionPtr getDefaultConnection();
@@ -100,6 +111,18 @@ public:
 private:
     // 逻辑名 -> 物理 .sqlite 文件路径.
     std::string resolveDbPath(const std::string& logicalName) const;
+
+    // 基于 core.project_databases 查询路由.
+    bool lookupRouteByLogicalName(const std::string& logicalName, RouteInfo* info) const;
+    bool lookupRouteByRequest(const std::string& scope,
+                              const std::string& projectCode,
+                              const std::string& templateKind,
+                              const std::string& fileName,
+                              RouteInfo* info) const;
+    static std::string buildFallbackLogicalName(const std::string& scope,
+                                                const std::string& projectCode,
+                                                const std::string& templateKind,
+                                                const std::string& fileName);
 
     // 把 SqliteRecordset 转为 JSON 数组返回.
     Json::Value recordsetToJson(const UEAdminAPI::SQLite::SqliteRecordsetPtr& rs) const;

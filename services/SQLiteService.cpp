@@ -1,12 +1,19 @@
-#include "SQLiteService.h"
+﻿#include "SQLiteService.h"
 
 #include "utils/ApiErrorCodes.h"
+#include "AuditLogService.h"
 
+#include <drogon/orm/DbClient.h>
+#include <drogon/orm/Mapper.h>
 #include <trantor/utils/Logger.h>
+
+#include "ProjectDatabases.h"
+#include "Projects.h"
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <iomanip>
 #include <random>
@@ -32,6 +39,98 @@ std::string stripQuotesAndSpaces(const std::string& s) {
     }
     return r;
 }
+
+std::string toLowerCopy(const std::string& s) {
+    std::string r = s;
+    std::transform(r.begin(), r.end(), r.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return r;
+}
+
+std::vector<std::string> splitString(const std::string& s, char delim) {
+    std::vector<std::string> parts;
+    std::string current;
+    std::istringstream iss(s);
+    while (std::getline(iss, current, delim)) {
+        parts.push_back(current);
+    }
+    return parts;
+}
+
+std::string joinParts(const std::vector<std::string>& parts, size_t beginIndex) {
+    std::string result;
+    for (size_t i = beginIndex; i < parts.size(); ++i) {
+        if (!result.empty()) {
+            result += ".";
+        }
+        result += parts[i];
+    }
+    return result;
+}
+
+bool fileExists(const std::string& path) {
+    if (path.empty()) {
+        return false;
+    }
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    return fs::exists(fs::path(path), ec) && !ec;
+}
+
+std::string fileNameFromPath(const std::string& path) {
+    if (path.empty()) {
+        return std::string();
+    }
+    namespace fs = std::filesystem;
+    fs::path p(stripQuotesAndSpaces(path));
+    return p.filename().string();
+}
+
+std::string tryConvertToSqliteSibling(const std::string& path) {
+    if (path.empty()) {
+        return std::string();
+    }
+    namespace fs = std::filesystem;
+    fs::path p(stripQuotesAndSpaces(path));
+    std::string ext = toLowerCopy(p.extension().string());
+    if (ext == ".sqlite" || ext == ".db") {
+        return p.string();
+    }
+    if (ext == ".mdb" || ext == ".accdb") {
+        fs::path sqlitePath = p;
+        sqlitePath.replace_extension(".sqlite");
+        return sqlitePath.string();
+    }
+    return std::string();
+}
+
+std::string buildLogicalNameFromPieces(const std::string& scope,
+                                       const std::string& projectCode,
+                                       const std::string& templateKind,
+                                       const std::string& fileName) {
+    std::string scopeLower = toLowerCopy(scope);
+    if (scopeLower.empty() || templateKind.empty()) {
+        return std::string();
+    }
+
+    std::string logicalName;
+    if (scopeLower == "global") {
+        logicalName = "global." + templateKind;
+    } else if (scopeLower == "project") {
+        if (projectCode.empty()) {
+            return std::string();
+        }
+        logicalName = "project." + projectCode + "." + templateKind;
+    } else {
+        return std::string();
+    }
+
+    if (!fileName.empty()) {
+        logicalName += "." + fileName;
+    }
+    return logicalName;
+}
+
 }  // namespace
 
 SQLiteService::SQLiteService(const Json::Value& config) {
@@ -81,8 +180,204 @@ SQLiteService::~SQLiteService() {
     closeAll();
 }
 
+std::string SQLiteService::buildFallbackLogicalName(const std::string& scope,
+                                                    const std::string& projectCode,
+                                                    const std::string& templateKind,
+                                                    const std::string& fileName) {
+    return buildLogicalNameFromPieces(scope, projectCode, templateKind, fileName);
+}
+
+bool SQLiteService::lookupRouteByRequest(const std::string& scope,
+                                         const std::string& projectCode,
+                                         const std::string& templateKind,
+                                         const std::string& fileName,
+                                         RouteInfo* info) const {
+    if (info == NULL) {
+        return false;
+    }
+
+    RouteInfo route;
+    route.scope = toLowerCopy(scope);
+    route.projectCode = projectCode;
+    route.templateKind = templateKind;
+    route.fileName = fileName;
+
+    if (route.scope.empty() || route.templateKind.empty()) {
+        return false;
+    }
+
+    try {
+        drogon::orm::DbClientPtr dbClientPtr = drogon::app().getDbClient();
+        if (!dbClientPtr) {
+            return false;
+        }
+
+        using drogon::orm::Criteria;
+        using drogon::orm::CompareOperator;
+        using drogon::orm::Mapper;
+        using PD = drogon_model::UELocalDB::core::ProjectDatabases;
+        using Proj = drogon_model::UELocalDB::core::Projects;
+
+        Mapper<PD> pdMapper(dbClientPtr);
+        std::vector<PD> rows;
+
+        // 只查启用的记录
+        Criteria baseCriteria =
+            Criteria(PD::Cols::_scope_type, CompareOperator::EQ, route.scope) &&
+            Criteria(PD::Cols::_template_kind, CompareOperator::EQ, route.templateKind) &&
+            Criteria(PD::Cols::_is_enabled, CompareOperator::EQ, true);
+
+        if (route.scope == "project") {
+            if (route.projectCode.empty()) {
+                return false;
+            }
+
+            // 先按 code 查 core.projects, 拿到 project_id
+            Mapper<Proj> projMapper(dbClientPtr);
+            std::vector<Proj> projects = projMapper.findBy(
+                Criteria(Proj::Cols::_code, CompareOperator::EQ, route.projectCode));
+            if (projects.empty()) {
+                return false;
+            }
+            int64_t projectId = projects[0].getValueOfId();
+
+            rows = pdMapper.findBy(
+                baseCriteria &&
+                Criteria(PD::Cols::_project_id, CompareOperator::EQ, projectId));
+        } else if (route.scope == "global") {
+            rows = pdMapper.findBy(
+                baseCriteria &&
+                Criteria(PD::Cols::_project_id, CompareOperator::IsNull));
+        } else {
+            return false;
+        }
+
+        // 若提供 fileName, 优先匹配 source_name
+        if (!route.fileName.empty()) {
+            std::vector<PD> filtered;
+            for (size_t i = 0; i < rows.size(); ++i) {
+                const std::shared_ptr<std::string>& sn = rows[i].getSourceName();
+                if (sn && *sn == route.fileName) {
+                    filtered.push_back(rows[i]);
+                    break;
+                }
+            }
+            if (!filtered.empty()) {
+                rows.swap(filtered);
+            }
+        }
+
+        if (rows.empty()) {
+            return false;
+        }
+
+        const PD& pd = rows[0];
+        route.found = true;
+        route.scope = pd.getValueOfScopeType();
+        route.templateKind = pd.getValueOfTemplateKind();
+
+        // 反查 project code (公共库 project_id 为空, 留空)
+        const std::shared_ptr<int64_t>& pid = pd.getProjectId();
+        if (pid) {
+            Mapper<Proj> projMapper(dbClientPtr);
+            try {
+                Proj proj = projMapper.findByPrimaryKey(*pid);
+                route.projectCode = proj.getValueOfCode();
+            } catch (const std::exception& e) {
+                LOG_WARN << "SQLiteService 反查 core.projects 失败: " << e.what();
+            }
+        }
+
+        const std::shared_ptr<std::string>& sn = pd.getSourceName();
+        if (sn) {
+            route.sourceName = *sn;
+        }
+        const std::shared_ptr<std::string>& sp = pd.getSourcePath();
+        if (sp) {
+            route.sourcePath = stripQuotesAndSpaces(*sp);
+        }
+
+        if (route.fileName.empty()) {
+            if (!route.sourceName.empty()) {
+                route.fileName = route.sourceName;
+            } else {
+                route.fileName = fileNameFromPath(route.sourcePath);
+            }
+        }
+
+        route.logicalName = buildLogicalNameFromPieces(
+            route.scope, route.projectCode, route.templateKind, route.fileName);
+
+        if (route.logicalName.empty()) {
+            return false;
+        }
+
+        *info = route;
+        return true;
+    } catch (const std::exception& e) {
+        LOG_WARN << "SQLiteService 查询 core.project_databases 失败: " << e.what();
+        return false;
+    }
+}
+
+bool SQLiteService::lookupRouteByLogicalName(const std::string& logicalName, RouteInfo* info) const {
+    if (info == NULL) {
+        return false;
+    }
+
+    std::vector<std::string> parts = splitString(logicalName, '.');
+    if (parts.size() < 2) {
+        return false;
+    }
+
+    std::string scope = toLowerCopy(parts[0]);
+    std::string projectCode;
+    std::string templateKind;
+    std::string fileName;
+
+    if (scope == "global") {
+        templateKind = parts[1];
+        if (parts.size() > 2) {
+            fileName = joinParts(parts, 2);
+        }
+    } else if (scope == "project") {
+        if (parts.size() < 3) {
+            return false;
+        }
+        projectCode = parts[1];
+        templateKind = parts[2];
+        if (parts.size() > 3) {
+            fileName = joinParts(parts, 3);
+        }
+    } else {
+        return false;
+    }
+
+    return lookupRouteByRequest(scope, projectCode, templateKind, fileName, info);
+}
+
 std::string SQLiteService::resolveDbPath(const std::string& logicalName) const {
     std::string name = logicalName.empty() ? _defaultDbName : logicalName;
+    RouteInfo route;
+    if (lookupRouteByLogicalName(name, &route)) {
+        if (!route.sourcePath.empty()) {
+            if (fileExists(route.sourcePath)) {
+                return route.sourcePath;
+            }
+
+            std::string sqliteSibling = tryConvertToSqliteSibling(route.sourcePath);
+            if (!sqliteSibling.empty() && fileExists(sqliteSibling)) {
+                LOG_INFO << "SQLiteService 使用元数据同名 .sqlite 文件: " << sqliteSibling;
+                return sqliteSibling;
+            }
+
+            std::string ext = toLowerCopy(std::filesystem::path(route.sourcePath).extension().string());
+            if (ext == ".sqlite" || ext == ".db") {
+                return route.sourcePath;
+            }
+        }
+    }
+
     namespace fs = std::filesystem;
     fs::path p = fs::path(_rootDir) / (name + std::string(".sqlite"));
     return p.string();
@@ -352,6 +647,25 @@ drogon::Task<HttpResult> SQLiteService::handleQueryRpc(const SqliteRpcRequest& r
     if (r.code == 0 && !req.requestId.empty()) {
         r.jsondata["requestId"] = req.requestId;
     }
+
+    // 6. 审计日志 (异步, 不阻塞响应; 以 requestId 作为幂等键)
+    {
+        Json::Value detail;
+        detail["logicalName"] = req.logicalName;
+        detail["sql"] = req.sql;
+        detail["txId"] = req.txId;
+        detail["readOnly"] = req.readOnly;
+        detail["result_code"] = r.code;
+
+        AuditLogService::log(
+            req.requestId,
+            "sqlite.query",
+            std::to_string(r.code),
+            "sqlite_db",
+            req.logicalName,
+            detail.toStyledString());
+    }
+
     co_return r;
 }
 
@@ -397,6 +711,27 @@ drogon::Task<HttpResult> SQLiteService::handleExecuteRpc(const SqliteRpcRequest&
     if (r.code == 0 && !req.requestId.empty()) {
         r.jsondata["requestId"] = req.requestId;
     }
+
+    // 审计日志 (以 requestId 作为幂等键)
+    {
+        Json::Value detail;
+        detail["logicalName"] = req.logicalName;
+        detail["sql"] = req.sql;
+        detail["txId"] = req.txId;
+        detail["result_code"] = r.code;
+        if (r.jsondata.isMember("affectedRows")) {
+            detail["affectedRows"] = r.jsondata["affectedRows"];
+        }
+
+        AuditLogService::log(
+            req.requestId,
+            "sqlite.exec",
+            std::to_string(r.code),
+            "sqlite_db",
+            req.logicalName,
+            detail.toStyledString());
+    }
+
     co_return r;
 }
 
@@ -523,36 +858,48 @@ drogon::Task<HttpResult> SQLiteService::resolveLogicalName(const std::string& sc
                                                           const std::string& templateKind,
                                                           const std::string& fileName) {
     HttpResult result;
-    // 简化版本: 直接按 <scope>.<projectCode>.<templateKind>[.<fileName>] 拼装.
-    // 未来接入 core.project_databases 表后可改为查表.
     if (scope.empty() || templateKind.empty()) {
         result.setResult(UEAdminAPI::ApiError_MissingRequiredArgs, "scope 和 templateKind 必填");
         co_return result;
     }
 
-    std::string logicalName;
-    if (scope == "global") {
-        logicalName = "global." + templateKind;
-        if (!fileName.empty()) {
-            logicalName += "." + fileName;
-        }
-    } else if (scope == "project") {
+    std::string scopeLower = toLowerCopy(scope);
+    if (scopeLower == "project") {
         if (projectCode.empty()) {
             result.setResult(UEAdminAPI::ApiError_MissingRequiredArgs, "scope=project 时 projectCode 必填");
             co_return result;
         }
-        logicalName = "project." + projectCode + "." + templateKind;
-        if (!fileName.empty()) {
-            logicalName += "." + fileName;
-        }
-    } else {
+    } else if (scopeLower != "global") {
         result.setResult(UEAdminAPI::ApiError_InvalidOperation, "scope 仅支持 project 或 global");
         co_return result;
+    }
+
+    RouteInfo route;
+    bool found = lookupRouteByRequest(scopeLower, projectCode, templateKind, fileName, &route);
+
+    std::string logicalName = buildFallbackLogicalName(scopeLower, projectCode, templateKind, fileName);
+    if (found && !route.logicalName.empty()) {
+        logicalName = route.logicalName;
     }
 
     result.code = 0;
     result.msg = "success";
     result.jsondata["logicalName"] = logicalName;
+    result.jsondata["resolvedByMetadata"] = found;
+    result.jsondata["routeSource"] = found ? "core.project_databases" : "fallback";
+    if (found) {
+        result.jsondata["scope"] = route.scope;
+        result.jsondata["templateKind"] = route.templateKind;
+        if (!route.projectCode.empty()) {
+            result.jsondata["projectCode"] = route.projectCode;
+        }
+        if (!route.sourceName.empty()) {
+            result.jsondata["sourceName"] = route.sourceName;
+        }
+        if (!route.sourcePath.empty()) {
+            result.jsondata["sourcePath"] = route.sourcePath;
+        }
+    }
     co_return result;
 }
 

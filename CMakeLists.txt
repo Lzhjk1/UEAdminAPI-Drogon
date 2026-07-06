@@ -59,6 +59,7 @@ aux_source_directory(services SERV_SRC)
 aux_source_directory(filters FILTER_SRC)
 aux_source_directory(plugins PLUGIN_SRC)
 aux_source_directory(models MODEL_SRC)
+aux_source_directory(models/core CORE_MODEL_SRC)
 aux_source_directory(utils UTILS_SRC)
 aux_source_directory(utils/MFA MFA_SRC)
 aux_source_directory(utils/SQLite SQLITE_SRC)
@@ -69,6 +70,7 @@ file(GLOB SERV_HDRS "services/*.h" "services/*.hpp")
 file(GLOB FILTER_HDRS "filters/*.h" "filters/*.hpp")
 file(GLOB PLUGIN_HDRS "plugins/*.h" "plugins/*.hpp")
 file(GLOB MODEL_HDRS "models/*.h" "models/*.hpp")
+file(GLOB CORE_MODEL_HDRS "models/core/*.h" "models/core/*.hpp")
 file(GLOB UTILS_HDRS "utils/*.h" "utils/*.hpp")
 file(GLOB MFA_HDRS "utils/MFA/*.h" "utils/MFA/*.hpp")
 file(GLOB SQLITE_HDRS "utils/SQLite/*.h" "utils/SQLite/*.hpp")
@@ -80,6 +82,7 @@ source_group("services" FILES ${SERV_SRC} ${SERV_HDRS})
 source_group("filters" FILES ${FILTER_SRC} ${FILTER_HDRS})
 source_group("plugins" FILES ${PLUGIN_SRC} ${PLUGIN_HDRS})
 source_group("models" FILES ${MODEL_SRC} ${MODEL_HDRS})
+source_group("models\\core" FILES ${CORE_MODEL_SRC} ${CORE_MODEL_HDRS})
 source_group("utils" FILES ${UTILS_SRC} ${UTILS_HDRS})
 source_group("utils/MFA" FILES ${MFA_SRC} ${MFA_HDRS})
 source_group("utils/SQLite" FILES ${SQLITE_SRC} ${SQLITE_HDRS})
@@ -95,7 +98,8 @@ drogon_create_views(${PROJECT_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/views
 # 包含目录
 target_include_directories(${PROJECT_NAME}
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-                                   ${CMAKE_CURRENT_SOURCE_DIR}/models)
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/models
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/models/core)
 
 # 添加所有源文件和头文件到目标
 target_sources(${PROJECT_NAME}
@@ -105,6 +109,7 @@ target_sources(${PROJECT_NAME}
                ${FILTER_SRC} ${FILTER_HDRS}
                ${PLUGIN_SRC} ${PLUGIN_HDRS}
                ${MODEL_SRC} ${MODEL_HDRS}
+               ${CORE_MODEL_SRC} ${CORE_MODEL_HDRS}
                ${UTILS_SRC} ${UTILS_HDRS}
                ${MFA_SRC} ${MFA_HDRS}
                ${SQLITE_SRC} ${SQLITE_HDRS}

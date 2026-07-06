@@ -1,0 +1,45 @@
+﻿{
+    "rdbms": "postgresql",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "dbname": "UELocalDB",
+    "schema": "core",
+    "user": "UELocal",
+    "passwd": "753951iop",
+    "tables": [
+        "projects",
+        "project_databases",
+        "audit_logs"
+    ],
+    "convert": {
+        "enabled": false,
+        "items": []
+    },
+    "relationships": {
+        "enabled": true,
+        "items": [
+            {
+                "type": "has one",
+                "original_table_name": "project_databases",
+                "original_table_alias": "project_database",
+                "original_key": "project_id",
+                "target_table_name": "projects",
+                "target_table_alias": "project",
+                "target_key": "id",
+                "enable_reverse": true
+            }
+        ]
+    },
+    "restful_api_controllers": {
+        "enabled": false,
+        "resource_uri": "/*",
+        "class_name": "Restful*Ctrl",
+        "filters": [],
+        "db_client": {
+            "name": "default",
+            "is_fast": false
+        },
+        "directory": "controllers",
+        "generate_base_only": false
+    }
+}
