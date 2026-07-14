@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
 
@@ -43,14 +43,95 @@ jobs:
                 -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
                 -G Ninja \
                 -B build \
+                -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_C_COMPILER=gcc-16 \
                 -DCMAKE_CXX_COMPILER=g++-16 && \
               cmake --build build --parallel
             '
+
+      - name: Export CI image
+        shell: bash
+        run: |
+          docker save ueadmin-api-drogon-build:ci | gzip > ueadmin-api-drogon-build-ci.tar.gz
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
           name: UEAdminAPI_drogon-linux
           path: build/UEAdminAPI_drogon
+          if-no-files-found: error
+
+      - name: Upload CI image
+        uses: actions/upload-artifact@v4
+        with:
+          name: UEAdminAPI_drogon-build-ci-image
+          path: ueadmin-api-drogon-build-ci.tar.gz
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    env:
+      # 锁定 vcpkg 版本，保证 ports 与缓存产物一致；升级时改此值即可
+      VCPKG_TAG: "2026.06.24"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache vcpkg
+        id: cache-vcpkg
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg
+          key: vcpkg-${{ env.VCPKG_TAG }}-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_TAG }}-
+
+      - name: Clone and bootstrap vcpkg
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch $env:VCPKG_TAG https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Install dependencies
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          C:\vcpkg\vcpkg.exe install `
+            jsoncpp:x64-windows `
+            zlib:x64-windows `
+            openssl:x64-windows `
+            sqlite3:x64-windows `
+            libpq:x64-windows `
+            libpqxx:x64-windows `
+            jwt-cpp:x64-windows `
+            yaml-cpp:x64-windows `
+            "drogon[ctl,sqlite3,postgres,orm,yaml]:x64-windows"
+
+          # 清理中间构建产物，减小缓存体积
+          Remove-Item -Recurse -Force C:\vcpkg\buildtrees -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force C:\vcpkg\packages -ErrorAction SilentlyContinue
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake . `
+            -B build `
+            -A x64 `
+            -DCMAKE_CONFIGURATION_TYPES=Release `
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: UEAdminAPI_drogon-windows
+          path: build/Release/UEAdminAPI_drogon.exe
           if-no-files-found: error
