@@ -1,8 +1,6 @@
 name: C++ Build
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 concurrency:
@@ -49,10 +47,18 @@ jobs:
               cmake --build build --parallel
             '
 
-      - name: Export CI image
+      - name: Build run image
         shell: bash
         run: |
-          docker save ueadmin-api-drogon-build:ci | gzip > ueadmin-api-drogon-build-ci.tar.gz
+          # 将编译产物放到 Dockerfile.run 期望的 context 路径下
+          mkdir -p build_docker/ueadmin-api-drogon/build
+          cp build/UEAdminAPI_drogon build_docker/ueadmin-api-drogon/build/
+          docker build -t ueadmin-api-drogon-run:ci -f build_docker/Dockerfile.run build_docker
+
+      - name: Export run image
+        shell: bash
+        run: |
+          docker save ueadmin-api-drogon-run:ci | gzip > ueadmin-api-drogon-run-ci.tar.gz
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -61,11 +67,11 @@ jobs:
           path: build/UEAdminAPI_drogon
           if-no-files-found: error
 
-      - name: Upload CI image
+      - name: Upload run image
         uses: actions/upload-artifact@v4
         with:
-          name: UEAdminAPI_drogon-build-ci-image
-          path: ueadmin-api-drogon-build-ci.tar.gz
+          name: UEAdminAPI_drogon-run-ci-image
+          path: ueadmin-api-drogon-run-ci.tar.gz
           if-no-files-found: error
 
   build-windows:
