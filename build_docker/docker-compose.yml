@@ -7,11 +7,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.build
-      args:
-        HTTP_PROXY: [代理服务器地址]
-        HTTPS_PROXY: [代理服务器地址]
-        http_proxy: [代理服务器地址]
-        https_proxy: [代理服务器地址]
+      # args:
+      #   HTTP_PROXY: [代理服务器地址]
+      #   HTTPS_PROXY: [代理服务器地址]
+      #   http_proxy: [代理服务器地址]
+      #   https_proxy: [代理服务器地址]
     container_name: UEAdminAPI_drogon_build
     volumes:
       - ./ueadmin-api-drogon:/mnt/project/ueadmin-api-drogon

@@ -47,13 +47,33 @@ jobs:
               cmake --build build --parallel
             '
 
+      - name: Set short sha
+        shell: bash
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Build run image
         shell: bash
         run: |
           # 将编译产物放到 Dockerfile.run 期望的 context 路径下
           mkdir -p build_docker/ueadmin-api-drogon/build
           cp build/UEAdminAPI_drogon build_docker/ueadmin-api-drogon/build/
-          docker build -t ueadmin-api-drogon-run:ci -f build_docker/Dockerfile.run build_docker
+          docker build \
+            -t ueadmin-api-drogon-run:ci \
+            -t ${{ vars.DOCKERHUB_REPO }}:latest \
+            -t ${{ vars.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }} \
+            -f build_docker/Dockerfile.run build_docker
+
+      - name: Push to DockerHub
+        shell: bash
+        run: |
+          docker push ${{ vars.DOCKERHUB_REPO }}:latest
+          docker push ${{ vars.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }}
 
       - name: Export run image
         shell: bash
