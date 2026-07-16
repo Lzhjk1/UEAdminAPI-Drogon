@@ -15,8 +15,8 @@ public:
     // METHOD_ADD(SendVerifyCode::get, "/{2}/{1}", Get); // path is /SendVerifyCode/{arg2}/{arg1}
     // METHOD_ADD(SendVerifyCode::your_method_name, "/{1}/{2}/list", Get); // path is /SendVerifyCode/{arg1}/{arg2}/list
     // ADD_METHOD_TO(SendVerifyCode::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
-    ADD_METHOD_TO(SendVerifyCode::SendCode, "/user/mfa?target={1}&type={2}", Get); // path is /SendVerifyCode/{arg1}/{arg2}
-    ADD_METHOD_TO(SendVerifyCode::CheckCode, "/user/mfa/check?target={1}&mfaCode={2}&type={3}", Get);
+    ADD_METHOD_TO(SendVerifyCode::SendCode, "/api/user/mfa?target={1}&type={2}", Get); // path is /SendVerifyCode/{arg1}/{arg2}
+    ADD_METHOD_TO(SendVerifyCode::CheckCode, "/api/user/mfa/check?target={1}&mfaCode={2}&type={3}", Get);
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:

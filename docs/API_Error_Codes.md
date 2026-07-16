@@ -6,33 +6,33 @@
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
-| **/user/login/pwd** (GET) | 0 | `ApiError_Success` | 登录成功 |
+| **/api/user/login/pwd** (GET) | 0 | `ApiError_Success` | 登录成功 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少用户名或密码 |
 | | -301 | `ApiError_InvalidCredentials` | 用户名或密码错误 |
 | | -307 | `ApiError_PasswordNotSet` | 用户没有设置密码 |
 | | -308 | `ApiError_UserUpdateFailed` | 更新状态失败 |
-| **/user/login/email** (GET)<br>**/user/login/phone** (GET) | 0 | `ApiError_Success` | 登录成功 |
+| **/api/user/login/email** (GET)<br>**/api/user/login/phone** (GET) | 0 | `ApiError_Success` | 登录成功 |
 | | -302 | `ApiError_UserNotFound` | 用户不存在 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 | | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
 | | -308 | `ApiError_UserUpdateFailed` | 更新状态失败 |
-| **/user/login/flashtoken** (GET) | 0 | `ApiError_Success` | 刷新成功 |
+| **/api/user/login/flashtoken** (GET) | 0 | `ApiError_Success` | 刷新成功 |
 | | -204 | `ApiError_FlashTokenInvalidType` | 不是FlashToken |
 | | -205 | `ApiError_FlashTokenVerificationFailed` | FlashToken验证失败 |
 | | -206 | `ApiError_FlashTokenExpired` | FlashToken已失效 |
-| **/user/token/verify/flash** (GET) | 0 | `ApiError_Success` | FlashToken验证成功 |
+| **/api/user/token/verify/flash** (GET) | 0 | `ApiError_Success` | FlashToken验证成功 |
 | | -101 | `ApiError_InvalidJsonFormat` | invalid token (格式错误) |
 | | -211 | `ApiError_FlashTokenInvalidOrExpired` | 不是有效的 FlashToken / FlashToken已失效 |
-| **/user/token/verify/auth** (GET) | 0 | `ApiError_Success` | Token验证成功 |
+| **/api/user/token/verify/auth** (GET) | 0 | `ApiError_Success` | Token验证成功 |
 | | -101 | `ApiError_InvalidJsonFormat` | invalid token (格式错误) |
 | | -201 | `ApiError_TokenInvalidOrExpired` | 不是有效的 Token / Token已失效 |
-| **/user/self** (GET) | 0 | `ApiError_Success` | Success |
+| **/api/user/self** (GET) | 0 | `ApiError_Success` | Success |
 | | -203 | `ApiError_TokenMissing` | 缺少Token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
 | | -209 | `ApiError_TokenTypeUnexpected` | flashToken 不能直接用于认证 |
 | | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
 | | -104 | `ApiError_DatabaseError` | 数据库错误 |
-| **/user/logout** (POST) | 0 | `ApiError_Success` | 注销成功 |
+| **/api/user/logout** (POST) | 0 | `ApiError_Success` | 注销成功 |
 | | -103 | `ApiError_InternalError` | 内部错误 |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
 | | -202 | `ApiError_InvalidTokenType` | 无效的 Token |
@@ -45,7 +45,7 @@
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
-| **/user/create** (POST) | 0 | `ApiError_Success` | 创建用户成功 |
+| **/api/user/create** (POST) | 0 | `ApiError_Success` | 创建用户成功 |
 | | -101 | `ApiError_InvalidJsonFormat` | 请求体必须是JSON格式 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必填项: ... |
 | | -105 | `ApiError_InvalidOperation` | 权限参数错误 |
@@ -61,7 +61,7 @@
 | | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
 | | -603 | `ApiError_GitLabProjectInvitationFailure` | 邀请用户加入项目失败 |
 | | -604 | `ApiError_GitLabTokenCreationFailure` | 创建 GitLab Impersonation Token失败 |
-| **/user/create/phone** (POST)<br>**/user/create/email** (POST) | 0 | `ApiError_Success` | 注册成功 (返回 username, password) |
+| **/api/user/create/phone** (POST)<br>**/api/user/create/email** (POST) | 0 | `ApiError_Success` | 注册成功 (返回 username, password) |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必填项: ... |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 | | -208 | `ApiError_ActionTokenInvalid` | ActionToken 无效、已过期或无权执行此操作 |
@@ -70,7 +70,7 @@
 | | -601 | `ApiError_GitLabAccountCreationFailure` | 创建 GitLab 账号失败 |
 | | -603 | `ApiError_GitLabProjectInvitationFailure` | 邀请用户加入项目失败 |
 | | -604 | `ApiError_GitLabTokenCreationFailure` | 创建 GitLab Impersonation Token失败 |
-| **/user/check_exist** (GET) | 0 | `ApiError_Success` | 用户已存在/不存在 |
+| **/api/user/check_exist** (GET) | 0 | `ApiError_Success` | 用户已存在/不存在 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少参数: target |
 | | -203 | `ApiError_TokenMissing` | 缺少Token |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
@@ -82,7 +82,7 @@
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
-| **/user/update** (POST) | 0 | `ApiError_Success` | 更新成功 |
+| **/api/user/update** (POST) | 0 | `ApiError_Success` | 更新成功 |
 | | -101 | `ApiError_InvalidJsonFormat` | 请求体必须是JSON格式 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必要参数... |
 | | -202 | `ApiError_InvalidTokenType` | 不是token |
@@ -111,7 +111,7 @@
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 | | -602 | `ApiError_GitLabAccountDeletionFailure` | 删除 GitLab 用户失败 |
 | | -310 | `ApiError_UserDeletionFailure` | 删除失败 |
-| **/user/action_token** (GET) | 0 | `ApiError_Success` | ActionToken 颁发成功 |
+| **/api/user/action_token** (GET) | 0 | `ApiError_Success` | ActionToken 颁发成功 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少参数: mfaType / 需要提供 mfaCode 和 target |
 | | -105 | `ApiError_InvalidOperation` | 未知的操作类别 (mfaType) |
 | | -201 | `ApiError_TokenInvalidOrExpired` | Token已失效 |
@@ -122,7 +122,7 @@
 | | -210 | `ApiError_TokenTypeInvalid` | 未知token类型 |
 | | -302 | `ApiError_UserNotFound` | 用户不存在 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
-| **/user/action_token/anonymous** (GET) | 0 | `ApiError_Success` | ActionToken 颁发成功 |
+| **/api/user/action_token/anonymous** (GET) | 0 | `ApiError_Success` | ActionToken 颁发成功 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少参数: mfaType / 需要提供 mfaCode 和 target |
 | | -105 | `ApiError_InvalidOperation` | 未知的操作类别 (mfaType) / 此操作类型不允许匿名申请 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
@@ -131,10 +131,10 @@
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
-| **/user/mfa** (GET) | 0 | `ApiError_Success` | 发送成功 |
+| **/api/user/mfa** (GET) | 0 | `ApiError_Success` | 发送成功 |
 | | -402 | `ApiError_SendVerifyCodeTooFrequent` | 发送过于频繁 |
 | | -405 | `ApiError_SendVerifyCodeFailed` | 发送验证码失败 (如邮件服务不可用) |
-| **/user/mfa/check** (GET) | 0 | `ApiError_Success` | 验证码正确 |
+| **/api/user/mfa/check** (GET) | 0 | `ApiError_Success` | 验证码正确 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少参数 target, code 或 type |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 
@@ -209,7 +209,7 @@
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
-| **/system/ping** (GET) | 0 | `ApiError_Success` | Pong |
+| **/api/system/ping** (GET) | 0 | `ApiError_Success` | Pong |
 | | -104 | `ApiError_DatabaseError` | 数据库错误 |
 | | -105 | `ApiError_InvalidOperation` | 无效操作 |
 | | -106 | `ApiError_TooManyRequests` | 访问过于频繁，请稍后再试 |

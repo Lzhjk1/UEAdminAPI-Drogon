@@ -12,10 +12,10 @@ class Register : public drogon::HttpController<Register>
     // METHOD_ADD(Register::get, "/{2}/{1}", Get); // path is /Register/{arg2}/{arg1}
     // METHOD_ADD(Register::your_method_name, "/{1}/{2}/list", Get); // path is /Register/{arg1}/{arg2}/list
     // ADD_METHOD_TO(Register::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
-    ADD_METHOD_TO(Register::RegisterUser, "/user/create", Post, "ActionTokenMiddleware");
-    ADD_METHOD_TO(Register::RegisterUserByPhone, "/user/create/phone?phone={1}", Post, "ActionTokenMiddleware");
-    ADD_METHOD_TO(Register::RegisterUserByEmail, "/user/create/email?email={1}", Post, "ActionTokenMiddleware");
-    ADD_METHOD_TO(Register::CheckUserExist, "/user/check_exist?target={1}", Get, "AuthFilter");
+    ADD_METHOD_TO(Register::RegisterUser, "/api/user/create", Post, "ActionTokenMiddleware");
+    ADD_METHOD_TO(Register::RegisterUserByPhone, "/api/user/create/phone?phone={1}", Post, "ActionTokenMiddleware");
+    ADD_METHOD_TO(Register::RegisterUserByEmail, "/api/user/create/email?email={1}", Post, "ActionTokenMiddleware");
+    ADD_METHOD_TO(Register::CheckUserExist, "/api/user/check_exist?target={1}", Get, "AuthFilter");
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
