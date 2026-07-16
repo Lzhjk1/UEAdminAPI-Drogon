@@ -72,8 +72,8 @@ jobs:
       - name: Push to DockerHub
         shell: bash
         run: |
-          docker push ${{ vars.DOCKERHUB_REPO }}:latest
           docker push ${{ vars.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }}
+          docker push ${{ vars.DOCKERHUB_REPO }}:latest
 
       - name: Export run image
         shell: bash
