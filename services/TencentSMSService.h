@@ -18,9 +18,12 @@ private:
     string _secretId, _secretKey, _region, _smsSdkAppId, _signName;
     unordered_map<eMFAType, std::string> _templateIds;
 
+    /// TC3-HMAC-SHA256 签名
+    string sign(const string& secretKey, const string& date,
+                const string& service, const string& stringToSign) const;
+
 public:
     TencentSMSService(const Json::Value& config);
 
     Task<bool> SendSms(const string& phoneNumber, eMFAType type, const vector<string>& templateParams) override;
 };
-

@@ -2,227 +2,185 @@
 #include <drogon/drogon.h>
 #include <format>
 #include <mutex>
+#include <sstream>
+#include <iomanip>
+#include <cstring>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
-#include <iomanip>
-#include <sstream>
-
-#include "utils/MFA/eMFA_Type.h"
-
 #include <trantor/utils/Logger.h>
 
 using namespace std;
 
+// =====================================================================
+// 腾讯云短信 HTTP 实现（TC3-HMAC-SHA256 签名）
+// 不依赖 Tencent SDK，全平台通用
+// 参考文档: https://cloud.tencent.com/document/api/382/55981
+// =====================================================================
+
 namespace {
-    std::string sha256hex(const std::string& str) {
-        unsigned char hash[SHA256_DIGEST_LENGTH];
-        SHA256_CTX sha256;
-        SHA256_Init(&sha256);
-        SHA256_Update(&sha256, str.c_str(), str.size());
-        SHA256_Final(hash, &sha256);
-        
-        std::stringstream ss;
-        for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-            ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
-        }
-        return ss.str();
-    }
 
-    std::vector<unsigned char> hmac_sha256(const std::vector<unsigned char>& key, const std::string& data) {
-        unsigned int len = SHA256_DIGEST_LENGTH;
-        std::vector<unsigned char> hash(len);
-        HMAC(EVP_sha256(), key.data(), key.size(),
-             reinterpret_cast<const unsigned char*>(data.data()), data.size(),
-             hash.data(), &len);
-        return hash;
-    }
-
-    std::vector<unsigned char> hmac_sha256(const std::string& key, const std::string& data) {
-        unsigned int len = SHA256_DIGEST_LENGTH;
-        std::vector<unsigned char> hash(len);
-        HMAC(EVP_sha256(), key.data(), key.size(),
-             reinterpret_cast<const unsigned char*>(data.data()), data.size(),
-             hash.data(), &len);
-        return hash;
-    }
-
-    std::string hex_encode(const std::vector<unsigned char>& data) {
-        std::stringstream ss;
-        for(auto c : data) {
-            ss << std::hex << std::setw(2) << std::setfill('0') << (int)c;
-        }
-        return ss.str();
-    }
+string bytesToHex(const unsigned char* data, size_t len) {
+    ostringstream oss;
+    for (size_t i = 0; i < len; ++i)
+        oss << hex << setw(2) << setfill('0') << (int)data[i];
+    return oss.str();
 }
 
+string sha256Hex(const string& data) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256((const unsigned char*)data.data(), data.size(), hash);
+    return bytesToHex(hash, SHA256_DIGEST_LENGTH);
+}
+
+string hmacSha256Hex(const string& key, const string& data) {
+    unsigned char hash[SHA256_DIGEST_LENGTH * 2] = {0};
+    unsigned int len = SHA256_DIGEST_LENGTH;
+    HMAC(EVP_sha256(), key.data(), (int)key.size(),
+         (const unsigned char*)data.data(), data.size(),
+         hash, &len);
+    return bytesToHex(hash, len);
+}
+
+string hmacSha256Raw(const string& key, const string& data) {
+    unsigned char hash[SHA256_DIGEST_LENGTH] = {0};
+    unsigned int len = SHA256_DIGEST_LENGTH;
+    HMAC(EVP_sha256(), key.data(), (int)key.size(),
+         (const unsigned char*)data.data(), data.size(),
+         hash, &len);
+    return string((char*)hash, len);
+}
+
+} // anonymous namespace
+
+// =====================================================================
+// TC3-HMAC-SHA256 签名
+// =====================================================================
+
+string TencentSMSService::sign(const string& secretKey, const string& date,
+                               const string& service, const string& stringToSign) const {
+    // SignKey = HMAC_SHA256(HMAC_SHA256(HMAC_SHA256("TC3" + secretKey, date), service), "tc3_request")
+    auto secretDate = hmacSha256Raw(date, "TC3" + secretKey);
+    auto secretService = hmacSha256Raw(service, secretDate);
+    auto signKey = hmacSha256Raw("tc3_request", secretService);
+    return hmacSha256Hex(signKey, stringToSign);
+}
+
+// =====================================================================
+
 TencentSMSService::TencentSMSService(const Json::Value& config) {
-    // 读取配置
     _secretId = config["SMS"]["Tencent"]["Secret"]["Id"].asString();
     _secretKey = config["SMS"]["Tencent"]["Secret"]["Key"].asString();
     _region = config["SMS"]["Tencent"]["Region"].asString();
     _smsSdkAppId = config["SMS"]["Tencent"]["SmsSdkApp"]["Id"].asString();
     _signName = config["SMS"]["Tencent"]["SignName"].asString();
 
-    // 读取模板ID
-    _templateIds.clear();
-    for (const auto& key : config["SMS"]["Tencent"]["TemplateIds"].getMemberNames()) {
-        _templateIds[stringToMFAType(key)] = config["SMS"]["Tencent"]["TemplateIds"][key].asString();
+    auto templates = config["SMS"]["Tencent"]["TemplateIds"];
+    for (auto& key : templates.getMemberNames()) {
+        _templateIds[stringToMFAType(key)] = templates[key].asString();
     }
 
-    // 检查以上配置是否正确获取
-    if (_secretId.empty()){
-        LOG_ERROR << "TencentSMS: SecretId 未配置";
-        throw std::invalid_argument("TencentSMS: SecretId 未配置");
-    }
-    if (_secretKey.empty()){
-        LOG_ERROR << "TencentSMS: SecretKey 未配置";
-        throw std::invalid_argument("TencentSMS: SecretKey 未配置");
-    }
-    if (_region.empty()){
-        LOG_ERROR << "TencentSMS: Region 未配置";
-        throw std::invalid_argument("TencentSMS: Region 未配置");
-    }
-    if (_smsSdkAppId.empty()){
-        LOG_ERROR << "TencentSMS: SmsSdkAppId 未配置";
-        throw std::invalid_argument("TencentSMS: SmsSdkAppId 未配置");
-    }
-    if (_signName.empty()){
-        LOG_ERROR << "TencentSMS: SignName 未配置";
-        throw std::invalid_argument("TencentSMS: SignName 未配置");
-    }
-    if(_templateIds.empty()){
-        LOG_ERROR << "TencentSMS: TemplateIds 未配置";
-        throw std::invalid_argument("TencentSMS: TemplateIds 未配置");
-    }
-
-    LOG_INFO << "TencentSMSService 初始化完成";
+    LOG_INFO << "TencentSMSService initialized (HTTP mode)";
 }
 
-Task<bool> TencentSMSService::SendSms(const string &phoneNumber, eMFAType type, const vector<string> &templateParams) {
-    string service = "sms";
-    string host = "sms.tencentcloudapi.com";
-    string action = "SendSms";
-    string version = "2021-01-11";
-    string endpoint = "https://" + host;
-    string method = "POST";
-
-    Json::Value payload;
-    
-    // Remove '+' from phone number if present, Tencent Cloud requires e.g. "+86138..." -> we need to ensure correct format. 
-    // Actually, Tencent Cloud requires "+86138..." format if it's international, or it can accept just the number if it's domestic. 
-    // The previous SDK SendSmsRequest also just sets the PhoneNumberSet directly.
-    payload["PhoneNumberSet"].append(phoneNumber);
-    payload["SmsSdkAppId"] = _smsSdkAppId;
-    payload["SignName"] = _signName;
-    payload["TemplateId"] = _templateIds[MFATypeToTencentSMSTemplateId(type)];
-    
-    // Set TemplateParamSet
-    if (!templateParams.empty()) {
-        for (const auto& param : templateParams) {
-            payload["TemplateParamSet"].append(param);
-        }
-    } else {
-        payload["TemplateParamSet"] = Json::arrayValue; // empty array
-    }
-
-    Json::FastWriter writer;
-    string payloadStr = writer.write(payload);
-    // FastWriter adds a newline at the end, which changes the hash. Let's remove it if present.
-    if (!payloadStr.empty() && payloadStr.back() == '\n') {
-        payloadStr.pop_back();
-    }
-
-    // 1. CanonicalRequest
-    string canonicalUri = "/";
-    string canonicalQueryString = "";
-    string canonicalHeaders = "content-type:application/json; charset=utf-8\nhost:" + host + "\n";
-    string signedHeaders = "content-type;host";
-    string hashedRequestPayload = sha256hex(payloadStr);
-    string canonicalRequest = method + "\n" + canonicalUri + "\n" + canonicalQueryString + "\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + hashedRequestPayload;
-
-    // 2. StringToSign
-    string algorithm = "TC3-HMAC-SHA256";
-    time_t t = time(nullptr);
-    string timestamp = to_string(t);
-
-    struct tm tm_info;
-#ifdef _WIN32
-    gmtime_s(&tm_info, &t);
-#else
-    gmtime_r(&t, &tm_info);
-#endif
-    char dateBuf[16];
-    strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", &tm_info);
-    string date(dateBuf);
-
-    string credentialScope = date + "/" + service + "/tc3_request";
-    string hashedCanonicalRequest = sha256hex(canonicalRequest);
-    string stringToSign = algorithm + "\n" + timestamp + "\n" + credentialScope + "\n" + hashedCanonicalRequest;
-
-    // 3. Signature
-    vector<unsigned char> secretDate = hmac_sha256("TC3" + _secretKey, date);
-    vector<unsigned char> secretService = hmac_sha256(secretDate, service);
-    vector<unsigned char> secretSigning = hmac_sha256(secretService, "tc3_request");
-    string signature = hex_encode(hmac_sha256(secretSigning, stringToSign));
-
-    // 4. Authorization
-    string authorization = algorithm + " Credential=" + _secretId + "/" + credentialScope + ", SignedHeaders=" + signedHeaders + ", Signature=" + signature;
-
-    // 5. Send HTTP Request
-    auto client = drogon::HttpClient::newHttpClient(endpoint);
-    auto req = drogon::HttpRequest::newHttpRequest();
-    req->setMethod(drogon::Post);
-    req->setPath("/");
-    req->addHeader("Host", host);
-    req->addHeader("Content-Type", "application/json; charset=utf-8");
-    req->addHeader("X-TC-Action", action);
-    req->addHeader("X-TC-Version", version);
-    req->addHeader("X-TC-Region", _region);
-    req->addHeader("X-TC-Timestamp", timestamp);
-    req->addHeader("Authorization", authorization);
-    req->setBody(payloadStr);
-
-    try {
-        auto resp = co_await client->sendRequestCoro(req);
-        if (!resp) {
-            LOG_ERROR << "短信发送失败: HTTP请求无响应";
-            co_return false;
-        }
-
-        if (resp->statusCode() != drogon::k200OK) {
-            LOG_ERROR << "短信发送失败: HTTP状态码 " << resp->statusCode() << ", body: " << resp->getBody();
-            co_return false;
-        }
-
-        auto respJson = resp->getJsonObject();
-        if (!respJson) {
-            LOG_ERROR << "短信发送失败: 无法解析响应JSON: " << resp->getBody();
-            co_return false;
-        }
-
-        // 检查腾讯云API的业务错误
-        if (respJson->isMember("Response") && (*respJson)["Response"].isMember("Error")) {
-            LOG_ERROR << "短信发送失败: " << (*respJson)["Response"]["Error"]["Message"].asString();
-            co_return false;
-        }
-
-        // 检查SendStatusSet，确保第一条发送成功（我们只发了一条）
-        if (respJson->isMember("Response") && (*respJson)["Response"].isMember("SendStatusSet")) {
-            const auto& statusSet = (*respJson)["Response"]["SendStatusSet"];
-            if (statusSet.isArray() && statusSet.size() > 0) {
-                const auto& status = statusSet[0];
-                if (status["Code"].asString() != "Ok") {
-                    LOG_ERROR << "短信发送失败: " << status["Message"].asString() << " (Code: " << status["Code"].asString() << ")";
-                    co_return false;
-                }
-            }
-        }
-
-        LOG_INFO << format("已成功向手机号 {} 发送短信", phoneNumber);
-        co_return true;
-
-    } catch (const std::exception& e) {
-        LOG_ERROR << "短信发送异常: " << e.what();
+drogon::Task<bool> TencentSMSService::SendSms(const string& phoneNumber, eMFAType type,
+                                                const vector<string>& templateParams) {
+    // 获取模板ID
+    auto it = _templateIds.find(type);
+    if (it == _templateIds.end()) {
+        LOG_ERROR << "未找到MFA类型对应的短信模板";
         co_return false;
     }
+
+    // 构造请求 body (JSON)
+    Json::Value body;
+    body["PhoneNumberSet"] = Json::Value(Json::arrayValue);
+    body["PhoneNumberSet"].append("+86" + phoneNumber);
+    body["SmsSdkAppId"] = _smsSdkAppId;
+    body["SignName"] = _signName;
+    body["TemplateId"] = it->second;
+    body["TemplateParamSet"] = Json::Value(Json::arrayValue);
+    for (const auto& p : templateParams)
+        body["TemplateParamSet"].append(p);
+
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    string payload = Json::writeString(wb, body);
+
+    // 计算时间
+    auto now = chrono::system_clock::now();
+    auto timestamp = chrono::duration_cast<chrono::seconds>(now.time_since_epoch()).count();
+    auto tt = chrono::system_clock::to_time_t(now);
+    tm utcTm;
+    gmtime_r(&tt, &utcTm);
+    char dateBuf[16];
+    strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", &utcTm);
+    string date(dateBuf);
+
+    // TC3-HMAC-SHA256 签名
+    string service = "sms";
+    string canonicalUri = "/";
+    string canonicalQuery = "";
+    string canonicalHeaders = "content-type:application/json\nhost:sms.tencentcloudapi.com\n";
+    string signedHeaders = "content-type;host";
+    string hashedPayload = sha256Hex(payload);
+
+    string canonicalRequest = "POST\n" + canonicalUri + "\n" + canonicalQuery + "\n"
+                            + canonicalHeaders + "\n" + signedHeaders + "\n" + hashedPayload;
+
+    string stringToSign = "TC3-HMAC-SHA256\n" + to_string(timestamp) + "\n"
+                        + date + "/" + service + "/tc3_request\n"
+                        + sha256Hex(canonicalRequest);
+
+    string signature = sign(_secretKey, date, service, stringToSign);
+    string credentialScope = date + "/" + service + "/tc3_request";
+    string authorization = "TC3-HMAC-SHA256 Credential=" + _secretId + "/" + credentialScope
+                         + ", SignedHeaders=" + signedHeaders + ", Signature=" + signature;
+
+    // 发送 HTTP 请求
+    auto client = drogon::HttpClient::newHttpClient("https://sms.tencentcloudapi.com");
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(drogon::Post);
+    req->setBody(payload);
+    req->setContentTypeString("application/json");
+    req->addHeader("Host", "sms.tencentcloudapi.com");
+    req->addHeader("X-TC-Action", "SendSms");
+    req->addHeader("X-TC-Region", _region);
+    req->addHeader("X-TC-Timestamp", to_string(timestamp));
+    req->addHeader("X-TC-Version", "2021-01-11");
+    req->addHeader("Authorization", authorization);
+
+    auto result = co_await client->sendRequestCoro(req);
+
+    if (result->statusCode() != 200) {
+        LOG_ERROR << "短信发送失败, HTTP " << result->statusCode()
+                  << ": " << string(result->body().data(), result->body().size());
+        co_return false;
+    }
+
+    // 解析响应
+    string respBody(result->body().data(), result->body().size());
+    Json::Value resp;
+    Json::CharReaderBuilder rb;
+    istringstream iss(respBody);
+    string errs;
+    if (!Json::parseFromStream(rb, iss, &resp, &errs)) {
+        LOG_ERROR << "解析短信响应失败: " << errs;
+        co_return false;
+    }
+
+    auto& sendStatusSet = resp["Response"]["SendStatusSet"];
+    if (!sendStatusSet.isNull() && sendStatusSet.size() > 0) {
+        auto& status = sendStatusSet[0];
+        if (status["Code"].asString() == "Ok") {
+            LOG_INFO << "短信发送成功: " << status["SerialNo"].asString();
+            co_return true;
+        } else {
+            LOG_ERROR << "短信发送失败: " << status["Code"].asString()
+                      << " - " << status["Message"].asString();
+            co_return false;
+        }
+    }
+
+    LOG_ERROR << "短信发送失败: " << respBody;
+    co_return false;
 }
