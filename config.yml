@@ -1,0 +1,62 @@
+# Drogon 应用配置文件
+# custom_config: 用户自定义配置，通过 app().getCustomConfig() 获取
+custom_config:
+  # 用户管理配置
+  UserManage:
+    jwt_issuer: UEAdminAPI
+    jwt_secret: [这里填JWT密钥]
+    tokenExpeirSec:  720          # Token 有效期（秒），默认 3600
+    tokenFlashTokenSec: 259200    # FlashToken 有效期（秒），默认 259200
+    ActionTokenSec: 300           # ActionToken 有效期（秒）
+    # RSA 配置（用于 RS256 非对称签名）
+    rsa_private_key: ""           # 私钥文件路径，留空则尝试 rsa_private_key_pem
+    rsa_public_key: ""            # 公钥文件路径，留空则尝试 rsa_public_key_pem
+    rsa_private_key_pem: ""       # 内嵌私钥 PEM 字符串
+    rsa_public_key_pem: ""        # 内嵌公钥 PEM 字符串
+    rsa_auto_generate: false      # 以上四项均空且此项为 true 时，启动时自动生成 2048 位密钥对
+
+  # 邮箱服务配置
+  Email:
+    SmtpServer: smtp.qq.com
+    SmtpPort: 587
+    EmailSource: [这里填发件邮箱地址]
+    EmailPassword: [这里填邮箱密码或授权码]
+    ClaimedName: [这里填发件显示名称]
+    ErrorPatterns:
+      "The recipient may contain a non-existent account": "目标邮箱账号不存在"
+      "Mailbox unavailable or access denied": "目标邮箱服务器不存在或没有访问权限"
+
+  # 腾讯云短信服务配置
+  SMS:
+    Tencent:
+      Host: sms.tencentcloudapi.com
+      Region: ap-guangzhou
+      SignName: [这里填短信签名]
+      TemplateIds:
+        Default: [这里填短信模板ID]
+        Login: [这里填登录模板ID]
+        Register: [这里填注册模板ID]
+        ResetPassword: [这里填重置密码模板ID]
+      SmsSdkApp:
+        Id: [这里填SdkAppId]
+        Key: [这里填SdkAppKey]
+      Secret:
+        Id: [这里填腾讯云SecretId]
+        Key: [这里填腾讯云SecretKey]
+
+  # GitLab 服务配置
+  GitLab:
+    AdminToken: [这里填GitLab管理员Token]
+    ApiHost: [这里填GitLab API地址]
+
+  # 服务器域名
+  ServerHost: "[这里填服务器域名]"
+
+  # 第三方登录平台配置
+  ThirdPartyPlatformInfo:
+    QQ:
+      ClientId: [这里填QQ ClientId]
+      ClientSecret: [这里填QQ ClientSecret]
+    WeChat:
+      ClientId: [这里填微信 ClientId]
+      ClientSecret: [这里填微信 ClientSecret]
