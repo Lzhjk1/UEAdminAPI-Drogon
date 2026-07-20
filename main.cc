@@ -16,6 +16,8 @@
 #include "services/SystemService.h"
 #include "services/ActionTokenService.h"
 
+#include "controllers/OAuth2Controller.h"
+
 #ifdef _WIN32
 #include <windows.h>
 
@@ -123,27 +125,22 @@ int main() {
     
     app.loadConfigFile(config_path);
     
-    // 因为插件需要启动后才能获取, 所以启动后再初始化
-    auto loop = app.getLoop();
-    loop->runAfter(1s , [&app]{
-        if (!app.isRunning()) {
-            LOG_INFO << "未启动, 等待1秒后重试";
-            sleepCoro(app.getLoop(), 1s);
-        }
+    // app 启动后回调中初始化单例服务（消除竞态条件）
+    app.registerBeginningAdvice([]{
         LOG_INFO << "启动成功, 开始初始化插件与服务";
         // 初始化单例服务
-        auto smtpPlugin = app.getPlugin<SMTPMail>();
-        AuthService::Init(app.getCustomConfig());
-        TencentSMSService::Init(app.getCustomConfig());
-        EmailService::Init(smtpPlugin, app.getCustomConfig());
+        auto smtpPlugin = drogon::app().getPlugin<SMTPMail>();
+        AuthService::Init(drogon::app().getCustomConfig());
+        TencentSMSService::Init(drogon::app().getCustomConfig());
+        EmailService::Init(smtpPlugin, drogon::app().getCustomConfig());
         MFAService::Init(
             EmailService::Instance(), 
             TencentSMSService::Instance()
         );
-        UEAdminAPI::GitlabService::Init(app.getCustomConfig());
-        UEAdminAPI::Services::ThirdPartyLoginService::Init(app.getCustomConfig());
+        UEAdminAPI::GitlabService::Init(drogon::app().getCustomConfig());
+        UEAdminAPI::Services::ThirdPartyLoginService::Init(drogon::app().getCustomConfig());
         SystemService::Init();
-        UEAdminAPI::Services::ActionTokenService::Init(app.getCustomConfig());
+        UEAdminAPI::Services::ActionTokenService::Init(drogon::app().getCustomConfig());
 
         LOG_INFO << "服务初始化完成";
     });
