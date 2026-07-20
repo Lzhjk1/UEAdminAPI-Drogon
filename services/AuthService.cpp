@@ -6,7 +6,12 @@
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <openssl/pem.h>
+#include <openssl/rsa.h>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
 #include <numeric>
+#include <fstream>
 
 #include "services/AuthService.h"
 #include "services/MFAService.h"
@@ -33,6 +38,90 @@ using namespace UEAdminAPI;
 using namespace UEAdminAPI::Services;
 using namespace UEAdminAPI::utils;
 
+// =====================================================================
+// RSA 密钥初始化
+// =====================================================================
+
+void AuthService::initRsaKeys(const Json::Value &config) {
+    // 优先从配置文件加载 PEM 文件路径
+    auto &jwtCfg = config["UserManage"];
+    std::string privKeyPath = jwtCfg.get("rsa_private_key", "").asString();
+    std::string pubKeyPath  = jwtCfg.get("rsa_public_key", "").asString();
+
+    if (!privKeyPath.empty() && !pubKeyPath.empty()) {
+        // 从文件加载
+        std::ifstream privFile(privKeyPath);
+        std::ifstream pubFile(pubKeyPath);
+        if (privFile && pubFile) {
+            _privateKeyPem.assign(
+                (std::istreambuf_iterator<char>(privFile)),
+                std::istreambuf_iterator<char>());
+            _publicKeyPem.assign(
+                (std::istreambuf_iterator<char>(pubFile)),
+                std::istreambuf_iterator<char>());
+            LOG_INFO << "AuthService: RSA keys loaded from files";
+            return;
+        }
+    }
+
+    // 尝试从配置读取 PEM 字符串（方便内嵌配置）
+    std::string privKeyStr = jwtCfg.get("rsa_private_key_pem", "").asString();
+    std::string pubKeyStr  = jwtCfg.get("rsa_public_key_pem", "").asString();
+    if (!privKeyStr.empty() && !pubKeyStr.empty()) {
+        _privateKeyPem = privKeyStr;
+        _publicKeyPem  = pubKeyStr;
+        LOG_INFO << "AuthService: RSA keys loaded from config";
+        return;
+    }
+
+    // 都不存在则自动生成
+    LOG_INFO << "AuthService: No RSA keys found, generating new key pair...";
+    EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
+    if (!ctx) {
+        LOG_ERROR << "AuthService: Failed to create EVP_PKEY_CTX";
+        throw std::runtime_error("RSA key generation failed");
+    }
+
+    EVP_PKEY_keygen_init(ctx);
+    EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 2048);
+
+    EVP_PKEY *pkey = nullptr;
+    if (EVP_PKEY_keygen(ctx, &pkey) != 1) {
+        EVP_PKEY_CTX_free(ctx);
+        LOG_ERROR << "AuthService: RSA key generation failed";
+        throw std::runtime_error("RSA key generation failed");
+    }
+    EVP_PKEY_CTX_free(ctx);
+
+    // 提取 PEM
+    BIO *privBio = BIO_new(BIO_s_mem());
+    BIO *pubBio  = BIO_new(BIO_s_mem());
+    if (!privBio || !pubBio) {
+        EVP_PKEY_free(pkey);
+        BIO_free(privBio);
+        BIO_free(pubBio);
+        throw std::runtime_error("BIO creation failed");
+    }
+
+    PEM_write_bio_PrivateKey(privBio, pkey, nullptr, nullptr, 0, nullptr, nullptr);
+    PEM_write_bio_PUBKEY(pubBio, pkey);
+
+    size_t privLen = BIO_pending(privBio);
+    size_t pubLen  = BIO_pending(pubBio);
+    _privateKeyPem.resize(privLen);
+    _publicKeyPem.resize(pubLen);
+    BIO_read(privBio, _privateKeyPem.data(), (int)privLen);
+    BIO_read(pubBio,  _publicKeyPem.data(),  (int)pubLen);
+
+    BIO_free(privBio);
+    BIO_free(pubBio);
+    EVP_PKEY_free(pkey);
+
+    LOG_INFO << "AuthService: RSA key pair generated successfully";
+}
+
+// =====================================================================
+
 AuthService::AuthService(const Json::Value &config) {
     _secret = config["UserManage"]["jwt_secret"].asString();
     _jwtIssuer = config["UserManage"]["jwt_issuer"].asString();
@@ -52,6 +141,9 @@ AuthService::AuthService(const Json::Value &config) {
         LOG_ERROR << "UserManage:jwt_secert or jwt_issuer unset";
         throw std::runtime_error("UserManage:jwt_secert or jwt_issuer unset");
     }
+
+    // 初始化 RSA 密钥对（用于 RS256 签名）
+    initRsaKeys(config);
     
     LOG_INFO << "AuthService 初始化完成";
 }
@@ -115,32 +207,48 @@ std::string AuthService::CreateToken(int id, int status, uint64_t durationSecond
     if (durationSeconds == 0) {
         durationSeconds = _tokenExpireSec;
     }
-    auto token = jwt::create()
+    auto builder = jwt::create()
                      .set_issuer(_jwtIssuer)
                      .set_type("JWS")
                      .set_payload_claim("id", jwt::claim(std::to_string(id)))
                      .set_payload_claim(std::string("tokenType"), jwt::claim(std::string("token")))
                      // status是附加验证信息
                      .set_payload_claim(std::string("status"), jwt::claim(std::to_string(status)))
-                     .set_expires_in(std::chrono::seconds{durationSeconds})
-                     .sign(jwt::algorithm::hs512{ _secret });
-    return token;
+                     .set_expires_in(std::chrono::seconds{durationSeconds});
+
+    // 优先 RS256 签名，fallback 到 HS512
+    if (!_privateKeyPem.empty() && !_publicKeyPem.empty()) {
+        try {
+            return builder.sign(jwt::algorithm::rs256(_publicKeyPem, _privateKeyPem, "", ""));
+        } catch (const std::exception &e) {
+            LOG_ERROR << "RS256 sign failed: " << e.what();
+        }
+    }
+
+    return builder.sign(jwt::algorithm::hs512{ _secret });
 }
 std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationSeconds) {
     if (durationSeconds == 0) {
         durationSeconds = _flashTokenExpireSec;
     }
-    auto token = jwt::create()
+    auto builder = jwt::create()
                      .set_issuer(_jwtIssuer)
                      .set_type("JWS")
                      .set_payload_claim("id", jwt::claim(std::to_string(id)))
                      .set_payload_claim(std::string("tokenType"), jwt::claim(std::string("flashToken")))
                      // status是附加验证信息
                      .set_payload_claim(std::string("status"), jwt::claim(std::to_string(status)))
-                     .set_expires_in(std::chrono::seconds{durationSeconds})
-                     .sign(jwt::algorithm::hs512{ _secret });
+                     .set_expires_in(std::chrono::seconds{durationSeconds});
 
-    return token;
+    if (!_privateKeyPem.empty() && !_publicKeyPem.empty()) {
+        try {
+            return builder.sign(jwt::algorithm::rs256(_publicKeyPem, _privateKeyPem, "", ""));
+        } catch (const std::exception &e) {
+            LOG_ERROR << "RS256 sign failed: " << e.what();
+        }
+    }
+
+    return builder.sign(jwt::algorithm::hs512{ _secret });
 }
 
 drogon::Task<std::tuple<std::string, std::string, int>> AuthService::NewTokenPair(int userId) {
@@ -216,9 +324,30 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
     try{
         // 解码并验证token
         auto decoded = jwt::decode(token);
-        auto verifier = jwt::verify()
-            .allow_algorithm(jwt::algorithm::hs512{_secret})
-            .with_issuer(_jwtIssuer);
+
+        // 尝试 RS256 验证
+        bool verified = false;
+        if (!_publicKeyPem.empty()) {
+            try {
+                auto verifier = jwt::verify()
+                    .allow_algorithm(jwt::algorithm::rs256(_publicKeyPem, "", "", ""))
+                    .with_issuer(_jwtIssuer);
+                verifier.verify(decoded);
+                verified = true;
+            } catch (const std::exception &) {
+                // RS256 失败，尝试 HS512
+                verified = false;
+            }
+        }
+
+        // Fallback: HS512 验证
+        if (!verified) {
+            auto verifier = jwt::verify()
+                .allow_algorithm(jwt::algorithm::hs512{_secret})
+                .with_issuer(_jwtIssuer);
+            verifier.verify(decoded);
+        }
+
         tokenType = decoded.get_payload_claim("tokenType").as_string();
         if(tokenType != "token" && tokenType != "flashToken"){
             LOG_ERROR << std::format("对于Token: {}, tokenType 既不是 token, 也不是 flashToken", token);
@@ -227,7 +356,6 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
         isFlashToken = tokenType == "flashToken";
         status = std::stoi(decoded.get_payload_claim("status").as_string());
         userId = std::stoi(decoded.get_payload_claim("id").as_string());
-        verifier.verify(decoded);
         return std::make_tuple(true, userId, status, isFlashToken);
     }
     catch (const jwt::error::token_verification_exception &e) {
