@@ -1,0 +1,319 @@
+========================================================================
+UEAdminAPI-drogon 从 uesoft 移植特定功能到 upstream 的合并方案
+========================================================================
+
+【背景】
+不采用 git merge，而是从 uesoft 选择性移植特定功能到 upstream/main。
+本地修改完成、确认无误后再推送到远程。
+不属于本方案明确列出的范围一律不动 uesoft。
+
+
+【总体原则】
+1. 以 upstream/main 为基底进行修改
+2. 仅移植下面明确列出的功能/文件
+3. uesoft 移植过来的代码若删除了原有注释，需补回
+4. uesoft 新增代码若无注释，需添加基本中文注释
+5. 移植全部完成后再统一补注释（不在移植过程中边写边补）
+6. 模型文件不重命名（保留 upstream 的 ThirdPartyPlatforms.h 等）
+7. Controller 只做参数读取、调用 Service；业务逻辑放在 Service
+
+
+### ============================================================
+一、采纳移植的功能列表（携带要点）
+### ============================================================
+
+【1】非对称加密支持（RSA / RS256）
+  来源: uesoft 的 services/AuthService.cpp / .h
+  说明:
+  - 新增 _privateKeyPem / _publicKeyPem 成员
+  - 新增 initRsaKeys() 私有方法（支持三种加载方式：PEM 文件路径、配置内嵌 PEM 字符串、自动生成 2048 位 RSA 密钥对）
+  - 新增 getPublicKeyPem() 公有方法（供 OAuth2Controller 的 JWKS 端点使用）
+  - CreateToken / CreateFlashToken 创建时优先使用 RS256 签名，失败则 fallback 到 HS512
+  - CheckTokenAndParseUserId 验证时先尝试 RS256，失败再试 HS512
+  保留的差异:
+  - 不采纳 uesoft 的硬编码做法，仍保留 _tokenExpireSec / _flashTokenExpireSec 成员
+  - 从配置文件读取过期时间，读取失败/未填写时使用硬编码默认值（Token 3600s / FlashToken 259200s）
+  - RSA 密钥路径/PEM 同样从配置文件读取
+  配置文件改动:
+  - 在 upstream 现有 config（如 config_template.yaml）的 custom_config.UserManage 段下新增 RSA 子段:
+      RSA:
+        PrivateKeyPath: [私钥文件路径，留空则尝试 PrivateKeyPem]
+        PublicKeyPath:  [公钥文件路径，留空则尝试 PublicKeyPem]
+        PrivateKeyPem:  [内嵌 PEM 字符串，留空则参考 AutoGenerate]
+        PublicKeyPem:   [内嵌 PEM 字符串，留空则参考 AutoGenerate]
+        AutoGenerate:   false   # 若以上四项均空且此项为 true，则启动时自动生成 2048 位密钥对
+
+
+【2】腾讯短信服务重写（移除 SDK，改用纯 HTTP + TC3-HMAC-SHA256）
+  来源: uesoft 的 services/TencentSMSService.cpp / .h
+  说明:
+  - 完全移除对腾讯云 C++ SDK 的依赖
+  - 实现 TC3-HMAC-SHA256 签名: 抽离 sign() 方法, 工具函数 sha256Hex / hmacSha256Hex / hmacSha256Raw / urlEncode
+  - 使用 chrono::system_clock 生成时间戳, gmtime_r 替代平台条件编译
+  - 使用 Json::StreamWriterBuilder 替代 Json::FastWriter
+  - 手机号格式: "+86" + phoneNumber
+  - SendSms 用 eMFAType 直接作为 _templateIds 的 key
+  - 配置项不再逐项抛异常校验, 改为读取后即初始化
+  排除项（uesoft 的这部分不要）:
+  - 不保留 uesoft CMakeLists.txt 中关于 TencentSDK .lib 链接和 include 路径的配置
+  - 不保留 uesoft 中 _clientMutex 相关逻辑（若存在）按实际情况调整
+
+
+【3】main.cc 启动流程优化
+  说明:
+  - 保留 upstream 的 config.yaml 向上三级查找 + log_path 创建逻辑
+  - 将 loop->runAfter(1s, init) 改为 app.registerBeginningAdvice([] { init; }) 以消除竞态
+  - 在 advice lambda 内获取 loop 并完成 SMTPMail 插件 -> AuthService -> TencentSMSService -> MFAService -> EmailService -> SystemService -> ActionTokenService 的初始化
+  - 新增 #include "controllers/OAuth2Controller.h" 头文件引用（与第10项配套）
+
+
+【4】错误码改动
+  来源: uesoft 的 utils/ApiErrorCodes.h
+  说明: 删除以下 5 个不再使用的枚举值
+    - ApiError_ActionTokenInvalid          (-208)
+    - ApiError_TokenTypeUnexpected        (-209)
+    - ApiError_TokenTypeInvalid           (-210)
+    - ApiError_FlashTokenInvalidOrExpired (-211)
+    - ApiError_SendVerifyCodeFailed       (-405)
+  配套:
+  - filters/AuthFilter.cc        中 ApiError_TokenTypeUnexpected / ApiError_TokenTypeInvalid 替换为 ApiError_AuthenticationFailed
+  - filters/ActionTokenFilter.cc 中 ApiError_ActionTokenInvalid 替换为 ApiError_InvalidVerifyCode
+  - filters/ActionTokenMiddleware.cc 同步调整（约4行，配套第7项）
+  移植完毕后, 实际错误码情况需要再Review一遍, 必要时回头微调枚举值
+
+
+【5】utils/SingletonWithInit.h 改动
+  说明:
+  - Instance() 未初始化时, 从抛 std::runtime_error 改为返回 nullptr
+  - 新增 IsInitialized() 静态方法
+  - 在返回 nullptr 之前使用 LOG_WARN 打印控制台警告（使用 Drogon 日志系统，与 ThirdPartyLoginService.cc 风格一致）
+
+
+【6】services/ThirdPartyLoginService.cc 改动
+  说明:
+  - checkAndGetPlatformConfig(): 关键配置未设置时, 从 throw std::runtime_error 改为 LOG_WARN + 返回空元组（平台被优雅禁用而非启动崩溃）
+  - 移除 CreateUserFromThirdPartyLogin 的成功提示语 "登陆后可以修改密码以便后续使用密码登录"
+  - 注: 模型头文件包含路径保持 upstream 的 ThirdPartyPlatforms.h / UserThirdPartyInfo.h 大写P命名，不重命名
+
+
+【7】filters/AuthFilter.cc 改动
+  说明:
+  - ApiError_TokenTypeUnexpected -> ApiError_AuthenticationFailed (flashToken 不能直接用于认证)
+  - ApiError_TokenTypeInvalid    -> ApiError_AuthenticationFailed (未知 token 类型)
+  - 验证失败时移除 setResult 调用, 直接返回已有错误信息
+
+
+【8】filters/ActionTokenFilter.cc 改动
+  说明:
+  - 错误码 ApiError_ActionTokenInvalid -> ApiError_InvalidVerifyCode
+  - 请求目标提取路径移除 /user/create/email（因为 RegisterUserByEmail 不移植，见下）
+
+
+【9】README.md
+  说明: 不照搬 uesoft, 由我自行重写一份, 内容简明扼要:
+    - 项目定位（OAuth2 授权服务器 + 用户中心 API）
+    - 主要功能列表（含 OAuth2/JWKS、MFA、第三方登录、用户管理等）
+    - 编译说明（基于 upstream 的方式，使用 find_package / 包管理器）
+    - 部署说明（基于 upstream 的 build_docker/ 方案）
+    - API 路由表（含 OAuth2 端点 / 授权 / token / revocation / JWKS）
+    - 许可证（MIT）
+
+
+### ============================================================
+二、uesoft 新增文件移植清单
+### ============================================================
+
+【10】controllers/OAuth2Controller.cc / .h
+  说明: 移植过来, 是 RSA 签名 / JWKS 端点的配套。
+  保持模型头文件包含路径为 upstream 命名（大写 P: ThirdPartyPlatforms.h / UserThirdPartyInfo.h）。
+
+【11】运维 / 测试脚本（全部保留）
+  保留以下文件:
+  - check_config.py
+  - check_env.sh
+  - patch_config.py
+  - test_config.sh
+  - run_api_test.sh
+  - run_api_test2.sh
+  - run_debug_test.sh
+  - run_fg_test.sh
+  - run_final_test.sh
+  - run_final_test2.sh
+  - run_route_test.sh
+  - run_test.sh
+  - final_test.sh
+  - full_test.sh
+
+【12】不移植的 uesoft 新增项
+  - controllers/NotificationController.cc / .h        ——不移植
+  - utils/UserManger.cc / .h                           ——uesoft 新增的334行实为编码/行尾噪音, 不移植
+  - services/UserManageService.cpp / .h                ——废弃（与 utils/UserManger 一起废弃）
+  - deploy/ 目录及根目录 Dockerfile / deploy.sh / nginx / init.sql 等——不移植（采用 upstream 的 build_docker/）
+  - sql/create_tables.sql                              ——不移植
+  - config.yaml / config.yaml.example / config_dev.yaml——不移植（RSA 配置直接加到 upstream 现有 config）
+  - docs/ErrorReport_404_Architecture.md
+    docs/Startup_Crash_Report.md
+    docs/Top3_Priority_Tasks.md
+    docs/architecture/MessageArchitecture.md           ——不移植（仅内部文档）
+
+
+### ============================================================
+三、根据实际情况调整的连锁点
+### ============================================================
+
+【13】CMakeLists.txt
+  说明:
+  upstream 的现有 C++ 标准检测保留; 不做以下 uesoft 改动:
+  - 不加 GCC<10 的 C++17 降级（Docker 用 GCC16, 默认 C++20 即可）
+  - 不加 -fcoroutines（upstream 未加, 也无需）
+  - 不链接 TencentSDK .lib（已不再依赖 SDK）
+  - 不加 ../TencentSDK/*/include
+  - 不加 GCC13 ICE 规避 (-O0 -fno-tree-sra -fno-tree-forwprop)
+  - 不对 utils/MFA/MFA_Channels.cpp 做任何文件拆分或编译选项调整
+  - 不加 add_subdirectory(test)（upstream 已删除 test 目录, 保持现状）
+  若移植完后实际编译失败, 再回头调整 CMakeLists.txt
+
+
+【14】docs/API_Error_Codes.md 与 docs/API_Reference_Documentation.md
+  说明: 移植完成后, 根据实际的接口和错误码整合修改:
+  - 添加 OAuth2 相关接口说明
+  - 同步删除已废弃接口的说明
+  - 同步错误码增删（与 utils/ApiErrorCodes.h 最终状态一致）
+
+
+【15】services 杂项（SystemService、EmailService、GitlabService、MFAService.h、ActionTokenService.cpp）
+  说明: 移植完成后, 根据实际依赖情况决定是否调整。若上述核心移植未影响这些文件的编译, 保持 upstream 版本不动。
+
+
+【16】controllers 杂项（SendVerifyCode.cc、ThirdPartyLogin.cc、UserController.cc）
+  说明: 移植完成后, 根据实际依赖情况决定。若上述核心移植未影响编译, 保持 upstream 版本不动。
+
+
+【17】swagger/swagger.json / generate_swagger.py / index.html
+  说明: 移植完成后, 根据实际 API 路由表重新生成或调整 swagger 文档。
+
+
+【18】models/User.cc 等
+  说明: 若移植 OAuth2 控制器 / Auth 改动后产生新的 ORM 引用需求, 再视情况调整; 默认不动。
+
+
+### ============================================================
+四、废弃清单
+### ============================================================
+
+  - utils/UserManger.cc / .h                (uesoft 新增, 实为噪音)
+  - services/UserManageService.cpp / .h      (未使用代码)
+
+
+### ============================================================
+五、移植实施顺序
+### ============================================================
+
+  Step 1: 创建新分支 merge-uesoft-features (基于 upstream/main)
+  Step 2: 移植 OAuth2Controller.cc / .h（含调整头文件包含路径为 upstream 命名）
+  Step 3: 修改 services/AuthService.cpp / .h，加入 RSA 支持（配置读取 + 默认值 fallback）
+  Step 4: 修改 config_template.yaml 和实际 config.yaml，加入 RSA 配置段
+  Step 5: 修改 services/TencentSMSService.cpp / .h，移除 SDK 改纯 HTTP
+  Step 6: 修改 utils/ApiErrorCodes.h, 删除 5 个错误码
+  Step 7: 同步修改 filters/AuthFilter.cc / ActionTokenFilter.cc / ActionTokenMiddleware.cc
+  Step 8: 修改 utils/SingletonWithInit.h, 加入 IsInitialized() 和 LOG_WARN
+  Step 9: 修改 services/ThirdPartyLoginService.cc, 优雅降级 + 移除提示语
+  Step 10: 删除 utils/UserManger.cc / .h 和 services/UserManageService.cpp / .h
+  Step 11: 修改 main.cc, 采用 registerBeginningAdvice 但保留配置查找
+  Step 12: 复制运维脚本（check_*.py / run_*.sh / final_test.sh 等13个）
+  Step 13: 重写 README.md
+  Step 14: 同步更新 docs/API_Error_Codes.md 和 docs/API_Reference_Documentation.md
+  Step 15: 调整 CMakeLists.txt（仅当实际编译需要时）
+  Step 16: 整体 Review, 补回 uesoft 删除的注释 + 为新增代码加中文注释
+  Step 17: 通过 SSH 在远程 Linux 虚拟机的 Docker 构建镜像中编译验证
+  Step 18: 整体运行测试（可选, 由用户手动在部署环境进行）
+
+
+### ============================================================
+六、编译验证环境
+### ============================================================
+
+【连接方式】
+  - 通过 SSH 连接 Linux 虚拟机:
+      ssh -4 roasal@Winserver-Roasal
+  - 必须使用 -4 强制 IPv4（IPv6 link-local 会连接拒绝）
+  - 密钥登录已配置, 无需密码
+  - Docker 操作无需 root 权限
+
+【远程主机信息】
+  - 主机名: DebianRoasal (Debian 11, 内核 5.10.0-42-amd64)
+  - Docker 版本: 24.0.7
+  - 项目源码路径: /home/roasal/UEAdminAPI_Drogon/ueadmin-api-drogon
+    * 该目录已克隆 upstream 仓库 (origin = github.com/Lzhjk1/UEAdminAPI-Drogon.git)
+    * 当前 HEAD 较旧, 需在移植前更新到 upstream/main 最新
+
+【编译镜像】
+  - 镜像名: ueadmin-drogon-build:0.1 (4.73GB, 2个月前构建)
+  - 基础: ubuntu:22.04 + GCC 16.1 + vcpkg + drogon 全套依赖
+  - 工作目录: /mnt/project/ueadmin-api-drogon
+  - 编译产物路径: 容器内 /mnt/project/ueadmin-api-drogon/build/UEAdminAPI_drogon
+  - 镜像构建文件: build_docker/Dockerfile.build（仅供参考, 不要重建镜像）
+
+【同步代码到远程主机】
+  - 本地修改完代码后, 使用 rsync 或 scp 同步到远程主机:
+      rsync -avz --exclude='.git' --exclude='build' \
+        ./ roasal@Winserver-Roasal:/home/roasal/UEAdminAPI_Drogon/ueadmin-api-drogon/
+  - 或使用 git: 本地推送到临时分支, 远程主机 pull
+
+【编译命令】
+  在远程主机执行（无需进入容器交互式 shell）:
+
+    docker run --rm \
+      -v $HOME/UEAdminAPI_Drogon/ueadmin-api-drogon:/mnt/project/ueadmin-api-drogon \
+      ueadmin-drogon-build:0.1 \
+      bash -c "cd /mnt/project/ueadmin-api-drogon && \
+               rm -rf build && mkdir build && cd build && \
+               cmake .. -DCMAKE_BUILD_TYPE=Release && \
+               make -j6"
+
+  说明:
+  - --rm: 编译完自动清理容器
+  - -j6: 并行编译（参考 docker-compose.yml 中 limits.cpus: '6'）
+  - 编译成功后产物在 build/UEAdminAPI_drogon
+  - 若需交互式调试, 可启动常驻容器:
+      docker run -d --name UEAdminAPI_build \
+        -v $HOME/UEAdminAPI_Drogon/ueadmin-api-drogon:/mnt/project/ueadmin-api-drogon \
+        ueadmin-drogon-build:0.1 tail -f /dev/null
+      docker exec -it UEAdminAPI_build bash
+      # 结束后: docker rm -f UEAdminAPI_build
+
+【注意事项】
+  - build_docker/docker-compose.yml 中的挂载路径 ./ueadmin-api-drogon 是相对该 yml 文件所在目录, 实际使用上面 docker run 命令更直接
+  - Dockerfile.run 和 run_env 容器用于运行编译好的二进制, 编译阶段不需要
+  - 编译失败时查看完整日志, 定位错误文件和行号, 回到本地修正后再次同步编译
+
+
+### ============================================================
+七、验证清单
+### ============================================================
+
+【编译验证（远程 Docker）】
+  [ ] 本地代码已同步到远程主机 ~/UEAdminAPI_Drogon/ueadmin-api-drogon
+  [ ] 远程 Docker 编译通过 (ueadmin-drogon-build:0.1 + GCC 16.1)
+  [ ] 编译产物 build/UEAdminAPI_drogon 正常生成
+  [ ] 无编译警告（或警告已审查确认无影响）
+
+【运行时验证（用户手动在部署环境进行，不在本次移植范围）】
+  [ ] 登录 / 注册流程正常
+  [ ] Token 签名验证正常 (RS256 + HS512 fallback)
+  [ ] FlashToken 流程正常
+  [ ] MFA 发送/验证正常 (短信走纯 HTTP)
+  [ ] 第三方登录: 关键配置缺失时平台禁用而非崩溃
+  [ ] OAuth2 / token / revocation / JWKS 端点正常
+  [ ] Swagger 文档路由正确
+  [ ] ActionToken 鉴权流程正常
+  [ ] 错误码数值与 docs/API_Error_Codes.md 一致
+  [ ] 单例未初始化时返回 nullptr 并打印 LOG_WARN
+
+【代码质量验证】
+  [ ] 注释完整: upstream 原有注释保留, uesoft 移植代码已补中文注释
+  [ ] 项目规则符合: controller 只读参数, 业务在 service, 服务单例在函数开头统一获取
+  [ ] .h 文件中无 using namespace
+  [ ] .cc/.cpp 文件中可大方使用 using namespace
+  [ ] RSA 配置项已加入 config_template.yaml 和实际 config.yaml
+  [ ] 废弃文件 (utils/UserManger.*, services/UserManageService.*) 已删除

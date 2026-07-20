@@ -81,7 +81,7 @@ void ActionTokenFilter::doFilter(const HttpRequestPtr &req,
     } else {
         // 校验失败（Token无效、过期、或者类别不匹配）
         auto resp = HttpResponse::newHttpResponse();
-        HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_ActionTokenInvalid), "ActionToken 无效、已过期或无权执行此操作");
+        HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_InvalidVerifyCode), "ActionToken 无效、已过期或无权执行此操作");
         resp->setBody(result.toJsonString());
         resp->setStatusCode(k200OK);
         fcb(resp);

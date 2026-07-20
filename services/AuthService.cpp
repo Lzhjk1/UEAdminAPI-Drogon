@@ -405,7 +405,7 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
         co_return result;
     }
     if(!valid){
-        result.setResult(ApiErrorCode::ApiError_FlashTokenInvalidOrExpired, "FlashToken已失效");
+        result.setResult(ApiErrorCode::ApiError_AuthenticationFailed, "FlashToken已失效");
         co_return result;
     }
 

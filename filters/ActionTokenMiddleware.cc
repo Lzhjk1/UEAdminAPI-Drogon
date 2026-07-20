@@ -49,7 +49,7 @@ void ActionTokenMiddleware::invoke(const HttpRequestPtr &req,
     std::string requestTarget;
     if (userId <= 0) {
         const std::string& path = req->path();
-        if (path == "/user/login/email" || path == "/user/create/email") {
+        if (path == "/user/login/email") {
             requestTarget = req->getParameter("email");
         } else if (path == "/user/login/phone" || path == "/user/create/phone") {
             requestTarget = req->getParameter("phone");
@@ -72,7 +72,7 @@ void ActionTokenMiddleware::invoke(const HttpRequestPtr &req,
 
     if (!tokenInfoOpt.has_value()) {
         auto resp = HttpResponse::newHttpResponse();
-        HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_ActionTokenInvalid), "ActionToken 无效、已过期、正在处理中或无权执行此操作");
+        HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_InvalidVerifyCode), "ActionToken 无效、已过期、正在处理中或无权执行此操作");
         resp->setBody(result.toJsonString());
         resp->setStatusCode(k200OK);
         mcb(resp);

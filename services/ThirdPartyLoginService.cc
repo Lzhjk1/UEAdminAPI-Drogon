@@ -89,9 +89,10 @@ ThirdPartyLoginPlatformBase::checkAndGetPlatformConfig(const UEAdminAPI::utils::
         isNecessaryConfigsNotSet = true;
     }
 
-    // 抛出异常
+    // 关键配置未设置时，记录警告并返回空元组（该平台被禁用）
     if (isNecessaryConfigsNotSet) {
-        throw std::runtime_error("关键配置未设置, 请查看日志以获取更多信息.");
+        LOG_WARN << "关键配置未设置, 第三方平台 '" << platformName << "' 将被禁用. 请检查配置文件.";
+        return std::make_tuple(std::string(), std::string(), std::string());
     }
 
     return std::make_tuple(serverHost, clientId, clientSecret);
@@ -1179,8 +1180,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::CreateUserFr
     }
 
     result = co_await _authService->LoginByUserId(user.getValueOfId());
-
-    result.msg += ". 登陆后可以修改密码以便后续使用密码登录";
 
     co_return result;
 }

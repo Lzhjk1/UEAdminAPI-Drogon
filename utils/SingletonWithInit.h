@@ -3,6 +3,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <utility>
+#include <trantor/utils/Logger.h>
 
 /**
  * @brief 单例模板类，支持自定义初始化参数
@@ -58,9 +59,20 @@ public:
      */
     static T* Instance() {
         if (!s_initialized) {
-            throw std::runtime_error("Singleton not initialized. Call Init() first.");
+            LOG_WARN << "Singleton not initialized. Call Init() first. Returning nullptr.";
+            return nullptr;
         }
         return s_instance;
+    }
+
+    /**
+     * @brief 检查单例是否已初始化
+     * 
+     * @return true 已初始化
+     * @return false 未初始化
+     */
+    static bool IsInitialized() {
+        return s_initialized;
     }
 
     // 禁止拷贝和赋值
