@@ -414,7 +414,7 @@ Task<HttpResult> AuthService::VerifyToken(const std::string &token) {
         co_return result;
     }
 
-    result.setResult(ApiErrorCode::ApiError_Success, "Token验证成功");
+    result.setResult(ApiErrorCode::ApiError_Success, isFlashToken == 1 ? "FlashToken验证成功" : "Token验证成功");
     co_return result;
 }
 

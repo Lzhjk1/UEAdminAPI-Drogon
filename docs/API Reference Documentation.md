@@ -114,7 +114,7 @@ GitLab 相关接口目前使用独立的响应格式：
   ```json
   {
     "code": 0,
-    "msg": "登录成功",
+    "msg": "刷新成功",
     "data": {
       "id": 1,
       "token": "eyJhbGci...",
@@ -127,7 +127,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **URL**: `/api/user/token/verify/flash`
 - **Method**: `GET`
 - **Params**:
-  - `token` (string, required): FlashToken 字符串
+  - `flashToken` (string, required): FlashToken 字符串
 - **Description**: 验证 FlashToken 是否有效。
 - **Response**:
   ```json
@@ -173,7 +173,7 @@ GitLab 相关接口目前使用独立的响应格式：
     "data": {
         "configured_third_platform_name": [],
         "created_at": "20260331 10:01:45",
-        "emails": "everspace@qq.com",
+        "email": "everspace@qq.com",
         "gitlab_token": "glpat-xxxxxxxxxxxxxxxxx",
         "id": 33,
         "sex": "man",
@@ -212,9 +212,9 @@ GitLab 相关接口目前使用独立的响应格式：
   ```json
   {
     "username": "user1",       // (Required) 用户名
-    "user_password": "pwd",    // (Required) 密码
+    "password": "pwd",         // (Required) 密码
     "email": "test@ex.com",    // (Required if phone missing) 邮箱
-    "tel": "13800000000",      // (Required if email missing) 手机号
+    "phone": "13800000000",    // (Required if email missing) 手机号
     "nickname": "Nick",        // (Optional) 昵称
     "privilege": "User",       // (Optional) 权限, 默认 User
     "isMale": "true",          // (Optional) 性别, 默认 true
@@ -246,7 +246,7 @@ GitLab 相关接口目前使用独立的响应格式：
   ```json
   {
     "code": 0,
-    "msg": "注册成功",
+    "msg": "注册成功, 请尽快修改您的密码",
     "data": {
       "username": "...",
       "password": "..."
@@ -266,7 +266,7 @@ GitLab 相关接口目前使用独立的响应格式：
   ```json
   {
     "code": 0,
-    "msg": "注册成功",
+    "msg": "注册成功, 请尽快修改您的密码",
     "data": {
       "username": "...",
       "password": "..."
@@ -657,5 +657,71 @@ GitLab 相关接口目前使用独立的响应格式：
     "data": {
       "serverTime": 1714348800
     }
+  }
+  ```
+
+---
+
+## 7. OAuth2 端点 (OAuth2 Endpoints)
+
+> 本节接口符合标准 OAuth2 规范，用于 Token 验证、吊销及公钥分发。
+
+### 7.1 JWKS 公钥端点
+- **URL**: `/.well-known/jwks.json`
+- **Method**: `GET`
+- **Description**: 返回 RSA 公钥的 JWKS (JSON Web Key Set) 格式，用于 OAuth2 客户端验证 Token 签名。建议客户端缓存此响应，缓存时长由 `Cache-Control` 头指定。
+- **Response**:
+  ```json
+  {
+    "keys": [
+      {
+        "kty": "RSA",
+        "alg": "RS256",
+        "use": "sig",
+        "kid": "ueadmin-rsa-1",
+        "n": "...",
+        "e": "..."
+      }
+    ]
+  }
+  ```
+
+### 7.2 Token 内省端点 (Introspection)
+- **URL**: `/api/oauth2/introspect`
+- **Method**: `POST`
+- **Description**: 验证 Token 的有效性并返回详细信息。接受 `token` 参数（POST body 或 form 格式）。
+- **Params**:
+  - `token` (string, required): 要验证的 AuthToken 或 FlashToken
+- **Response (active=true)**:
+  ```json
+  {
+    "active": true,
+    "sub": "33",
+    "user_id": 33,
+    "token_type": "Bearer",
+    "username": "TestAccount",
+    "nickname": "TestAccount",
+    "email": "test@qq.com",
+    "roles": ["user"],
+    "exp": 1714348800
+  }
+  ```
+- **Response (active=false)**:
+  ```json
+  {
+    "active": false
+  }
+  ```
+
+### 7.3 Token 吊销端点 (Revocation)
+- **URL**: `/api/oauth2/revoke`
+- **Method**: `POST`
+- **Description**: 吊销指定的 Token，使其立即失效。接受 `token` 参数（POST body 或 form 格式）。
+- **Params**:
+  - `token` (string, required): 要吊销的 Token
+- **Response**:
+  ```json
+  {
+    "result": "ok"
   }
   ```
