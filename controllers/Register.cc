@@ -24,14 +24,12 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     auto _mfaService = MFAService::Instance();
     auto _gitlabService = GitlabService::Instance();
 
-	auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-    HttpResult result;
+	HttpResult result;
 
 	auto reqJson = req->getJsonObject();
     if (!reqJson) {
         result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k200OK);
         co_return resp;
     }
@@ -81,7 +79,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     if (!missingFields.empty()) {
         HttpResult result;
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: " + std::accumulate(missingFields.begin(), missingFields.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; }));
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         co_return resp;
     }
 
@@ -91,7 +89,7 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     }
     catch(const std::invalid_argument& e){
         result.setResult(ApiErrorCode::ApiError_InvalidOperation, e.what());
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k200OK);
         co_return resp;
     }
@@ -147,21 +145,18 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         }
     }
 
-    resp->setBody(result.toJsonString());
-
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     co_return resp;
 }
 
 Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::string phone) {
     auto _authService = AuthService::Instance();
 
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
     HttpResult result;
 
     if (phone.empty()) {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: phone");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         co_return resp;
     }
 
@@ -183,20 +178,18 @@ Task<HttpResponsePtr> Register::RegisterUserByPhone(HttpRequestPtr req, std::str
         result.msg = "注册成功, 请尽快修改您的密码";
     }
 
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     co_return resp;
 }
 
 Task<HttpResponsePtr> Register::RegisterUserByEmail(HttpRequestPtr req, std::string email) {
     auto _authService = AuthService::Instance();
 
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
     HttpResult result;
 
     if (email.empty()) {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必填项: email");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         co_return resp;
     }
 
@@ -218,18 +211,17 @@ Task<HttpResponsePtr> Register::RegisterUserByEmail(HttpRequestPtr req, std::str
         result.msg = "注册成功, 请尽快修改您的密码";
     }
 
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     co_return resp;
 }
 
 Task<HttpResponsePtr> Register::CheckUserExist(HttpRequestPtr req, std::string target) {
     auto _authService = AuthService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
 
     if (target.empty()) {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数: target");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         co_return resp;
     }
 
@@ -238,7 +230,7 @@ Task<HttpResponsePtr> Register::CheckUserExist(HttpRequestPtr req, std::string t
     result.setResult(ApiErrorCode::ApiError_Success, exist ? "用户已存在" : "用户不存在");
     result.jsondata["exist"] = exist;
     
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
 }

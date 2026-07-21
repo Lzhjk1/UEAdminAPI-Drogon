@@ -22,13 +22,11 @@ using namespace drogon_model::UEAdminAPI;
 using namespace UEAdminAPI;
 
 Task<HttpResponsePtr> GitlabController::createUser(HttpRequestPtr req) {
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"请求体必须是JSON格式\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -43,10 +41,11 @@ Task<HttpResponsePtr> GitlabController::createUser(HttpRequestPtr req) {
 
     // 如果有缺失的必填项，返回错误
     if (!missingFields.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + 
                       std::accumulate(missingFields.begin(), missingFields.end(), std::string(), 
                                      [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -62,8 +61,9 @@ Task<HttpResponsePtr> GitlabController::createUser(HttpRequestPtr req) {
         user = mapperUsers.findFutureOne(Criteria(User::Cols::_id, CompareOperator::EQ, 
                                                  std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"用户不存在\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -74,8 +74,9 @@ Task<HttpResponsePtr> GitlabController::createUser(HttpRequestPtr req) {
         paramMap.getParam("password"),
         paramMap.getParam("email"),
         gitlabId)) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"创建GitLab用户失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -92,23 +93,24 @@ Task<HttpResponsePtr> GitlabController::createUser(HttpRequestPtr req) {
         LOG_ERROR << "保存GitLab用户信息失败: " << e.base().what();
         // 尝试删除已创建的GitLab用户
         gitlabService->deleteUser(gitlabId);
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"保存GitLab用户信息失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
+    auto resp = HttpResponse::newHttpResponse();
     resp->setBody("{\"success\": true, \"gitlabId\": " + std::to_string(gitlabId) + "}");
+    resp->setContentTypeCode(CT_APPLICATION_JSON);
     co_return resp;
 }
 
 Task<HttpResponsePtr> GitlabController::deleteUser(HttpRequestPtr req) {
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"请求体必须是JSON格式\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -121,10 +123,11 @@ Task<HttpResponsePtr> GitlabController::deleteUser(HttpRequestPtr req) {
 
     // 如果有缺失的必填项，返回错误
     if (!missingFields.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + 
                       std::accumulate(missingFields.begin(), missingFields.end(), std::string(), 
                                      [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -140,8 +143,9 @@ Task<HttpResponsePtr> GitlabController::deleteUser(HttpRequestPtr req) {
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
                                                             std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -155,8 +159,9 @@ Task<HttpResponsePtr> GitlabController::deleteUser(HttpRequestPtr req) {
 
     // 从GitLab删除用户
     if (!gitlabService->deleteUser(*gitlabInfo.getUserId())) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"删除GitLab用户失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -166,23 +171,24 @@ Task<HttpResponsePtr> GitlabController::deleteUser(HttpRequestPtr req) {
                                                std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
         LOG_ERROR << "删除GitLab用户信息失败: " << e.base().what();
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"删除GitLab用户信息失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
+    auto resp = HttpResponse::newHttpResponse();
     resp->setBody("{\"success\": true}");
+    resp->setContentTypeCode(CT_APPLICATION_JSON);
     co_return resp;
 }
 
 Task<HttpResponsePtr> GitlabController::modifyUserPassword(HttpRequestPtr req) {
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"请求体必须是JSON格式\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -196,10 +202,11 @@ Task<HttpResponsePtr> GitlabController::modifyUserPassword(HttpRequestPtr req) {
 
     // 如果有缺失的必填项，返回错误
     if (!missingFields.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + 
                       std::accumulate(missingFields.begin(), missingFields.end(), std::string(), 
                                      [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -215,8 +222,9 @@ Task<HttpResponsePtr> GitlabController::modifyUserPassword(HttpRequestPtr req) {
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
                                                             std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -224,23 +232,24 @@ Task<HttpResponsePtr> GitlabController::modifyUserPassword(HttpRequestPtr req) {
     if (!gitlabService->modifyUserPassword(
         *gitlabInfo.getUserId(),
         paramMap.getParam("password"))) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"修改GitLab用户密码失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
+    auto resp = HttpResponse::newHttpResponse();
     resp->setBody("{\"success\": true}");
+    resp->setContentTypeCode(CT_APPLICATION_JSON);
     co_return resp;
 }
 
 Task<HttpResponsePtr> GitlabController::createImpersonationToken(HttpRequestPtr req) {
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"请求体必须是JSON格式\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -253,10 +262,11 @@ Task<HttpResponsePtr> GitlabController::createImpersonationToken(HttpRequestPtr 
 
     // 如果有缺失的必填项，返回错误
     if (!missingFields.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + 
                       std::accumulate(missingFields.begin(), missingFields.end(), std::string(), 
                                      [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -272,8 +282,9 @@ Task<HttpResponsePtr> GitlabController::createImpersonationToken(HttpRequestPtr 
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
                                                             std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -292,8 +303,9 @@ Task<HttpResponsePtr> GitlabController::createImpersonationToken(HttpRequestPtr 
         *gitlabInfo.getUserId(),
         impersonationToken,
         impersonationTokenId)) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"创建GitLab模拟令牌失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -307,23 +319,24 @@ Task<HttpResponsePtr> GitlabController::createImpersonationToken(HttpRequestPtr 
         LOG_ERROR << "更新GitLab令牌信息失败: " << e.base().what();
         // 尝试删除刚创建的令牌
         gitlabService->deleteImpersonationToken(*gitlabInfo.getUserId(), impersonationTokenId);
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"更新GitLab令牌信息失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
-    resp->setBody("{\"success\": true, \"token\": " + impersonationToken + "\"}");
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setBody("{\"success\": true, \"token\": \"" + impersonationToken + "\"}");
+    resp->setContentTypeCode(CT_APPLICATION_JSON);
     co_return resp;
 }
 
 Task<HttpResponsePtr> GitlabController::deleteImpersonationToken(HttpRequestPtr req) {
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"请求体必须是JSON格式\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -336,10 +349,11 @@ Task<HttpResponsePtr> GitlabController::deleteImpersonationToken(HttpRequestPtr 
 
     // 如果有缺失的必填项，返回错误
     if (!missingFields.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + 
                       std::accumulate(missingFields.begin(), missingFields.end(), std::string(), 
                                      [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -355,14 +369,17 @@ Task<HttpResponsePtr> GitlabController::deleteImpersonationToken(HttpRequestPtr 
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
                                                             std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
     // 如果没有令牌，直接返回成功
     if (gitlabInfo.getValueOfGitlabImpersonationTokenId() <= 0) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": true}");
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -370,8 +387,9 @@ Task<HttpResponsePtr> GitlabController::deleteImpersonationToken(HttpRequestPtr 
     if (!gitlabService->deleteImpersonationToken(
         *gitlabInfo.getUserId(),
         gitlabInfo.getValueOfGitlabImpersonationTokenId())) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"删除GitLab模拟令牌失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -383,23 +401,24 @@ Task<HttpResponsePtr> GitlabController::deleteImpersonationToken(HttpRequestPtr 
         mapperGitlabInfo.updateFuture(gitlabInfo).get();
     } catch (const DrogonDbException& e) {
         LOG_ERROR << "清空GitLab令牌信息失败: " << e.base().what();
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"清空GitLab令牌信息失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
+    auto resp = HttpResponse::newHttpResponse();
     resp->setBody("{\"success\": true}");
+    resp->setContentTypeCode(CT_APPLICATION_JSON);
     co_return resp;
 }
 
 Task<HttpResponsePtr> GitlabController::inviteToProject(HttpRequestPtr req) {
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"请求体必须是JSON格式\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -414,10 +433,11 @@ Task<HttpResponsePtr> GitlabController::inviteToProject(HttpRequestPtr req) {
 
     // 如果有缺失的必填项，返回错误
     if (!missingFields.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"缺少必填项: " + 
                       std::accumulate(missingFields.begin(), missingFields.end(), std::string(), 
                                      [](const std::string& a, const std::string& b) { return a + ", " + b; }) + "\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -433,8 +453,9 @@ Task<HttpResponsePtr> GitlabController::inviteToProject(HttpRequestPtr req) {
         gitlabInfo = mapperGitlabInfo.findFutureOne(Criteria(UserGitlabInfo::Cols::_user_id, CompareOperator::EQ, 
                                                             std::stoi(paramMap.getParam("userId")))).get();
     } catch (const DrogonDbException& e) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"用户GitLab信息不存在\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -443,8 +464,9 @@ Task<HttpResponsePtr> GitlabController::inviteToProject(HttpRequestPtr req) {
     try {
         accessLevel = static_cast<GitlabService::AccessLevels>(std::stoi(paramMap.getParam("accessLevel")));
     } catch (const std::exception& e) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"无效的访问级别\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -453,11 +475,14 @@ Task<HttpResponsePtr> GitlabController::inviteToProject(HttpRequestPtr req) {
         std::stoi(paramMap.getParam("projectId")),
         accessLevel,
         *gitlabInfo.getUserId())) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody("{\"success\": false, \"message\": \"邀请用户加入GitLab项目失败\"}");
-        resp->setStatusCode(k200OK);
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
+    auto resp = HttpResponse::newHttpResponse();
     resp->setBody("{\"success\": true}");
+    resp->setContentTypeCode(CT_APPLICATION_JSON);
     co_return resp;
 }

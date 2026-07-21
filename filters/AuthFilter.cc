@@ -32,9 +32,8 @@ void AuthFilter::doFilter(const HttpRequestPtr &req,
             return;
         }
 
-        auto resp = HttpResponse::newHttpResponse();
         UEAdminAPI::utils::HttpResult result(static_cast<int32_t>(UEAdminAPI::ApiErrorCode::ApiError_TokenMissing), "Authorization in header is missing or empty");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k200OK);
         fcb(resp);
         return;
@@ -55,22 +54,19 @@ void AuthFilter::doFilter(const HttpRequestPtr &req,
                 // 这里不应该使用flashToken, 其只应用于刷新token
                 // 提示并返回
                 result.setResult(UEAdminAPI::ApiErrorCode::ApiError_AuthenticationFailed, "flashToken 不能直接用于认证");
-                auto resp = HttpResponse::newHttpResponse();
-                resp->setBody(result.toJsonString());
+                auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
                 resp->setStatusCode(k401Unauthorized);
                 fcb(resp);
             } else {
                 result.setResult(UEAdminAPI::ApiErrorCode::ApiError_AuthenticationFailed, "未知token类型");
-                auto resp = HttpResponse::newHttpResponse();
-                resp->setBody(result.toJsonString());
+                auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
                 resp->setStatusCode(k401Unauthorized);
                 fcb(resp);
             }
         } else {
             // 验证失败，直接返回错误信息
             result.setResult(UEAdminAPI::ApiErrorCode::ApiError_TokenInvalidOrExpired, "token已失效");
-            auto resp = HttpResponse::newHttpResponse();
-            resp->setBody(result.toJsonString());
+            auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
             resp->setStatusCode(k401Unauthorized);
             fcb(resp);
         }

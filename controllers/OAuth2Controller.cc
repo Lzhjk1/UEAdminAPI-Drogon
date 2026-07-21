@@ -85,13 +85,14 @@ std::string getPublicKeyAsJwk() {
 /// 返回 /.well-known/jwks.json，用于 OAuth2 客户端获取公钥验证 Token 签名
 Task<HttpResponsePtr> OAuth2Controller::jwks(HttpRequestPtr req) {
     (void)req;
-    auto resp = HttpResponse::newHttpResponse();
     std::string jwkStr = getPublicKeyAsJwk();
     if (jwkStr.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody(R"({"keys":[]})");
         resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
+    auto resp = HttpResponse::newHttpResponse();
     resp->setBody(R"({"keys":[)" + jwkStr + R"(]})");
     resp->setContentTypeCode(CT_APPLICATION_JSON);
     resp->addHeader("Cache-Control", "public, max-age=3600");
@@ -101,9 +102,6 @@ Task<HttpResponsePtr> OAuth2Controller::jwks(HttpRequestPtr req) {
 /// @brief Token 验证端点（OAuth2 Introspection）
 /// 接受 token 参数（POST body 或 form），返回 Token 的活跃状态、用户信息及过期时间
 Task<HttpResponsePtr> OAuth2Controller::introspect(HttpRequestPtr req) {
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setContentTypeCode(CT_APPLICATION_JSON);
-
     std::string token;
     auto params = req->getParameters();
     auto it = params.find("token");
@@ -124,7 +122,9 @@ Task<HttpResponsePtr> OAuth2Controller::introspect(HttpRequestPtr req) {
     }
 
     if (token.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody(R"({"active":false,"error":"token_required"})");
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -168,18 +168,12 @@ Task<HttpResponsePtr> OAuth2Controller::introspect(HttpRequestPtr req) {
         } catch (...) {}
     }
 
-    Json::StreamWriterBuilder builder;
-    builder["indentation"] = "";
-    resp->setBody(Json::writeString(builder, jbody));
-    co_return resp;
+    co_return HttpResponse::newHttpJsonResponse(jbody);
 }
 
 /// @brief Token 吊销端点（OAuth2 Revocation）
 /// 接受 token 参数，在数据库中使该用户的 FlashToken 状态失效，实现登出效果
 Task<HttpResponsePtr> OAuth2Controller::revoke(HttpRequestPtr req) {
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setContentTypeCode(CT_APPLICATION_JSON);
-
     std::string token;
     auto params = req->getParameters();
     auto it = params.find("token");
@@ -200,7 +194,9 @@ Task<HttpResponsePtr> OAuth2Controller::revoke(HttpRequestPtr req) {
     }
 
     if (token.empty()) {
+        auto resp = HttpResponse::newHttpResponse();
         resp->setBody(R"({"result":"ok"})");
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
         co_return resp;
     }
 
@@ -222,6 +218,8 @@ Task<HttpResponsePtr> OAuth2Controller::revoke(HttpRequestPtr req) {
         }
     }
 
+    auto resp = HttpResponse::newHttpResponse();
     resp->setBody(R"({"result":"ok"})");
+    resp->setContentTypeCode(CT_APPLICATION_JSON);
     co_return resp;
 }

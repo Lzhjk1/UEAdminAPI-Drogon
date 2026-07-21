@@ -13,6 +13,7 @@ namespace UEAdminAPI {
 
 
             HttpResult(int32_t c = 0, std::string m = "success");
+            Json::Value toJson() const;
             std::string toJsonString() const;
             void setResult(int32_t c, std::string m);
             // Overload for ApiErrorCode

@@ -15,9 +15,6 @@ public:
 	// ADD_METHOD_TO(User::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
 	METHOD_LIST_END
 
-    // 
-    TestController();
-
     Task<HttpResponsePtr> TestHandler(HttpRequestPtr req);
 
 };

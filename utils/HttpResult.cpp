@@ -5,7 +5,7 @@ UEAdminAPI::utils::HttpResult::HttpResult(int32_t c, std::string m) {
     msg = m;
 }
 
-std::string UEAdminAPI::utils::HttpResult::toJsonString() const {
+Json::Value UEAdminAPI::utils::HttpResult::toJson() const {
     Json::Value v;
     v["code"] = code;
     v["msg"] = msg;
@@ -15,10 +15,12 @@ std::string UEAdminAPI::utils::HttpResult::toJsonString() const {
     else {
         v["data"] = Json::objectValue;
     }
-    Json::FastWriter writer;
-    std::string res = writer.write(v);
+    return v;
+}
 
-    return res;
+std::string UEAdminAPI::utils::HttpResult::toJsonString() const {
+    Json::FastWriter writer;
+    return writer.write(toJson());
 }
 
 void UEAdminAPI::utils::HttpResult::setResult(int32_t c, std::string m) {

@@ -7,12 +7,10 @@ using namespace UEAdminAPI::utils;
 Task<HttpResponsePtr> SystemController::Ping(HttpRequestPtr req) {
     auto _systemService = SystemService::Instance();
 
-    auto resp = HttpResponse::newHttpResponse();
-    
     HttpResult result = co_await _systemService->Ping();
-    
-    resp->setBody(result.toJsonString());
+
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
-    
+
     co_return resp;
 }

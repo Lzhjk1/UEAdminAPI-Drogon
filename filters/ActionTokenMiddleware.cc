@@ -19,9 +19,8 @@ void ActionTokenMiddleware::invoke(const HttpRequestPtr &req,
     if (expectedAction == eMFAType::Error) {
         LOG_FATAL << "ActionTokenMiddleware: 未注册的路由: " << req->method() << ":" << req->path() 
                   << " 应用了 ActionTokenMiddleware, 请检查是否忘记在 ActionTokenService 的构造函数里注册或更改了路由!";
-        auto resp = HttpResponse::newHttpResponse();
         HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_AuthenticationFailed), "认证失败");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k401Unauthorized);
         mcb(resp);
         return;
@@ -30,9 +29,8 @@ void ActionTokenMiddleware::invoke(const HttpRequestPtr &req,
     // 2. 从请求头中提取 X-Action-Token
     std::string actionToken = req->getHeader("X-Action-Token");
     if (actionToken.empty()) {
-        auto resp = HttpResponse::newHttpResponse();
         HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_MissingRequiredArgs), "缺少 X-Action-Token 请求头");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k401Unauthorized);
         mcb(resp);
         return;
@@ -71,9 +69,8 @@ void ActionTokenMiddleware::invoke(const HttpRequestPtr &req,
     auto tokenInfoOpt = _actionTokenService->ExtractToken(actionToken, expectedAction, userId, requestTarget);
 
     if (!tokenInfoOpt.has_value()) {
-        auto resp = HttpResponse::newHttpResponse();
         HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_InvalidVerifyCode), "ActionToken 无效、已过期、正在处理中或无权执行此操作");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k200OK);
         mcb(resp);
         return;
