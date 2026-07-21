@@ -19,6 +19,7 @@ using namespace std;
 
 namespace {
 
+/// @brief 字节数组转十六进制字符串
 string bytesToHex(const unsigned char* data, size_t len) {
     ostringstream oss;
     for (size_t i = 0; i < len; ++i)
@@ -26,12 +27,14 @@ string bytesToHex(const unsigned char* data, size_t len) {
     return oss.str();
 }
 
+/// @brief SHA256 哈希，输出十六进制字符串
 string sha256Hex(const string& data) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256((const unsigned char*)data.data(), data.size(), hash);
     return bytesToHex(hash, SHA256_DIGEST_LENGTH);
 }
 
+/// @brief HMAC-SHA256 签名，输出十六进制字符串
 string hmacSha256Hex(const string& key, const string& data) {
     unsigned char hash[SHA256_DIGEST_LENGTH * 2] = {0};
     unsigned int len = SHA256_DIGEST_LENGTH;
@@ -41,6 +44,7 @@ string hmacSha256Hex(const string& key, const string& data) {
     return bytesToHex(hash, len);
 }
 
+/// @brief HMAC-SHA256 签名，输出原始字节字符串
 string hmacSha256Raw(const string& key, const string& data) {
     unsigned char hash[SHA256_DIGEST_LENGTH] = {0};
     unsigned int len = SHA256_DIGEST_LENGTH;
@@ -82,6 +86,11 @@ TencentSMSService::TencentSMSService(const Json::Value& config) {
     LOG_INFO << "TencentSMSService initialized (HTTP mode)";
 }
 
+/// @brief 发送短信
+/// 构造 TC3-HMAC-SHA256 签名，通过 HTTP POST 调用腾讯云 SMS API
+/// @param phoneNumber 手机号（不含 +86 前缀，内部自动拼接）
+/// @param type MFA 类型，用于选择模板
+/// @param templateParams 模板参数
 drogon::Task<bool> TencentSMSService::SendSms(const string& phoneNumber, eMFAType type,
                                                 const vector<string>& templateParams) {
     // 获取模板ID

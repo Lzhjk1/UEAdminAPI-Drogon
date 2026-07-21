@@ -81,6 +81,8 @@ std::string getPublicKeyAsJwk() {
 
 } // namespace
 
+/// @brief 获取 RSA 公钥 JWKS 端点
+/// 返回 /.well-known/jwks.json，用于 OAuth2 客户端获取公钥验证 Token 签名
 Task<HttpResponsePtr> OAuth2Controller::jwks(HttpRequestPtr req) {
     (void)req;
     auto resp = HttpResponse::newHttpResponse();
@@ -96,6 +98,8 @@ Task<HttpResponsePtr> OAuth2Controller::jwks(HttpRequestPtr req) {
     co_return resp;
 }
 
+/// @brief Token 验证端点（OAuth2 Introspection）
+/// 接受 token 参数（POST body 或 form），返回 Token 的活跃状态、用户信息及过期时间
 Task<HttpResponsePtr> OAuth2Controller::introspect(HttpRequestPtr req) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setContentTypeCode(CT_APPLICATION_JSON);
@@ -170,6 +174,8 @@ Task<HttpResponsePtr> OAuth2Controller::introspect(HttpRequestPtr req) {
     co_return resp;
 }
 
+/// @brief Token 吊销端点（OAuth2 Revocation）
+/// 接受 token 参数，在数据库中使该用户的 FlashToken 状态失效，实现登出效果
 Task<HttpResponsePtr> OAuth2Controller::revoke(HttpRequestPtr req) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setContentTypeCode(CT_APPLICATION_JSON);

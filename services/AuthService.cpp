@@ -42,6 +42,11 @@ using namespace UEAdminAPI::utils;
 // RSA 密钥初始化
 // =====================================================================
 
+/**
+ * @brief 初始化 RSA 密钥对
+ * 优先级：1. 从 PEM 文件加载  2. 从配置内嵌 PEM 字符串加载  3. 自动生成 2048 位密钥对
+ * @param config JSON 配置对象，从 custom_config.UserManage 读取
+ */
 void AuthService::initRsaKeys(const Json::Value &config) {
     // 优先从配置文件加载 PEM 文件路径
     auto &jwtCfg = config["UserManage"];

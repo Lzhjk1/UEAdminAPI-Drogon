@@ -26,8 +26,9 @@ private:
     void initRsaKeys(const Json::Value &config);
 
 public:
-    /// 获取 RSA 公钥 PEM（供 OAuth2Controller JWKS 端点使用）
+    /// @brief 获取 RSA 公钥 PEM（供 OAuth2Controller JWKS 端点使用）
     const std::string& getPublicKeyPem() const { return _publicKeyPem; }
+
     AuthService(const Json::Value &config);
 
     std::vector<unsigned char> stringToVector(const std::string &str);
@@ -133,8 +134,6 @@ public:
        const UserPrivileges &privilege = UserPrivileges::User, 
        const bool &isMale = true,
        const std::string &nickname = "");
-
-    //
 
     /// @brief 附带第三方平台的电话注册
     drogon::Task<UEAdminAPI::utils::HttpResult> RegisterWithThirdPartyByPhone(
