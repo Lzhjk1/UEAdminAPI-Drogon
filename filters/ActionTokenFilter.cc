@@ -55,11 +55,11 @@ void ActionTokenFilter::doFilter(const HttpRequestPtr &req,
     std::string requestTarget;
     if (userId <= 0) {
         const std::string& path = req->path();
-        if (path == "/user/login/email" || path == "/user/create/email") {
+        if (path == "/api/user/login/email" || path == "/api/user/create/email") {
             requestTarget = req->getParameter("email");
-        } else if (path == "/user/login/phone" || path == "/user/create/phone") {
+        } else if (path == "/api/user/login/phone" || path == "/api/user/create/phone") {
             requestTarget = req->getParameter("phone");
-        } else if (path == "/user/create") {
+        } else if (path == "/api/user/create") {
             auto reqJson = req->getJsonObject();
             if (reqJson) {
                 if (reqJson->isMember("email") && (*reqJson)["email"].isString()) {
