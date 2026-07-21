@@ -1,7 +1,9 @@
 name: C++ Build
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - '*'
 
 concurrency:
   group: build-${{ github.ref }}
