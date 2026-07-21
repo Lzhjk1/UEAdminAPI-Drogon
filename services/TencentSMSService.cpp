@@ -7,6 +7,7 @@
 #include <cstring>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
+#include <chrono>
 #include <trantor/utils/Logger.h>
 
 using namespace std;
@@ -115,14 +116,14 @@ drogon::Task<bool> TencentSMSService::SendSms(const string& phoneNumber, eMFATyp
     wb["indentation"] = "";
     string payload = Json::writeString(wb, body);
 
-    // 计算时间
+    // 计算时间（C++20 chrono，跨平台兼容）
     auto now = chrono::system_clock::now();
     auto timestamp = chrono::duration_cast<chrono::seconds>(now.time_since_epoch()).count();
-    auto tt = chrono::system_clock::to_time_t(now);
-    tm utcTm;
-    gmtime_r(&tt, &utcTm);
+    auto dp = chrono::floor<chrono::days>(now);
+    auto ymd = chrono::year_month_day{dp};
     char dateBuf[16];
-    strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", &utcTm);
+    snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d",
+             (int)ymd.year(), (unsigned)ymd.month(), (unsigned)ymd.day());
     string date(dateBuf);
 
     // TC3-HMAC-SHA256 签名
