@@ -55,15 +55,15 @@ ActionTokenService::ActionTokenService(const Json::Value& config) {
     // 路由+Method -> Action 类别 (复用 eMFAType)
     // 格式: "METHOD:PATH"
     // ========================================
-    _routeToActionMap["DELETE:/user/delete"] = eMFAType::DeleteUser;
+    _routeToActionMap["DELETE:/api/user/delete"] = eMFAType::DeleteUser;
     _routeToActionMap["POST:/api/third/unbind"] = eMFAType::ThirdPartyBind;
     _routeToActionMap["POST:/api/third/bind"] = eMFAType::ThirdPartyBind;
-    _routeToActionMap["POST:/user/update"] = eMFAType::ModifyUser;
-    _routeToActionMap["GET:/user/login/email"] = eMFAType::Login;
-    _routeToActionMap["GET:/user/login/phone"] = eMFAType::Login;
-    _routeToActionMap["POST:/user/create"] = eMFAType::Register;
-    _routeToActionMap["POST:/user/create/phone"] = eMFAType::Register;
-    _routeToActionMap["POST:/user/create/email"] = eMFAType::Register;
+    _routeToActionMap["POST:/api/user/update"] = eMFAType::ModifyUser;
+    _routeToActionMap["GET:/api/user/login/email"] = eMFAType::Login;
+    _routeToActionMap["GET:/api/user/login/phone"] = eMFAType::Login;
+    _routeToActionMap["POST:/api/user/create"] = eMFAType::Register;
+    _routeToActionMap["POST:/api/user/create/phone"] = eMFAType::Register;
+    _routeToActionMap["POST:/api/user/create/email"] = eMFAType::Register;
 
     LOG_INFO << "ActionTokenService 初始化完成";
 }
