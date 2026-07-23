@@ -15,6 +15,7 @@
 #include "services/ThirdPartyLoginService.h"
 #include "services/SystemService.h"
 #include "services/ActionTokenService.h"
+#include "utils/TestModeConfig.h"
 
 #include "controllers/OAuth2Controller.h"
 
@@ -128,6 +129,8 @@ int main() {
     // app 启动后回调中初始化单例服务（消除竞态条件）
     app.registerBeginningAdvice([]{
         LOG_INFO << "启动成功, 开始初始化插件与服务";
+        // 初始化测试模式配置 (最先初始化, 以便后续服务读取)
+        TestModeConfig::Init(drogon::app().getCustomConfig());
         // 初始化单例服务
         auto smtpPlugin = drogon::app().getPlugin<SMTPMail>();
         AuthService::Init(drogon::app().getCustomConfig());

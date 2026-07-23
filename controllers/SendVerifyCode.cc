@@ -53,8 +53,21 @@ Task<HttpResponsePtr> SendVerifyCode::CheckCode(HttpRequestPtr req, std::string 
     co_return resp;
 }
 
+int SendVerifyCode::EffectiveColdDown() const {
+    // 测试模式启用时, 使用 TestMode.ColdDownSec (0 表示不限制); 否则使用默认 _coldDownTime
+    if (TestModeConfig::Enable())
+        return TestModeConfig::ColdDownSec();
+    return _coldDownTime;
+}
+
 bool SendVerifyCode::IsInColdDown(std::string ipAddr) {
     std::lock_guard<std::mutex> lock(_mutexForColdDownMap);
+
+    int coldDown = EffectiveColdDown();
+    // 冷却时间为 0 表示不限制
+    if (coldDown <= 0) {
+        return false;
+    }
 
     bool isInColdDown = true;
 
@@ -65,7 +78,7 @@ bool SendVerifyCode::IsInColdDown(std::string ipAddr) {
         isInColdDown = false;
     }
     // 找到了记录, 检查是否处于冷却中
-    else if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - it->second).count() < _coldDownTime) {
+    else if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - it->second).count() < coldDown) {
         isInColdDown =  true;
     }
     else{
@@ -75,7 +88,7 @@ bool SendVerifyCode::IsInColdDown(std::string ipAddr) {
 
     // 清除过期的记录
     for(auto it = _coldDownMap.begin(); it != _coldDownMap.end();) {
-        if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - it->second).count() > _coldDownTime) {
+        if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - it->second).count() > coldDown) {
             it = _coldDownMap.erase(it);
         }
         else {

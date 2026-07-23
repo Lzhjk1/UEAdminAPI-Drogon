@@ -1,0 +1,34 @@
+序号,文件,测试函数,覆盖接口,验证内容
+1,test_system.py,test_ping,GET /api/system/ping,服务存活、返回 code=0 msg=pong serverTime
+2,test_mfa.py,test_send_and_fetch_code,GET /api/user/mfa + GET /api/test/mfa/latest,发送验证码后通过调试接口取回 断言是6位纯数字
+3,test_mfa.py,test_check_code_correct,GET /api/user/mfa/check,用真实生成的码校验返回成功
+4,test_mfa.py,test_check_code_wrong,GET /api/user/mfa/check,错误码应返回 -401 ApiError_InvalidVerifyCode
+5,test_mfa.py,test_check_code_not_consumed,GET /api/user/mfa/check,check接口 isConsume=false 同一码可重复校验通过
+6,test_mfa.py,test_send_invalid_channel,GET /api/user/mfa,非邮箱非手机的target应返回 -103 ApiError_InternalError
+7,test_mfa.py,test_latest_code_expired_or_absent,GET /api/test/mfa/latest,查询不存在的验证码返回 -401
+8,test_mfa.py,test_code_is_random,GET /api/user/mfa + latest,连续6次发送至少出现两种不同码 验证走随机而非硬编码
+9,test_actiontoken.py,test_anonymous_login_token,GET /api/user/action_token/anonymous (Login),匿名Login ActionToken颁发成功 含actionToken/expiresIn=300
+10,test_actiontoken.py,test_anonymous_register_token,GET /api/user/action_token/anonymous (Register),匿名Register ActionToken颁发成功
+11,test_actiontoken.py,test_anonymous_wrong_code,GET /api/user/action_token/anonymous,错误验证码申请应失败 返回 -401
+12,test_actiontoken.py,test_anonymous_target_mismatch,GET /api/user/action_token/anonymous,用email1的码申请绑定到email2应失败 返回 -401 验证码不存在
+13,test_actiontoken.py,test_anonymous_invalid_mfa_type,GET /api/user/action_token/anonymous,匿名接口拒绝DeleteUser 返回 -105 ApiError_InvalidOperation
+14,test_actiontoken.py,test_logged_in_action_token_requires_mfa,GET /api/user/action_token (DeleteUser),已绑定邮箱的用户未传mfaCode申请应返回 -102
+15,test_actiontoken.py,test_logged_in_action_token_with_wrong_mfa_type,GET /api/user/action_token,不支持的mfaType应返回 -105 ApiError_InvalidOperation
+16,test_register.py,test_register_by_email,POST /api/user/create/email,邮箱快速注册返回username/password 并自动清理
+17,test_register.py,test_register_by_phone,POST /api/user/create/phone,手机快速注册返回username/password 并自动清理
+18,test_register.py,test_general_register_and_check_exist,POST /api/user/create + GET /api/user/check_exist,通用注册后check_exist返回exist=true
+19,test_register.py,test_check_exist_nonexistent,GET /api/user/check_exist,已登录客户端查询不存在邮箱返回exist=false
+20,test_register.py,test_register_missing_args,POST /api/user/create,仅传email缺username/password应返回-102 MissingRequiredArgs
+21,test_auth_login.py,test_login_pwd_success,GET /api/user/login/pwd,注册账号密码登录成功并持有token
+22,test_auth_login.py,test_login_pwd_wrong,GET /api/user/login/pwd,错误密码应返回-301 InvalidCredentials
+23,test_auth_login.py,test_login_email_code,GET /api/user/login/email,邮箱验证码登录返回token 并自动清理(fresh_client)
+24,test_auth_login.py,test_login_phone_code,GET /api/user/login/phone,手机验证码登录返回token 并自动清理(fresh_client)
+25,test_auth_login.py,test_login_flashtoken_and_verify,GET /api/user/login/flashtoken + GET /api/user/token/verify/flash + GET /api/user/token/verify/auth,先验证FlashToken再登录 验证Auth类型字段正确
+26,test_auth_login.py,test_logout,POST /api/user/logout + GET /api/user/self,自注册临时账号注销后self失败 _delete_account重新登录后清理
+27,test_auth_login.py,test_get_self,GET /api/user/self,返回的userName/email与注册账号一致
+28,test_user_manage.py,test_update_nickname,POST /api/user/update,修改昵称成功并在self中生效
+29,test_user_manage.py,test_update_is_male,POST /api/user/update,修改性别为女 self中sex=woman
+30,test_user_manage.py,test_update_email,POST /api/user/update,修改为新邮箱 需新邮箱EmailBind验证码 self中email更新 fixture teardown用新邮箱删除
+31,test_user_manage.py,test_update_email_already_bound,POST /api/user/update,新邮箱已被占位账号占用应返回-304 EmailAlreadyExists 占位账号自动清理
+32,test_user_manage.py,test_update_unbind_email,POST /api/user/update,解绑邮箱 需当前邮箱Unbind验证码 self中email为空 并禁用teardown的email删除
+33,test_user_manage.py,test_delete_user,DELETE /api/user/delete + GET /api/user/self,复用fresh_email_account 申请DeleteUser ActionToken->删除 之后旧token失效

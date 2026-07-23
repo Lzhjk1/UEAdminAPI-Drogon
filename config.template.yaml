@@ -60,3 +60,9 @@ custom_config:
     WeChat:
       ClientId: [这里填微信 ClientId]
       ClientSecret: [这里填微信 ClientSecret]
+
+  # 测试模式配置 (自动化测试用, 生产环境务必保持 Enable: false)
+  TestMode:
+    Enable: false          # 测试模式总开关
+    FixedCode: ""          # 测试模式下使用的固定验证码, 留空则随机生成
+    ColdDownSec: 0         # 测试模式下的发送冷却时间(秒), 0 表示不限制

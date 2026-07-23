@@ -73,6 +73,11 @@ eChannelType MFAChannelBase::DetermineChannelType(const std::string &target) {
     return eChannelType::None;
 }
 
+bool MFAChannelBase::StoreCodePair(std::shared_ptr<ICodePair> codePair) {
+    // 测试模式专用: 跳过真实发送, 直接将验证码对存入内存列表
+    return AddCodePairToList(codePair);
+}
+
 // ========== MFA_EmailChannel ==========
 
 MFA_EmailChannel::MFA_EmailChannel(IEmailService *emailService)
@@ -145,4 +150,10 @@ drogon::Task<std::pair<bool, std::string>> MFA_SMSChannel::SendCode(std::shared_
 bool MFA_SMSChannel::VerifyTheCode(const string &baseInfo, const string &code, eMFAType type, string &errorMsg, bool isConsume) {
     auto [countryCode, phoneNumber] = CodePairBase::SMSCodePair::ParsePhoneNumber(baseInfo);
     return MFAChannelBase::VerifyTheCode(countryCode + phoneNumber, code, type, errorMsg, isConsume);
+}
+
+optional<shared_ptr<ICodePair>> MFA_SMSChannel::GetCodePair(const std::string &key, const eMFAType& type) {
+    // 与 VerifyTheCode 同样的区号归一化逻辑
+    auto [countryCode, phoneNumber] = CodePairBase::SMSCodePair::ParsePhoneNumber(key);
+    return MFAChannelBase::GetCodePair(countryCode + phoneNumber, type);
 }

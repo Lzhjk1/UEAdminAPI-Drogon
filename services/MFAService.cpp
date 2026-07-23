@@ -1,5 +1,6 @@
 #include "MFAService.h"
 #include "utils/MFA/MFACodePair.h"
+#include "utils/TestModeConfig.h"
 #include <drogon/drogon.h>
 #include <trantor/utils/Logger.h>
 
@@ -38,6 +39,22 @@ Task<std::tuple<bool, std::string>> MFAService::SendTheCode(const std::string &t
         LOG_ERROR << "验证码发送失败, 生成CodePair失败 : " << innerErrorMsg;
         co_return std::make_tuple(false, innerErrorMsg);
     }
+
+    // 测试模式: 跳过真实发送, 直接入库, 便于测试侧通过调试接口取码
+    if (TestModeConfig::Enable()) {
+        const auto &fixed = TestModeConfig::FixedCode();
+        if (!fixed.empty())
+            codePair->SetCode(fixed);
+        bool ok = channel->StoreCodePair(codePair);
+        if (!ok) {
+            LOG_ERROR << "测试模式下验证码入库失败";
+            co_return std::make_tuple(false, std::string("验证码入库失败"));
+        }
+        LOG_INFO << "[TestMode] 验证码已生成(未发送), 目标: "
+                 << codePair->BaseInfo() << ", 验证码: " << codePair->Code();
+        co_return std::make_tuple(true, std::string("验证码发送成功.(测试模式)"));
+    }
+
     auto [result, errorMsg] = co_await channel->SendCode(codePair);
     if (!result) {
         LOG_ERROR << "验证码发送失败";
@@ -57,4 +74,19 @@ Task<std::tuple<bool, std::string>> MFAService::VerifyTheCode(const std::string 
     std::string errorMsg;
     bool result = channel->VerifyTheCode(target, code, type, errorMsg, isConsume);
     co_return std::make_tuple(result, errorMsg);
+}
+
+std::optional<std::string> MFAService::GetLatestCode(const std::string &target, eMFAType type) {
+    auto channelType = MFAChannelBase::DetermineChannelType(target);
+    if (channelType == eChannelType::None)
+        return std::nullopt;
+    auto channel = GetChannel(channelType);
+    if (!channel)
+        return std::nullopt;
+    auto codePair = channel->GetCodePair(target, type);
+    if (!codePair)
+        return std::nullopt;
+    if ((*codePair)->IsExpired())
+        return std::nullopt;
+    return (*codePair)->Code();
 }

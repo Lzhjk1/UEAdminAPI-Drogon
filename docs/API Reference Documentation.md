@@ -173,7 +173,7 @@ GitLab 相关接口目前使用独立的响应格式：
     "data": {
         "configured_third_platform_name": [],
         "created_at": "20260331 10:01:45",
-        "emails": "everspace@qq.com",
+        "email": "everspace@qq.com",
         "gitlab_token": "glpat-xxxxxxxxxxxxxxxxx",
         "id": 33,
         "sex": "man",

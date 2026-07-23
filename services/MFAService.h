@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <optional>
 #include <utils/MFA/eMFA_Type.h>
 #include "utils/SingletonWithInit.h"
 #include "utils/MFA/IEmailService.h"
@@ -15,6 +16,12 @@ public:
     virtual ~IMFAService() = default;
     virtual Task<std::tuple<bool, std::string>> SendTheCode(const std::string& target, eMFAType type) = 0;
     virtual Task<std::tuple<bool, std::string>> VerifyTheCode(const std::string& target, const std::string& code, eMFAType type, bool isConsume = true) = 0;
+
+    /**
+     * @brief 查询指定 target 与 type 的最新验证码(测试模式专用)
+     * @return 返回验证码字符串; 若不存在或已过期返回 std::nullopt
+     */
+    virtual std::optional<std::string> GetLatestCode(const std::string& target, eMFAType type) = 0;
 };
 
 class MFAService : public IMFAService, public SingletonWithInit<MFAService> {
@@ -42,5 +49,7 @@ public:
      * 第一个参数表示是否成功, 第二个表示错误信息
      */
     Task<std::tuple<bool, std::string>> VerifyTheCode(const std::string& target, const std::string& code, eMFAType type, bool isConsume = true) override;
+
+    std::optional<std::string> GetLatestCode(const std::string& target, eMFAType type) override;
 };
 
