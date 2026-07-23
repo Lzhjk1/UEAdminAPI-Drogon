@@ -5,12 +5,11 @@
 ## 前置条件
 
 1. **后端开启测试模式**：在 `config.json` 的 `custom_config` 中启用：
-   ```json
-   "TestMode": {
-       "Enable": true,
-       "FixedCode": "",
-       "ColdDownSec": 0
-   }
+   ```yaml
+   TestMode:
+     Enable: true
+     FixedCode: ""
+     ColdDownSec: 0
    ```
    - `Enable: true` 时验证码不会真实发送(不调 SMTP / 短信网关)，而是直接入库。
    - `FixedCode` 指定固定验证码，**留空则随机生成**（默认）。测试侧统一通过调试接口 `GET /api/test/mfa/latest` 动态取回，无需与后端约定固定值。
@@ -29,7 +28,7 @@
 在项目根目录执行：
 
 ```bash
-# 默认指向 http://127.0.0.1:80
+# 默认指向 https://im.uesoft.com
 pytest tests/
 
 # 指定服务地址 / 邮箱域名
@@ -54,6 +53,7 @@ pytest tests/
 
 ```
 tests/
+  detail.csv           # 测试用例说明
   conftest.py          # 全局夹具: testmode 闸门、账号注册/登录/回收
   api_client.py        # HTTP 客户端封装
   requirements.txt     # Python 依赖
