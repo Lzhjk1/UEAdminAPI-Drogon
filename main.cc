@@ -130,21 +130,21 @@ int main() {
     app.registerBeginningAdvice([]{
         LOG_INFO << "启动成功, 开始初始化插件与服务";
         // 初始化测试模式配置 (最先初始化, 以便后续服务读取)
-        TestModeConfig::Init(app.getCustomConfig());
+        TestModeConfig::Init(drogon::app().getCustomConfig());
         // 初始化单例服务
-        auto smtpPlugin = app.getPlugin<SMTPMail>();
-        AuthService::Init(app.getCustomConfig());
-        TencentSMSService::Init(app.getCustomConfig());
-        EmailService::Init(smtpPlugin, app.getCustomConfig());
+        auto smtpPlugin = drogon::app().getPlugin<SMTPMail>();
+        AuthService::Init(drogon::app().getCustomConfig());
+        TencentSMSService::Init(drogon::app().getCustomConfig());
+        EmailService::Init(smtpPlugin, drogon::app().getCustomConfig());
         MFAService::Init(
             EmailService::Instance(), 
             TencentSMSService::Instance()
         );
-        UEAdminAPI::GitlabService::Init(app.getCustomConfig());
-        UEAdminAPI::Services::ThirdPartyLoginService::Init(app.getCustomConfig());
+        UEAdminAPI::GitlabService::Init(drogon::app().getCustomConfig());
+        UEAdminAPI::Services::ThirdPartyLoginService::Init(drogon::app().getCustomConfig());
         SystemService::Init();
-        UEAdminAPI::Services::ActionTokenService::Init(app.getCustomConfig());
-        UEAdminAPI::Services::SQLiteService::Init(app.getCustomConfig());
+        UEAdminAPI::Services::ActionTokenService::Init(drogon::app().getCustomConfig());
+        UEAdminAPI::Services::SQLiteService::Init(drogon::app().getCustomConfig());
 
         LOG_INFO << "服务初始化完成";
     });
