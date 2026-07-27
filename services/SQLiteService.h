@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "utils/SingletonWithInit.h"
 #include "utils/SQLite/SqliteConnection.h"
@@ -102,6 +102,19 @@ public:
         const std::string& templateKind,
         const std::string& fileName);
 
+    // ---- Access 上传与迁移 ----
+    // 接收 base64 编码的 .mdb 文件内容, 保存到临时文件, 调用 MdbToSqliteMigrator
+    // 转为 SQLite, 注册到 core.project_databases, 返回 logicalName.
+    // mdbFileName: 原始文件名 (如 "Admin.mdb"), 用于推断 templateKind
+    // base64Data: base64 编码的 .mdb 文件内容
+    // scope: "global" 或 "project"
+    // projectCode: scope=project 时必填
+    drogon::Task<UEAdminAPI::utils::HttpResult> uploadMdb(
+        const std::string& mdbFileName,
+        const std::string& base64Data,
+        const std::string& scope,
+        const std::string& projectCode);
+
     // ---- 健康检查 ----
     drogon::Task<UEAdminAPI::utils::HttpResult> ping();
 
@@ -133,6 +146,9 @@ private:
     // 生成/校验事务 token
     std::string newTxToken();
 
+    // 获取每连接互斥锁 (getConnection 后调用)
+    std::mutex* getConnMutex(const std::string& logicalName) const;
+
     // 事务表: txId -> (logicalName, expiresAt)
     struct TxInfo {
         std::string logicalName;
@@ -145,6 +161,7 @@ private:
 
     mutable std::mutex _poolMutex;
     std::map<std::string, UEAdminAPI::SQLite::SqliteConnectionPtr> _pool;
+    std::map<std::string, std::unique_ptr<std::mutex>> _connMutexes;  // 每连接互斥锁, 防止并发访问同一 sqlite3*
 
     mutable std::mutex _txMutex;
     std::map<std::string, TxInfo> _activeTx;                    // txId -> info

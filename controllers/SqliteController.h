@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <drogon/HttpController.h>
 
@@ -22,6 +22,7 @@ public:
     ADD_METHOD_TO(SqliteController::CommitTransaction, "/api/sqlite/tx/commit",   Post, "AuthFilter");
     ADD_METHOD_TO(SqliteController::RollbackTransaction, "/api/sqlite/tx/rollback", Post, "AuthFilter");
     ADD_METHOD_TO(SqliteController::ResolveLogicalName, "/api/sqlite/resolve",    Post, "AuthFilter");
+    ADD_METHOD_TO(SqliteController::UploadMdb,           "/api/sqlite/upload-mdb", Post, "AuthFilter");
     METHOD_LIST_END
 
     // POST /api/sqlite/query
@@ -41,4 +42,8 @@ public:
 
     // POST /api/sqlite/resolve
     Task<HttpResponsePtr> ResolveLogicalName(HttpRequestPtr req);
+
+    // POST /api/sqlite/upload-mdb
+    // 上传 .mdb 文件 (base64), 服务端转为 SQLite 并注册路由, 返回 logicalName
+    Task<HttpResponsePtr> UploadMdb(HttpRequestPtr req);
 };

@@ -1,6 +1,7 @@
 ﻿#include "SQLiteService.h"
 
 #include "utils/ApiErrorCodes.h"
+#include "utils/BackgroundExecutor.h"
 #include "AuditLogService.h"
 
 #include <drogon/orm/DbClient.h>
@@ -15,8 +16,13 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <random>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <sstream>
 
 using namespace UEAdminAPI;
@@ -383,6 +389,16 @@ std::string SQLiteService::resolveDbPath(const std::string& logicalName) const {
     return p.string();
 }
 
+std::mutex* SQLiteService::getConnMutex(const std::string& logicalName) const {
+    std::string key = logicalName.empty() ? _defaultDbName : logicalName;
+    std::lock_guard<std::mutex> lock(_poolMutex);
+    auto it = _connMutexes.find(key);
+    if (it != _connMutexes.end()) {
+        return it->second.get();
+    }
+    return nullptr;
+}
+
 SqliteConnectionPtr SQLiteService::getConnection(const std::string& logicalName) {
     std::string key = logicalName.empty() ? _defaultDbName : logicalName;
 
@@ -400,6 +416,7 @@ SqliteConnectionPtr SQLiteService::getConnection(const std::string& logicalName)
         return SqliteConnectionPtr();
     }
     _pool[key] = conn;
+    _connMutexes[key] = std::unique_ptr<std::mutex>(new std::mutex());
     return conn;
 }
 
@@ -417,6 +434,7 @@ void SQLiteService::releaseConnection(const std::string& logicalName) {
         }
         _pool.erase(it);
     }
+    _connMutexes.erase(key);
 }
 
 void SQLiteService::closeAll() {
@@ -427,6 +445,7 @@ void SQLiteService::closeAll() {
         }
     }
     _pool.clear();
+    _connMutexes.clear();
 }
 
 bool SQLiteService::execute(const std::string& logicalName,
@@ -488,8 +507,8 @@ Json::Value SQLiteService::recordsetToJson(const SqliteRecordsetPtr& rs) const {
 drogon::Task<HttpResult> SQLiteService::executeAsync(std::string logicalName,
                                                     std::string sql,
                                                     std::vector<SqliteValue> params) {
-    // 第一阶段直接同步执行, 等业务规模扩大或出现明显阻塞再下沉到线程池.
-    // 协程语义保留, 调用方可以平滑切换为真正异步实现.
+    // 通过 BackgroundAwaiter 将阻塞 SQLite 操作投递到后台线程,
+    // 避免阻塞 Drogon IO 线程.
     HttpResult result;
     int64_t affected = 0;
     bool ok = false;
@@ -499,7 +518,12 @@ drogon::Task<HttpResult> SQLiteService::executeAsync(std::string logicalName,
     if (!conn) {
         err = std::string("failed to open sqlite connection: ") + logicalName;
     } else {
-        ok = conn->execute(sql, params, &affected);
+        std::mutex* connMtx = getConnMutex(logicalName);
+        ok = co_await runOnBackground(
+            [conn, &sql, &params, &affected]() -> bool {
+                return conn->execute(sql, params, &affected);
+            },
+            connMtx);
         if (!ok) {
             err = conn->lastError();
         }
@@ -528,7 +552,12 @@ drogon::Task<HttpResult> SQLiteService::queryAsync(std::string logicalName,
     if (!conn) {
         err = std::string("failed to open sqlite connection: ") + logicalName;
     } else {
-        rs = conn->query(sql, params);
+        std::mutex* connMtx = getConnMutex(logicalName);
+        rs = co_await runOnBackground(
+            [conn, &sql, &params]() -> SqliteRecordsetPtr {
+                return conn->query(sql, params);
+            },
+            connMtx);
         if (!rs) {
             err = conn->lastError();
         }
@@ -900,6 +929,299 @@ drogon::Task<HttpResult> SQLiteService::resolveLogicalName(const std::string& sc
             result.jsondata["sourcePath"] = route.sourcePath;
         }
     }
+    co_return result;
+}
+
+// ---- Access 上传与迁移 ----
+
+// base64 解码
+static std::string base64Decode(const std::string& encoded) {
+    static const std::string base64Chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    std::string decoded;
+    int val = 0, valb = -8;
+    for (char c : encoded) {
+        if (c == '=') break;
+        size_t pos = base64Chars.find(c);
+        if (pos == std::string::npos) continue;
+        val = (val << 6) | static_cast<int>(pos);
+        valb += 6;
+        if (valb >= 0) {
+            decoded.push_back(static_cast<char>((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return decoded;
+}
+
+// 从 .mdb 文件名推断 templateKind (如 Admin.mdb -> admin, Design.mdb -> desi)
+static std::string inferTemplateKind(const std::string& mdbFileName) {
+    // 去掉路径, 只留文件名
+    size_t lastSep = mdbFileName.find_last_of("\\/");
+    std::string name = (lastSep != std::string::npos)
+                           ? mdbFileName.substr(lastSep + 1)
+                           : mdbFileName;
+
+    // 去掉 .mdb 扩展名
+    size_t dotPos = name.rfind('.');
+    if (dotPos != std::string::npos) {
+        name = name.substr(0, dotPos);
+    }
+
+    // 转小写
+    std::string lower = toLowerCopy(name);
+
+    // 已知映射 (与 core.project_databases 现有数据一致)
+    if (lower == "admin") return "admin";
+    if (lower == "design") return "desi";
+    if (lower == "catalog") return "cata";
+    if (lower == "specmanager") return "spec_manager";
+
+    // 未知则用小写文件名
+    return lower;
+}
+
+drogon::Task<HttpResult> SQLiteService::uploadMdb(
+    const std::string& mdbFileName,
+    const std::string& base64Data,
+    const std::string& scope,
+    const std::string& projectCode) {
+
+    HttpResult result;
+
+    if (mdbFileName.empty() || base64Data.empty()) {
+        result.setResult(UEAdminAPI::ApiError_MissingRequiredArgs,
+                         "mdbFileName 和 base64Data 必填");
+        co_return result;
+    }
+
+    std::string scopeLower = toLowerCopy(scope);
+    if (scopeLower.empty()) {
+        scopeLower = "global";
+    }
+
+    if (scopeLower == "project" && projectCode.empty()) {
+        result.setResult(UEAdminAPI::ApiError_MissingRequiredArgs,
+                         "scope=project 时 projectCode 必填");
+        co_return result;
+    }
+
+    if (scopeLower != "global" && scopeLower != "project") {
+        result.setResult(UEAdminAPI::ApiError_InvalidOperation,
+                         "scope 仅支持 project 或 global");
+        co_return result;
+    }
+
+    // 1. 推断 templateKind
+    std::string templateKind = inferTemplateKind(mdbFileName);
+    std::string logicalName = buildLogicalNameFromPieces(scopeLower, projectCode, templateKind, "");
+    if (logicalName.empty()) {
+        result.setResult(UEAdminAPI::ApiError_InvalidOperation,
+                         "无法构造 logicalName");
+        co_return result;
+    }
+
+    // 2. 用 BackgroundAwaiter 在后台线程执行: base64 解码 + 保存临时 mdb + 调用迁移工具
+    std::string rootDir = _rootDir;
+    std::string mdbFileNameCopy = mdbFileName;
+
+    struct MigrateResult {
+        bool ok = false;
+        std::string errMsg;
+        std::string sqlitePath;
+    };
+
+    MigrateResult migrateRes = co_await runOnBackground([&]() -> MigrateResult {
+        MigrateResult res;
+
+        // 2a. base64 解码
+        std::string mdbBytes = base64Decode(base64Data);
+        if (mdbBytes.empty()) {
+            res.errMsg = "base64 解码后为空";
+            return res;
+        }
+
+        // 2b. 保存临时 .mdb 文件
+        namespace fs = std::filesystem;
+        fs::path tempDir = fs::temp_directory_path();
+        fs::path mdbPath = tempDir / ("upload_" + std::to_string(std::time(nullptr)) + ".mdb");
+        std::ofstream ofs(mdbPath, std::ios::binary);
+        if (!ofs.is_open()) {
+            res.errMsg = "无法创建临时文件: " + mdbPath.string();
+            return res;
+        }
+        ofs.write(mdbBytes.data(), static_cast<std::streamsize>(mdbBytes.size()));
+        ofs.close();
+
+        // 2c. 构造输出 SQLite 路径
+        fs::path sqliteDir = fs::path(rootDir);
+        fs::path sqlitePath = sqliteDir / (logicalName + ".sqlite");
+
+        // 2d. 调用 MdbToSqliteMigrator.exe (32 位, 通过 CreateProcessW 避免 cmd.exe 中文路径问题)
+        // 迁移工具路径: 相对服务端的固定位置, 或通过环境变量 MDB_MIGRATOR_PATH 配置
+        const char* migratorEnv = std::getenv("MDB_MIGRATOR_PATH");
+        std::string migratorExe = migratorEnv ? migratorEnv :
+            "D:\\vc\\ObjectPRX\\sln\\MdbToSqliteMigrator\\build\\Debug\\MdbToSqliteMigrator.exe";
+
+        // 用 CreateProcessW 直接调用迁移工具, 绕过 cmd.exe (避免中文路径/特殊字符问题)
+        // cmd 是 UTF-8, 转为 UTF-16 命令行
+        std::string cmd = "\"" + migratorExe + "\" \"" +
+                          mdbPath.string() + "\" \"" +
+                          sqlitePath.string() + "\"";
+
+        LOG_INFO << "uploadMdb: 调用迁移工具: " << cmd;
+
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, cmd.c_str(), -1, NULL, 0);
+        std::wstring wcmd(wlen, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, cmd.c_str(), -1, &wcmd[0], wlen);
+
+        STARTUPINFOW si;
+        PROCESS_INFORMATION pi;
+        ZeroMemory(&si, sizeof(si));
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        ZeroMemory(&pi, sizeof(pi));
+
+        std::wstring wcmdMutable = wcmd;
+        BOOL procOk = CreateProcessW(
+            NULL,
+            &wcmdMutable[0],
+            NULL, NULL, FALSE,
+            CREATE_NO_WINDOW,
+            NULL, NULL,
+            &si, &pi);
+
+        int exitCode = -1;
+        if (procOk) {
+            WaitForSingleObject(pi.hProcess, 120000);
+            DWORD dwExit = 0;
+            GetExitCodeProcess(pi.hProcess, &dwExit);
+            exitCode = static_cast<int>(dwExit);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        } else {
+            res.errMsg = "CreateProcessW 失败, error=" + std::to_string(GetLastError());
+            std::error_code ec;
+            fs::remove(mdbPath, ec);
+            return res;
+        }
+
+        if (exitCode != 0) {
+            res.errMsg = "迁移工具执行失败, exitCode=" + std::to_string(exitCode);
+            std::error_code ec;
+            fs::remove(mdbPath, ec);
+            return res;
+        }
+
+        // 2e. 检查输出文件
+        if (!fs::exists(sqlitePath)) {
+            res.errMsg = "迁移后 SQLite 文件不存在: " + sqlitePath.string();
+            std::error_code ec;
+            fs::remove(mdbPath, ec);
+            return res;
+        }
+
+        // 2f. 清理临时 .mdb
+        std::error_code ec;
+        fs::remove(mdbPath, ec);
+
+        res.ok = true;
+        res.sqlitePath = sqlitePath.string();
+        return res;
+    });
+
+    if (!migrateRes.ok) {
+        result.setResult(UEAdminAPI::ApiError_DatabaseError, migrateRes.errMsg);
+        co_return result;
+    }
+
+    // 3. 注册到 core.project_databases (用 ORM)
+    try {
+        auto dbClientPtr = drogon::app().getDbClient();
+        if (!dbClientPtr) {
+            result.setResult(UEAdminAPI::ApiError_DatabaseError, "DbClient 为空");
+            co_return result;
+        }
+
+        using drogon::orm::Criteria;
+        using drogon::orm::CompareOperator;
+        using drogon::orm::Mapper;
+        using PD = drogon_model::UELocalDB::core::ProjectDatabases;
+        using Proj = drogon_model::UELocalDB::core::Projects;
+
+        Mapper<PD> mapper(dbClientPtr);
+
+        // 先查是否已存在同 scope+templateKind 的路由 (global 唯一, project 按 projectCode 唯一)
+        Criteria scopeCrit(PD::Cols::_scope_type, CompareOperator::EQ, scopeLower);
+        Criteria kindCrit(PD::Cols::_template_kind, CompareOperator::EQ, templateKind);
+        auto existing = mapper.findBy(scopeCrit && kindCrit);
+
+        if (scopeLower == "global") {
+            // global: 先删后插 (唯一约束 WHERE scope_type='global')
+            for (auto& row : existing) {
+                mapper.deleteByPrimaryKey(row.getValueOfId());
+            }
+        } else {
+            // project: 按 projectCode 删后插
+            // 需要先查 project_id
+            Mapper<Proj> projMapper(dbClientPtr);
+            auto projs = projMapper.findBy(
+                Criteria(Proj::Cols::_code, CompareOperator::EQ, projectCode));
+            int64_t projectId = 0;
+            if (!projs.empty()) {
+                projectId = projs[0].getValueOfId();
+            }
+
+            if (projectId > 0) {
+                for (auto& row : existing) {
+                    if (row.getValueOfProjectId() == projectId) {
+                        mapper.deleteByPrimaryKey(row.getValueOfId());
+                    }
+                }
+            }
+        }
+
+        // 插入新路由
+        PD newRow;
+        newRow.setScopeType(scopeLower);
+        newRow.setTemplateKind(templateKind);
+        newRow.setSourceName(mdbFileName);
+        newRow.setSourcePath(migrateRes.sqlitePath);
+        newRow.setIsEnabled(true);
+        newRow.setDbVersion("1.0");
+
+        if (scopeLower == "project") {
+            Mapper<Proj> projMapper(dbClientPtr);
+            auto projs = projMapper.findBy(
+                Criteria(Proj::Cols::_code, CompareOperator::EQ, projectCode));
+            if (!projs.empty()) {
+                newRow.setProjectId(projs[0].getValueOfId());
+            }
+        }
+
+        mapper.insert(newRow);
+
+        LOG_INFO << "uploadMdb: 路由已注册, logicalName=" << logicalName
+                 << ", sqlitePath=" << migrateRes.sqlitePath;
+
+    } catch (const std::exception& e) {
+        result.setResult(UEAdminAPI::ApiError_DatabaseError,
+                         std::string("注册路由失败: ") + e.what());
+        co_return result;
+    }
+
+    // 4. 返回 logicalName
+    result.code = 0;
+    result.msg = "success";
+    result.jsondata["logicalName"] = logicalName;
+    result.jsondata["templateKind"] = templateKind;
+    result.jsondata["scope"] = scopeLower;
+    result.jsondata["sqlitePath"] = migrateRes.sqlitePath;
+    result.jsondata["tableCount"] = 0;
+    result.jsondata["totalRows"] = 0;
+
     co_return result;
 }
 

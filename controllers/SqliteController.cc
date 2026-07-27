@@ -1,4 +1,4 @@
-#include "SqliteController.h"
+﻿#include "SqliteController.h"
 
 #include "services/SQLiteService.h"
 #include "utils/ApiErrorCodes.h"
@@ -296,5 +296,29 @@ Task<HttpResponsePtr> SqliteController::ResolveLogicalName(HttpRequestPtr req) {
     }
 
     result = co_await _sqliteService->resolveLogicalName(scope, projectCode, templateKind, fileName);
+    co_return makeJsonResp(result);
+}
+
+Task<HttpResponsePtr> SqliteController::UploadMdb(HttpRequestPtr req) {
+    auto _sqliteService = SQLiteService::Instance();
+
+    HttpResult result;
+    auto reqJson = req->getJsonObject();
+    if (!reqJson) {
+        result.setResult(ApiError_InvalidJsonFormat);
+        co_return makeJsonResp(result);
+    }
+
+    std::string mdbFileName = readStringField(*reqJson, "mdbFileName");
+    std::string base64Data = readStringField(*reqJson, "base64Data");
+    std::string scope = readStringField(*reqJson, "scope");
+    std::string projectCode = readStringField(*reqJson, "projectCode");
+
+    if (mdbFileName.empty() || base64Data.empty()) {
+        result.setResult(ApiError_MissingRequiredArgs, "mdbFileName 和 base64Data 必填");
+        co_return makeJsonResp(result);
+    }
+
+    result = co_await _sqliteService->uploadMdb(mdbFileName, base64Data, scope, projectCode);
     co_return makeJsonResp(result);
 }
