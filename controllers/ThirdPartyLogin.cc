@@ -30,10 +30,9 @@ namespace Controllers {
 Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req,
                                  const std::string platform) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
     auto result = co_await _thirdPartyLoginService->GetLoginUrl(platform);
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
     co_return resp;
 }
 
@@ -50,11 +49,10 @@ Task<HttpResponsePtr> ThirdPartyLogin::bindAccount(HttpRequestPtr req,
                                     const std::string code,
                                     const std::string verifyCode) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
     int userId = req->getAttributes()->get<int>("userId");
     auto result = co_await _thirdPartyLoginService->BindAccount(userId, platform, code, verifyCode);
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
     co_return resp;
 }
 
@@ -64,10 +62,9 @@ Task<HttpResponsePtr> ThirdPartyLogin::verifyLogin(HttpRequestPtr req,
                                                 const std::string verifyCode, 
                                                 bool onlyCheck) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
     auto result = co_await _thirdPartyLoginService->VerifyLogin(platform, code, verifyCode, onlyCheck);   
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
     co_return resp;
 }
 
@@ -76,30 +73,27 @@ Task<HttpResponsePtr> ThirdPartyLogin::loginWithThirdParty(HttpRequestPtr req,
                                                 const std::string code,
                                                 const std::string verifyCode) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
     auto result = co_await _thirdPartyLoginService->LoginWithThirdParty(platform, code, verifyCode);
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
     co_return resp;
 }
 
 Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr req, const std::string platform, const std::string code, const std::string verifyCode) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
     auto result = co_await _thirdPartyLoginService->CreateUserFromThirdParty(platform, code, verifyCode);
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
     co_return resp;
 }
 
 Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req,
                                                     const std::string platform) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
     int userId = req->getAttributes()->get<int>("userId");
     result = co_await _thirdPartyLoginService->UnbindAccount(userId, platform);
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
 }

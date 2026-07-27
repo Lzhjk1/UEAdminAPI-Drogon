@@ -1,1 +1,0 @@
-vcpkg install vcpkg install jsoncpp zlib openssl sqlite3 libpq libpqxx jwt-cpp yaml-cpp drogon[ctl,sqlite3,postgres,orm,yaml]

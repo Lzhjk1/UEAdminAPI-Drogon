@@ -15,6 +15,8 @@
 #include "services/ThirdPartyLoginService.h"
 #include "services/SystemService.h"
 #include "services/ActionTokenService.h"
+#include "utils/TestModeConfig.h"
+#include "controllers/OAuth2Controller.h"
 #include "services/SQLiteService.h"
 
 #ifdef _WIN32
@@ -124,14 +126,11 @@ int main() {
     
     app.loadConfigFile(config_path);
     
-    // 因为插件需要启动后才能获取, 所以启动后再初始化
-    auto loop = app.getLoop();
-    loop->runAfter(1s , [&app]{
-        if (!app.isRunning()) {
-            LOG_INFO << "未启动, 等待1秒后重试";
-            sleepCoro(app.getLoop(), 1s);
-        }
+    // app 启动后回调中初始化单例服务（消除竞态条件）
+    app.registerBeginningAdvice([]{
         LOG_INFO << "启动成功, 开始初始化插件与服务";
+        // 初始化测试模式配置 (最先初始化, 以便后续服务读取)
+        TestModeConfig::Init(app.getCustomConfig());
         // 初始化单例服务
         auto smtpPlugin = app.getPlugin<SMTPMail>();
         AuthService::Init(app.getCustomConfig());

@@ -33,6 +33,9 @@ public:
 
     // 检查验证码是否正确, 获取到的验证码将被清除
     virtual bool VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg, bool isConsume = true) = 0;
+
+    // 直接将验证码对存入内存列表(测试模式专用, 不真实发送)
+    virtual bool StoreCodePair(shared_ptr<ICodePair> codePair) = 0;
 };
 
 // 验证码发送渠道基类, 实现渠道接口, 并提供一些公共方法
@@ -61,6 +64,9 @@ public:
     // 检查验证码是否正确, 获取到的验证码将被清除
     bool VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg, bool isConsume = true) override;
 
+    // 直接将验证码对存入内存列表(测试模式专用, 不真实发送)
+    bool StoreCodePair(shared_ptr<ICodePair> codePair) override;
+
     // 静态方法, 根据目标字符串判断渠道类型, 返回类型枚举
     static eChannelType DetermineChannelType(const std::string &target);
 };
@@ -86,4 +92,7 @@ public:
     drogon::Task<pair<bool, std::string>> SendCode(shared_ptr<ICodePair> codePair) override;
     // 基类中的方法没有处理电话号的区号, 所以再重载一下
     bool VerifyTheCode(const std::string &baseInfo, const std::string &code, eMFAType type, std::string &errorMsg, bool isConsume = true) override;
+
+    // 获取验证码对时也需要处理区号归一化(与 VerifyTheCode 逻辑一致)
+    optional<shared_ptr<ICodePair>> GetCodePair(const std::string &key, const eMFAType& type) override;
 };

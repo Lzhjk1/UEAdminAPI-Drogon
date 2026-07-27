@@ -29,7 +29,7 @@ GitLab 项目接口当前仍使用 `{ "success": true/false, "message": "..." }`
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
-| **/system/ping** (GET) | 0 | `ApiError_Success` | Pong |
+| **/api/system/ping** (GET) | 0 | `ApiError_Success` | Pong |
 | | -104 | `ApiError_DatabaseError` | 数据库错误 |
 | | -105 | `ApiError_InvalidOperation` | 无效操作 |
 | | -106 | `ApiError_TooManyRequests` | 访问过于频繁，请稍后再试 |

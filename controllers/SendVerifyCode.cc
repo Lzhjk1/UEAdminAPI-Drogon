@@ -10,36 +10,34 @@ Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string t
     // 依赖
     auto _mfaService = MFAService::Instance();
 
-	auto resp = HttpResponse::newHttpResponse();
-    HttpResult result;
+	HttpResult result;
 
     // 检查IP是否处于冷却
     if(IsInColdDown(req->getPeerAddr().toIp())) {    
         result.setResult(ApiErrorCode::ApiError_SendVerifyCodeTooFrequent, "发送过于频繁, 请稍后再试");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         co_return resp;
     }
 
     auto [isSuccess, errMsg] = co_await _mfaService->SendTheCode(target, stringToMFAType(type));
 
     if (!isSuccess) {
-        result.setResult(ApiErrorCode::ApiError_SendVerifyCodeFailed, errMsg);
+        result.setResult(ApiErrorCode::ApiError_InternalError, errMsg);
     } else {
         result.setResult(ApiErrorCode::ApiError_Success);
     }
     
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     co_return resp;
 }
 
 Task<HttpResponsePtr> SendVerifyCode::CheckCode(HttpRequestPtr req, std::string target, std::string mfaCode, std::string type) {
     auto _mfaService = MFAService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
 
     if (target.empty() || mfaCode.empty() || type.empty()) {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数 target, mfaCode 或 type");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         co_return resp;
     }
 
@@ -51,12 +49,25 @@ Task<HttpResponsePtr> SendVerifyCode::CheckCode(HttpRequestPtr req, std::string 
         result.setResult(ApiErrorCode::ApiError_InvalidVerifyCode, errMsg.empty() ? "验证码错误" : errMsg);
     }
 
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     co_return resp;
+}
+
+int SendVerifyCode::EffectiveColdDown() const {
+    // 测试模式启用时, 使用 TestMode.ColdDownSec (0 表示不限制); 否则使用默认 _coldDownTime
+    if (TestModeConfig::Enable())
+        return TestModeConfig::ColdDownSec();
+    return _coldDownTime;
 }
 
 bool SendVerifyCode::IsInColdDown(std::string ipAddr) {
     std::lock_guard<std::mutex> lock(_mutexForColdDownMap);
+
+    int coldDown = EffectiveColdDown();
+    // 冷却时间为 0 表示不限制
+    if (coldDown <= 0) {
+        return false;
+    }
 
     bool isInColdDown = true;
 
@@ -67,7 +78,7 @@ bool SendVerifyCode::IsInColdDown(std::string ipAddr) {
         isInColdDown = false;
     }
     // 找到了记录, 检查是否处于冷却中
-    else if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - it->second).count() < _coldDownTime) {
+    else if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - it->second).count() < coldDown) {
         isInColdDown =  true;
     }
     else{
@@ -77,7 +88,7 @@ bool SendVerifyCode::IsInColdDown(std::string ipAddr) {
 
     // 清除过期的记录
     for(auto it = _coldDownMap.begin(); it != _coldDownMap.end();) {
-        if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - it->second).count() > _coldDownTime) {
+        if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - it->second).count() > coldDown) {
             it = _coldDownMap.erase(it);
         }
         else {

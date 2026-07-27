@@ -18,7 +18,17 @@ private:
     uint64_t _tokenExpireSec = 3600;
     uint64_t _flashTokenExpireSec = 259200;
 
+    // RS256 非对称签名
+    std::string _privateKeyPem;   ///< RSA 私钥 (PEM)
+    std::string _publicKeyPem;    ///< RSA 公钥 (PEM)
+
+    /// 初始化 RSA 密钥对（文件 / 配置 PEM / 自动生成）
+    void initRsaKeys(const Json::Value &config);
+
 public:
+    /// @brief 获取 RSA 公钥 PEM（供 OAuth2Controller JWKS 端点使用）
+    const std::string& getPublicKeyPem() const { return _publicKeyPem; }
+
     AuthService(const Json::Value &config);
 
     std::vector<unsigned char> stringToVector(const std::string &str);
@@ -124,8 +134,6 @@ public:
        const UserPrivileges &privilege = UserPrivileges::User, 
        const bool &isMale = true,
        const std::string &nickname = "");
-
-    //
 
     /// @brief 附带第三方平台的电话注册
     drogon::Task<UEAdminAPI::utils::HttpResult> RegisterWithThirdPartyByPhone(

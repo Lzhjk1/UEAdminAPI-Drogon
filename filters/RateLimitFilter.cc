@@ -72,9 +72,8 @@ void RateLimitFilter::doFilter(const HttpRequestPtr &req,
     }
 
     if (isBlocked) {
-        auto resp = HttpResponse::newHttpResponse();
         HttpResult result(static_cast<int32_t>(ApiErrorCode::ApiError_TooManyRequests), "访问过于频繁，请稍后再试");
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k200OK);
         fcb(resp);
         return;

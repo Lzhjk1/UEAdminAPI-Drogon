@@ -3,6 +3,7 @@
 #include <drogon/HttpController.h>
 #include <drogon/utils/coroutine.h>
 #include "services/MFAService.h"
+#include "utils/TestModeConfig.h"
 #include <chrono>
 
 using namespace drogon;
@@ -15,6 +16,8 @@ public:
     // METHOD_ADD(SendVerifyCode::get, "/{2}/{1}", Get); // path is /SendVerifyCode/{arg2}/{arg1}
     // METHOD_ADD(SendVerifyCode::your_method_name, "/{1}/{2}/list", Get); // path is /SendVerifyCode/{arg1}/{arg2}/list
     // ADD_METHOD_TO(SendVerifyCode::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
+    // ADD_METHOD_TO(SendVerifyCode::SendCode, "/user/mfa?target={1}&type={2}", Get); // path is /SendVerifyCode/{arg1}/{arg2}
+    // ADD_METHOD_TO(SendVerifyCode::CheckCode, "/user/mfa/check?target={1}&mfaCode={2}&type={3}", Get);
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
@@ -31,8 +34,11 @@ public:
     // 基于IP地址的冷却, 目前服务器是通过frp穿透来测试的, 所以IP是固定的, 所以冷却时间目前设置很短
     bool IsInColdDown(std::string ipAddr);
 
+    // 获取当前生效的冷却时间(秒): 测试模式启用时取 TestMode.ColdDownSec, 否则取默认 2 秒
+    int EffectiveColdDown() const;
+
 private:
     std::mutex _mutexForColdDownMap;
-    int _coldDownTime = 2; // 冷却时间
+    int _coldDownTime = 2; // 冷却时间(非测试模式默认)
     std::unordered_map<std::string, std::chrono::system_clock::time_point> _coldDownMap;
 };

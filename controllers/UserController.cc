@@ -19,14 +19,12 @@ using namespace UEAdminAPI::Services;
 
 Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     auto _authService = AuthService::Instance();
-
-    auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
 
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
         result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k200OK);
         co_return resp;
     }
@@ -65,7 +63,7 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     if (!missings.empty()) {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少必要参数" + std::accumulate(missings.begin(), missings.end(), std::string(""), 
             [](const std::string& a, const std::string& b) { return a + ", " + b; }));
-        resp->setBody(result.toJsonString());
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k200OK);
         co_return resp;
     }
@@ -76,15 +74,13 @@ Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
         userId = attributes->get<int>("userId");
     }
     result = co_await _authService->UpdateUserInfo(userId, pm);
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
 }
 
 Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req) {
     auto _authService = AuthService::Instance();
-
-    auto resp = HttpResponse::newHttpResponse();
     HttpResult result;
     int userId = -1;
     auto attributes = req->getAttributes();
@@ -95,14 +91,13 @@ Task<HttpResponsePtr> UserController::deleteUser(HttpRequestPtr req) {
     // 因为已经通过了 ActionTokenFilter 校验，不再需要传入 mfaCode 和 target 再次验证
     // 所以我们调用原本的 DeleteUserForce 直接进行删除
     result = co_await _authService->DeleteUserForce(userId);
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
 }
 
 Task<HttpResponsePtr> UserController::generateActionToken(HttpRequestPtr req, std::string mfaTypeStr, std::string mfaCode, std::string target) {
     auto _actionTokenService = ActionTokenService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
     
     int userId = -1;
     auto attributes = req->getAttributes();
@@ -112,18 +107,17 @@ Task<HttpResponsePtr> UserController::generateActionToken(HttpRequestPtr req, st
 
     HttpResult result = co_await _actionTokenService->GenerateTokenForUser(userId, mfaTypeStr, mfaCode, target);
 
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
 }
 
 Task<HttpResponsePtr> UserController::generateActionTokenBeforeLogin(HttpRequestPtr req, std::string mfaTypeStr, std::string mfaCode, std::string target) {
     auto _actionTokenService = ActionTokenService::Instance();
-    auto resp = HttpResponse::newHttpResponse();
 
     HttpResult result = co_await _actionTokenService->GenerateAnonymousToken(mfaTypeStr, mfaCode, target);
 
-    resp->setBody(result.toJsonString());
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
 }

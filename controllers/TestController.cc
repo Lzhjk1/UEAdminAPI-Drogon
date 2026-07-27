@@ -1,31 +1,14 @@
 #include "TestController.h"
-#include "drogon/orm/DbClient.h"
-#include <string>
-#include <vector>
+#include "services/GitlabService.h"
 #include "utils/HttpResult.h"
 
-#include "services/GitlabService.h"
-
-#include <plugins/SMTPMail.h>
-#include "utils/GetAnotherIoLoop.h"
-#include "services/ServiceDtos.h"
-
 using namespace drogon;
-using namespace drogon::orm;
-// using namespace drogon_model::UEAdminAPI;
 using namespace UEAdminAPI;
 using namespace UEAdminAPI::utils;
-using namespace ServiceDtos;
-
-TestController::TestController() {
-
-}
 
 Task<HttpResponsePtr> TestController::TestHandler(HttpRequestPtr req) {
     auto _gitlabService = GitlabService::Instance();
 
-	auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
     HttpResult result;
 
     // int userGitId = -1;
@@ -37,5 +20,11 @@ Task<HttpResponsePtr> TestController::TestHandler(HttpRequestPtr req) {
     uint32_t gitImpersonationTokenId = -1;
     _gitlabService->createImpersonationToken(50, gitlabImpersonationToken, gitImpersonationTokenId);
 
-	co_return resp;
+    // bool isDeleteSuccess = _gitlabService->deleteImpersonationToken(50, gitImpersonationTokenId);
+
+    // auto result = co_await _gitlabService->TestFunc();
+
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
+    co_return resp;
 }
