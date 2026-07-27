@@ -10,7 +10,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 只有当提交信息标题包含特定字符串时才触发编译
+  # 这是中央检测点：两个 job 都依赖它，避免重复逻辑
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      should-build: ${{ steps.check.outputs.should-build }}
+    steps:
+      - name: Check commit message
+        id: check
+        shell: bash
+        run: |
+          # 取最新一次提交的标题（首行）
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_TITLE="${COMMIT_MSG%%$'\n'*}"
+          echo "Commit title: $COMMIT_TITLE"
+          # 触发关键字，支持自定义：默认为 [build]
+          if echo "$COMMIT_TITLE" | grep -qiE '\[build\]'; then
+            echo "should-build=true" >> $GITHUB_OUTPUT
+            echo "Triggered: commit title contains [build]"
+          else
+            echo "should-build=false" >> $GITHUB_OUTPUT
+            echo "Skipped: commit title does not contain [build]"
+          fi
+
   build-linux:
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should-build == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 60
 
@@ -97,6 +123,8 @@ jobs:
           if-no-files-found: error
 
   build-windows:
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should-build == 'true'
     runs-on: windows-latest
     timeout-minutes: 90
 
