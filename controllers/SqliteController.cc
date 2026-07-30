@@ -200,6 +200,12 @@ Task<HttpResponsePtr> SqliteController::Query(HttpRequestPtr req) {
         co_return makeJsonResp(result);
     }
 
+    // 从 AuthFilter 注入的请求属性中安全提取 userId,供审计日志记录操作人
+    auto attributes = req->getAttributes();
+    if (attributes->find("userId")) {
+        rpc.userId = static_cast<int64_t>(attributes->get<int>("userId"));
+    }
+
     result = co_await _sqliteService->handleQueryRpc(rpc);
     co_return makeJsonResp(result);
 }
@@ -217,6 +223,12 @@ Task<HttpResponsePtr> SqliteController::Execute(HttpRequestPtr req) {
     SqliteRpcRequest rpc;
     if (!buildRpcRequest(*reqJson, rpc, result)) {
         co_return makeJsonResp(result);
+    }
+
+    // 从 AuthFilter 注入的请求属性中安全提取 userId,供审计日志记录操作人
+    auto attributes = req->getAttributes();
+    if (attributes->find("userId")) {
+        rpc.userId = static_cast<int64_t>(attributes->get<int>("userId"));
     }
 
     result = co_await _sqliteService->handleExecuteRpc(rpc);
