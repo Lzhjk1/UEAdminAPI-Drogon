@@ -1233,7 +1233,27 @@ drogon::Task<HttpResult> SQLiteService::uploadMdb(
 
         int exitCode = -1;
         if (procOk) {
-            WaitForSingleObject(pi.hProcess, 120000);
+            constexpr DWORD kMigratorTimeoutMs = 120000;  // 迁移工具硬超时 120s
+            DWORD waitRet = WaitForSingleObject(pi.hProcess, kMigratorTimeoutMs);
+            if (waitRet == WAIT_TIMEOUT) {
+                // 超时强制终止子进程, 避免残留/僵尸进程
+                TerminateProcess(pi.hProcess, 1);
+                WaitForSingleObject(pi.hProcess, 5000);  // 等待终止完成
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                res.errMsg = "迁移工具执行超时(" + std::to_string(kMigratorTimeoutMs / 1000) + "s), 已强制终止";
+                std::error_code ec;
+                fs::remove(mdbPath, ec);
+                return res;
+            } else if (waitRet == WAIT_FAILED) {
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                res.errMsg = "WaitForSingleObject 失败, error=" + std::to_string(GetLastError());
+                std::error_code ec;
+                fs::remove(mdbPath, ec);
+                return res;
+            }
+            // WAIT_OBJECT_0: 正常结束, 取退出码
             DWORD dwExit = 0;
             GetExitCodeProcess(pi.hProcess, &dwExit);
             exitCode = static_cast<int>(dwExit);
@@ -1253,9 +1273,14 @@ drogon::Task<HttpResult> SQLiteService::uploadMdb(
             return res;
         }
 
-        // 2e. 检查输出文件
-        if (!fs::exists(sqlitePath)) {
-            res.errMsg = "迁移后 SQLite 文件不存在: " + sqlitePath.string();
+        // 2e. 检查输出文件 (存在且非空)
+        std::error_code sizeEc;
+        bool exists = fs::exists(sqlitePath);
+        uintmax_t fileSize = exists ? fs::file_size(sqlitePath, sizeEc) : 0;
+        if (sizeEc) fileSize = 0;  // file_size 出错视为无效
+        if (!exists || fileSize == 0) {
+            res.errMsg = "迁移后 SQLite 文件不存在或为空: " + sqlitePath.string()
+                       + (exists ? " (size=0)" : " (not found)");
             std::error_code ec;
             fs::remove(mdbPath, ec);
             return res;
