@@ -704,6 +704,10 @@ drogon::Task<HttpResult> SQLiteService::handleQueryRpc(const SqliteRpcRequest& r
             result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid);
             co_return result;
         }
+        if (it->second.expiresAt <= std::chrono::steady_clock::now()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid, "事务已超时, 请重新开始事务");
+            co_return result;
+        }
         if (it->second.logicalName != req.logicalName) {
             result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid, "事务 token 与逻辑库不匹配");
             co_return result;
@@ -783,6 +787,10 @@ drogon::Task<HttpResult> SQLiteService::handleExecuteRpc(const SqliteRpcRequest&
         auto it = _activeTx.find(req.txId);
         if (it == _activeTx.end()) {
             result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid);
+            co_return result;
+        }
+        if (it->second.expiresAt <= std::chrono::steady_clock::now()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid, "事务已超时, 请重新开始事务");
             co_return result;
         }
         if (it->second.logicalName != req.logicalName) {
@@ -882,6 +890,10 @@ drogon::Task<HttpResult> SQLiteService::commitTransaction(const std::string& txI
             result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid);
             co_return result;
         }
+        if (it->second.expiresAt <= std::chrono::steady_clock::now()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid, "事务已超时, 请重新开始事务");
+            co_return result;
+        }
         logicalName = it->second.logicalName;
         _activeTx.erase(it);
         _logicalToTx.erase(logicalName);
@@ -916,6 +928,10 @@ drogon::Task<HttpResult> SQLiteService::rollbackTransaction(const std::string& t
         auto it = _activeTx.find(txId);
         if (it == _activeTx.end()) {
             result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid);
+            co_return result;
+        }
+        if (it->second.expiresAt <= std::chrono::steady_clock::now()) {
+            result.setResult(UEAdminAPI::ApiError_SqliteRpc_TxIdInvalid, "事务已超时, 请重新开始事务");
             co_return result;
         }
         logicalName = it->second.logicalName;
