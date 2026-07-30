@@ -2,6 +2,7 @@
 
 #include "utils/ApiErrorCodes.h"
 #include "utils/BackgroundExecutor.h"
+#include "utils/ProcessRunner.h"
 #include "AuditLogService.h"
 #include "IdempotentService.h"
 
@@ -21,9 +22,6 @@
 #include <iomanip>
 #include <random>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
 #include <sstream>
 
 using namespace UEAdminAPI;
@@ -1193,7 +1191,7 @@ drogon::Task<HttpResult> SQLiteService::uploadMdb(
         fs::path sqliteDir = fs::path(rootDir);
         fs::path sqlitePath = sqliteDir / (logicalName + ".sqlite");
 
-        // 2d. 调用 MdbToSqliteMigrator.exe (32 位, 通过 CreateProcessW 避免 cmd.exe 中文路径问题)
+        // 2d. 调用 MdbToSqliteMigrator.exe (通过 utils::runProcess 跨平台启动)
         // 迁移工具路径: 优先环境变量 MDB_MIGRATOR_PATH 覆盖, 其次 config MdbMigrator.path, 均未设置则报错
         const char* migratorEnv = std::getenv("MDB_MIGRATOR_PATH");
         std::string migratorExe = migratorEnv ? std::string(migratorEnv) : _migratorExePath;
@@ -1202,72 +1200,30 @@ drogon::Task<HttpResult> SQLiteService::uploadMdb(
             return res;
         }
 
-        // 用 CreateProcessW 直接调用迁移工具, 绕过 cmd.exe (避免中文路径/特殊字符问题)
-        // cmd 是 UTF-8, 转为 UTF-16 命令行
+        // 通过 utils::runProcess 启动迁移工具 (平台无关, Windows 内部使用 CreateProcessW)
         std::string cmd = "\"" + migratorExe + "\" \"" +
                           mdbPath.string() + "\" \"" +
                           sqlitePath.string() + "\"";
 
         LOG_INFO << "uploadMdb: 调用迁移工具: " << cmd;
 
-        int wlen = MultiByteToWideChar(CP_UTF8, 0, cmd.c_str(), -1, NULL, 0);
-        std::wstring wcmd(wlen, L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, cmd.c_str(), -1, &wcmd[0], wlen);
-
-        STARTUPINFOW si;
-        PROCESS_INFORMATION pi;
-        ZeroMemory(&si, sizeof(si));
-        si.cb = sizeof(si);
-        si.dwFlags = STARTF_USESHOWWINDOW;
-        si.wShowWindow = SW_HIDE;
-        ZeroMemory(&pi, sizeof(pi));
-
-        std::wstring wcmdMutable = wcmd;
-        BOOL procOk = CreateProcessW(
-            NULL,
-            &wcmdMutable[0],
-            NULL, NULL, FALSE,
-            CREATE_NO_WINDOW,
-            NULL, NULL,
-            &si, &pi);
-
-        int exitCode = -1;
-        if (procOk) {
-            constexpr DWORD kMigratorTimeoutMs = 120000;  // 迁移工具硬超时 120s
-            DWORD waitRet = WaitForSingleObject(pi.hProcess, kMigratorTimeoutMs);
-            if (waitRet == WAIT_TIMEOUT) {
-                // 超时强制终止子进程, 避免残留/僵尸进程
-                TerminateProcess(pi.hProcess, 1);
-                WaitForSingleObject(pi.hProcess, 5000);  // 等待终止完成
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
-                res.errMsg = "迁移工具执行超时(" + std::to_string(kMigratorTimeoutMs / 1000) + "s), 已强制终止";
-                std::error_code ec;
-                fs::remove(mdbPath, ec);
-                return res;
-            } else if (waitRet == WAIT_FAILED) {
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
-                res.errMsg = "WaitForSingleObject 失败, error=" + std::to_string(GetLastError());
-                std::error_code ec;
-                fs::remove(mdbPath, ec);
-                return res;
-            }
-            // WAIT_OBJECT_0: 正常结束, 取退出码
-            DWORD dwExit = 0;
-            GetExitCodeProcess(pi.hProcess, &dwExit);
-            exitCode = static_cast<int>(dwExit);
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-        } else {
-            res.errMsg = "CreateProcessW 失败, error=" + std::to_string(GetLastError());
+        // 通过平台无关的 runProcess 启动迁移工具, 等待完成
+        constexpr uint32_t kMigratorTimeoutMs = 120000;  // 迁移工具硬超时 120s
+        auto pr = utils::runProcess(cmd, kMigratorTimeoutMs);
+        if (!pr.started) {
+            res.errMsg = "启动迁移工具失败: " + pr.errMsg;
             std::error_code ec;
             fs::remove(mdbPath, ec);
             return res;
         }
-
-        if (exitCode != 0) {
-            res.errMsg = "迁移工具执行失败, exitCode=" + std::to_string(exitCode);
+        if (pr.timedOut) {
+            res.errMsg = "迁移工具执行超时(" + std::to_string(kMigratorTimeoutMs / 1000) + "s), 已强制终止";
+            std::error_code ec;
+            fs::remove(mdbPath, ec);
+            return res;
+        }
+        if (pr.exitCode != 0) {
+            res.errMsg = "迁移工具执行失败, exitCode=" + std::to_string(pr.exitCode);
             std::error_code ec;
             fs::remove(mdbPath, ec);
             return res;
