@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 
 namespace UEAdminAPI {
 namespace SQLite {
@@ -172,53 +173,83 @@ bool SqliteConnection::bindParams(void* stmtPtr, const std::vector<SqliteValue>&
 
 bool SqliteConnection::execute(const std::string& sql,
                                const std::vector<SqliteValue>& params,
-                               int64_t* affectedRows) {
+                               int64_t* affectedRows,
+                               int timeoutMs) {
     std::lock_guard<std::mutex> lock(_mutex);
     if (_db == nullptr) {
         setLastError("database not opened");
         return false;
     }
+
+    // 注册超时回调, 在 sqlite3_step 内部每隔约 100 条虚拟机指令检查一次
+    if (timeoutMs > 0) {
+        auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::milliseconds(timeoutMs);
+        sqlite3_progress_handler(_db, 100, [](void* ptr) -> int {
+            auto* dp = static_cast<std::chrono::steady_clock::time_point*>(ptr);
+            return std::chrono::steady_clock::now() >= *dp ? 1 : 0;
+        }, &deadline);
+    }
+
     sqlite3_stmt* stmt = nullptr;
     int rc = sqlite3_prepare_v2(_db, sql.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         setLastError(std::string("prepare failed: ") + sqlite3_errmsg(_db));
         if (stmt) sqlite3_finalize(stmt);
+        if (timeoutMs > 0) sqlite3_progress_handler(_db, 0, nullptr, nullptr);
         return false;
     }
     if (!bindParams(stmt, params)) {
         sqlite3_finalize(stmt);
+        if (timeoutMs > 0) sqlite3_progress_handler(_db, 0, nullptr, nullptr);
         return false;
     }
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
         setLastError(std::string("step failed: ") + sqlite3_errmsg(_db));
         sqlite3_finalize(stmt);
+        if (timeoutMs > 0) sqlite3_progress_handler(_db, 0, nullptr, nullptr);
         return false;
     }
     if (affectedRows != nullptr) {
         *affectedRows = static_cast<int64_t>(sqlite3_changes(_db));
     }
     sqlite3_finalize(stmt);
+    if (timeoutMs > 0) sqlite3_progress_handler(_db, 0, nullptr, nullptr);
     setLastError(std::string());
     return true;
 }
 
 SqliteRecordsetPtr SqliteConnection::query(const std::string& sql,
-                                           const std::vector<SqliteValue>& params) {
+                                           const std::vector<SqliteValue>& params,
+                                           int timeoutMs) {
     std::lock_guard<std::mutex> lock(_mutex);
     if (_db == nullptr) {
         setLastError("database not opened");
         return SqliteRecordsetPtr();
     }
+
+    // 注册超时回调 (同 execute)
+    if (timeoutMs > 0) {
+        auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::milliseconds(timeoutMs);
+        sqlite3_progress_handler(_db, 100, [](void* ptr) -> int {
+            auto* dp = static_cast<std::chrono::steady_clock::time_point*>(ptr);
+            return std::chrono::steady_clock::now() >= *dp ? 1 : 0;
+        }, &deadline);
+    }
+
     sqlite3_stmt* stmt = nullptr;
     int rc = sqlite3_prepare_v2(_db, sql.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         setLastError(std::string("prepare failed: ") + sqlite3_errmsg(_db));
         if (stmt) sqlite3_finalize(stmt);
+        if (timeoutMs > 0) sqlite3_progress_handler(_db, 0, nullptr, nullptr);
         return SqliteRecordsetPtr();
     }
     if (!bindParams(stmt, params)) {
         sqlite3_finalize(stmt);
+        if (timeoutMs > 0) sqlite3_progress_handler(_db, 0, nullptr, nullptr);
         return SqliteRecordsetPtr();
     }
 
@@ -246,9 +277,11 @@ SqliteRecordsetPtr SqliteConnection::query(const std::string& sql,
     if (rc != SQLITE_DONE) {
         setLastError(std::string("step failed: ") + sqlite3_errmsg(_db));
         sqlite3_finalize(stmt);
+        if (timeoutMs > 0) sqlite3_progress_handler(_db, 0, nullptr, nullptr);
         return SqliteRecordsetPtr();
     }
     sqlite3_finalize(stmt);
+    if (timeoutMs > 0) sqlite3_progress_handler(_db, 0, nullptr, nullptr);
     rs->finalize();
     setLastError(std::string());
     return rs;

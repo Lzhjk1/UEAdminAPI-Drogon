@@ -53,17 +53,23 @@ public:
      * @param sql SQL 语句, 可以包含 ? 占位符
      * @param params 与 ? 对应的参数, 顺序绑定; 没有参数传空 vector
      * @param affectedRows 输出: 影响行数, 可为空指针
+     * @param timeoutMs 超时毫秒, 0 表示不超时 (默认)
      */
     bool execute(const std::string& sql,
                  const std::vector<SqliteValue>& params,
-                 int64_t* affectedRows);
+                 int64_t* affectedRows,
+                 int timeoutMs = 0);
 
     /**
      * @brief 执行 SELECT, 一次性读完整结果集, 不持有 stmt.
+     * @param sql SQL 语句, 可以包含 ? 占位符
+     * @param params 与 ? 对应的参数, 顺序绑定; 没有参数传空 vector
+     * @param timeoutMs 超时毫秒, 0 表示不超时 (默认)
      * @return 出错或语句不合法时返回空指针
      */
     SqliteRecordsetPtr query(const std::string& sql,
-                             const std::vector<SqliteValue>& params);
+                             const std::vector<SqliteValue>& params,
+                             int timeoutMs = 0);
 
     /**
      * @brief 执行 SELECT 但仅读取第一行 (常用于计数/简单查询).

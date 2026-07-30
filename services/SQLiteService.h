@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "utils/SingletonWithInit.h"
 #include "utils/SQLite/SqliteConnection.h"
@@ -26,6 +26,7 @@ struct SqliteRpcRequest {
     std::vector<UEAdminAPI::SQLite::SqliteValue> params;         // 与 ? 一一对应, 顺序绑定
     std::string txId;                                           // 可选, 事务 token
     std::string requestId;                                      // 可选, 幂等键
+    int64_t userId = 0;                                         // 操作用户 ID, 0 表示未知, 由 AuthFilter 注入
     int64_t limit = -1;                                         // <0 表示不限制
     int64_t offset = 0;                                         // 翻页偏移
     int32_t timeoutMs = 0;                                      // 客户端期望的最长执行时间, 0 表示沿用连接默认
@@ -75,12 +76,14 @@ public:
     drogon::Task<UEAdminAPI::utils::HttpResult> executeAsync(
         std::string logicalName,
         std::string sql,
-        std::vector<UEAdminAPI::SQLite::SqliteValue> params);
+        std::vector<UEAdminAPI::SQLite::SqliteValue> params,
+        int32_t timeoutMs = 0);
 
     drogon::Task<UEAdminAPI::utils::HttpResult> queryAsync(
         std::string logicalName,
         std::string sql,
-        std::vector<UEAdminAPI::SQLite::SqliteValue> params);
+        std::vector<UEAdminAPI::SQLite::SqliteValue> params,
+        int32_t timeoutMs = 0);
 
     // ---- SQL RPC 主入口, 由 SqliteController 直接调用 ----
     // 内部完成参数校验/事务路由/审计, 只接收 SQLite 语法 SQL.

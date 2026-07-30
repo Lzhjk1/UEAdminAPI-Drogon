@@ -1,4 +1,4 @@
-﻿#include "SQLiteService.h"
+#include "SQLiteService.h"
 
 #include "utils/ApiErrorCodes.h"
 #include "utils/BackgroundExecutor.h"
@@ -506,7 +506,8 @@ Json::Value SQLiteService::recordsetToJson(const SqliteRecordsetPtr& rs) const {
 
 drogon::Task<HttpResult> SQLiteService::executeAsync(std::string logicalName,
                                                     std::string sql,
-                                                    std::vector<SqliteValue> params) {
+                                                    std::vector<SqliteValue> params,
+                                                    int32_t timeoutMs) {
     // 通过 BackgroundAwaiter 将阻塞 SQLite 操作投递到后台线程,
     // 避免阻塞 Drogon IO 线程.
     HttpResult result;
@@ -520,8 +521,8 @@ drogon::Task<HttpResult> SQLiteService::executeAsync(std::string logicalName,
     } else {
         std::mutex* connMtx = getConnMutex(logicalName);
         ok = co_await runOnBackground(
-            [conn, &sql, &params, &affected]() -> bool {
-                return conn->execute(sql, params, &affected);
+            [conn, &sql, &params, &affected, timeoutMs]() -> bool {
+                return conn->execute(sql, params, &affected, timeoutMs);
             },
             connMtx);
         if (!ok) {
@@ -543,7 +544,8 @@ drogon::Task<HttpResult> SQLiteService::executeAsync(std::string logicalName,
 
 drogon::Task<HttpResult> SQLiteService::queryAsync(std::string logicalName,
                                                   std::string sql,
-                                                  std::vector<SqliteValue> params) {
+                                                  std::vector<SqliteValue> params,
+                                                  int32_t timeoutMs) {
     HttpResult result;
     SqliteRecordsetPtr rs;
     std::string err;
@@ -554,8 +556,8 @@ drogon::Task<HttpResult> SQLiteService::queryAsync(std::string logicalName,
     } else {
         std::mutex* connMtx = getConnMutex(logicalName);
         rs = co_await runOnBackground(
-            [conn, &sql, &params]() -> SqliteRecordsetPtr {
-                return conn->query(sql, params);
+            [conn, &sql, &params, timeoutMs]() -> SqliteRecordsetPtr {
+                return conn->query(sql, params, timeoutMs);
             },
             connMtx);
         if (!rs) {
@@ -670,8 +672,8 @@ drogon::Task<HttpResult> SQLiteService::handleQueryRpc(const SqliteRpcRequest& r
         }
     }
 
-    // 5. 落到 queryAsync 执行
-    HttpResult r = co_await queryAsync(req.logicalName, sqlFinal, req.params);
+    // 5. 落到 queryAsync 执行 (传入超时参数)
+    HttpResult r = co_await queryAsync(req.logicalName, sqlFinal, req.params, req.timeoutMs);
 
     if (r.code == 0 && !req.requestId.empty()) {
         r.jsondata["requestId"] = req.requestId;
@@ -692,7 +694,8 @@ drogon::Task<HttpResult> SQLiteService::handleQueryRpc(const SqliteRpcRequest& r
             std::to_string(r.code),
             "sqlite_db",
             req.logicalName,
-            detail.toStyledString());
+            detail.toStyledString(),
+            req.userId);
     }
 
     co_return r;
@@ -735,7 +738,7 @@ drogon::Task<HttpResult> SQLiteService::handleExecuteRpc(const SqliteRpcRequest&
         }
     }
 
-    HttpResult r = co_await executeAsync(req.logicalName, req.sql, req.params);
+    HttpResult r = co_await executeAsync(req.logicalName, req.sql, req.params, req.timeoutMs);
 
     if (r.code == 0 && !req.requestId.empty()) {
         r.jsondata["requestId"] = req.requestId;
@@ -758,7 +761,8 @@ drogon::Task<HttpResult> SQLiteService::handleExecuteRpc(const SqliteRpcRequest&
             std::to_string(r.code),
             "sqlite_db",
             req.logicalName,
-            detail.toStyledString());
+            detail.toStyledString(),
+            req.userId);
     }
 
     co_return r;
