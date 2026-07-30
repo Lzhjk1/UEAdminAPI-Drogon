@@ -5,11 +5,14 @@
     "dbname": "UELocalDB",
     "schema": "core",
     "user": "UELocal",
-    "passwd": "753951iop",
+    "passwd": "Porthack123",
     "tables": [
         "projects",
         "project_databases",
-        "audit_logs"
+        "audit_logs",
+        "users",
+        "sessions",
+        "locks"
     ],
     "convert": {
         "enabled": false,
