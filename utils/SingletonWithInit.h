@@ -59,7 +59,7 @@ public:
      */
     static T* Instance() {
         if (!s_initialized) {
-            LOG_WARN << "Singleton not initialized. Call Init() first. Returning nullptr.";
+            LOG_FATAL << "Singleton not initialized. Call Init() first. Returning nullptr.";
             return nullptr;
         }
         return s_instance;

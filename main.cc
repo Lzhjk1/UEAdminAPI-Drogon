@@ -137,7 +137,7 @@ int main() {
         TencentSMSService::Init(drogon::app().getCustomConfig());
         EmailService::Init(smtpPlugin, drogon::app().getCustomConfig());
         MFAService::Init(
-            EmailService::Instance(), 
+            EmailService::Instance(),
             TencentSMSService::Instance()
         );
         UEAdminAPI::GitlabService::Init(drogon::app().getCustomConfig());
