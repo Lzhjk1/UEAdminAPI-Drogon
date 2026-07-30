@@ -180,10 +180,63 @@ SQLiteService::SQLiteService(const Json::Value& config) {
 
     LOG_INFO << "SQLiteService 初始化完成, root=" << _rootDir
              << ", default=" << _defaultDbName;
+
+    startTxCleanupThread();
 }
 
 SQLiteService::~SQLiteService() {
+    stopTxCleanupThread();
     closeAll();
+}
+
+void SQLiteService::startTxCleanupThread() {
+    _txCleanupRunning = true;
+    _txCleanupThread = std::thread([this]() {
+        int sleepMs = (_txTimeoutSec / 2) * 1000;
+        while (_txCleanupRunning) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+            if (!_txCleanupRunning) break;
+
+            // 1. 在锁中收集超时事务列表
+            std::vector<std::pair<std::string, std::string>> expired;  // (txId, logicalName)
+            {
+                auto now = std::chrono::steady_clock::now();
+                std::lock_guard<std::mutex> lock(_txMutex);
+                for (auto it = _activeTx.begin(); it != _activeTx.end(); ) {
+                    if (it->second.expiresAt <= now) {
+                        expired.push_back({it->first, it->second.logicalName});
+                        _logicalToTx.erase(it->second.logicalName);
+                        it = _activeTx.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+
+            // 2. 锁外逐个执行 ROLLBACK
+            for (auto& entry : expired) {
+                SqliteConnectionPtr conn = getConnection(entry.second);
+                if (conn) {
+                    std::mutex* connMtx = getConnMutex(entry.second);
+                    if (connMtx) {
+                        std::lock_guard<std::mutex> connLock(*connMtx);
+                        conn->rollbackTransaction();
+                        LOG_WARN << "TxCleanup: 已回滚超时事务, txId=" << entry.first
+                                 << ", logicalName=" << entry.second;
+                    }
+                } else {
+                    LOG_ERROR << "TxCleanup: 无法获取连接, logicalName=" << entry.second;
+                }
+            }
+        }
+    });
+}
+
+void SQLiteService::stopTxCleanupThread() {
+    _txCleanupRunning = false;
+    if (_txCleanupThread.joinable()) {
+        _txCleanupThread.join();
+    }
 }
 
 std::string SQLiteService::buildFallbackLogicalName(const std::string& scope,

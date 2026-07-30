@@ -12,8 +12,10 @@
 #include <chrono>
 #include <map>
 #include <memory>
+#include <atomic>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UEAdminAPI {
@@ -152,6 +154,10 @@ private:
     // 获取每连接互斥锁 (getConnection 后调用)
     std::mutex* getConnMutex(const std::string& logicalName) const;
 
+    // ---- 事务超时清理 ----
+    void startTxCleanupThread();
+    void stopTxCleanupThread();
+
     // 事务表: txId -> (logicalName, expiresAt)
     struct TxInfo {
         std::string logicalName;
@@ -170,6 +176,9 @@ private:
     std::map<std::string, TxInfo> _activeTx;                    // txId -> info
     std::map<std::string, std::string> _logicalToTx;             // logicalName -> txId, 用于防止同库多事务
     int32_t _txTimeoutSec = 60;                                 // 事务硬超时
+
+    std::thread _txCleanupThread;                               // 后台清理线程
+    std::atomic<bool> _txCleanupRunning;                        // 线程运行标志
 };
 
 }  // namespace Services
