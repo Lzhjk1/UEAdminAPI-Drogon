@@ -12,7 +12,8 @@
         "audit_logs",
         "users",
         "sessions",
-        "locks"
+        "locks",
+        "idempotent_keys"
     ],
     "convert": {
         "enabled": false,

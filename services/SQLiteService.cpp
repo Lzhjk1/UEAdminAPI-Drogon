@@ -3,6 +3,7 @@
 #include "utils/ApiErrorCodes.h"
 #include "utils/BackgroundExecutor.h"
 #include "AuditLogService.h"
+#include "IdempotentService.h"
 
 #include <drogon/orm/DbClient.h>
 #include <drogon/orm/Mapper.h>
@@ -696,7 +697,28 @@ drogon::Task<HttpResult> SQLiteService::handleQueryRpc(const SqliteRpcRequest& r
         co_return result;
     }
 
-    // 3. 如果指定了 txId, 检查它是否属于同一 logicalName
+    // 3. 幂等去重: 命中则直接返回上次结果
+    if (!req.requestId.empty()) {
+        auto cached = IdempotentService::get(req.requestId);
+        if (cached) {
+            Json::CharReaderBuilder builder;
+            std::string errs;
+            std::istringstream iss(*cached);
+            Json::Value root;
+            if (Json::parseFromStream(builder, iss, &root, &errs)) {
+                HttpResult r;
+                r.code = root.get("code", 0).asInt();
+                r.msg = root.get("msg", "success").asString();
+                if (root.isMember("data") && !root["data"].isNull()) {
+                    r.jsondata = root["data"];
+                }
+                co_return r;
+            }
+            LOG_WARN << "Idempotent cache 解析失败, requestId=" << req.requestId << ", err=" << errs;
+        }
+    }
+
+    // 4. 如果指定了 txId, 检查它是否属于同一 logicalName
     if (!req.txId.empty()) {
         std::lock_guard<std::mutex> lock(_txMutex);
         auto it = _activeTx.find(req.txId);
@@ -714,7 +736,7 @@ drogon::Task<HttpResult> SQLiteService::handleQueryRpc(const SqliteRpcRequest& r
         }
     }
 
-    // 4. 拼接可选的 LIMIT/OFFSET; 若 SQL 已有 LIMIT 由客户端负责, 服务端不再重复添加
+    // 5. 拼接可选的 LIMIT/OFFSET; 若 SQL 已有 LIMIT 由客户端负责, 服务端不再重复添加
     std::string sqlFinal = req.sql;
     if (req.limit >= 0) {
         // 仅在 SQL 中不含 LIMIT 时追加, 简单大小写不敏感检查
@@ -729,14 +751,19 @@ drogon::Task<HttpResult> SQLiteService::handleQueryRpc(const SqliteRpcRequest& r
         }
     }
 
-    // 5. 落到 queryAsync 执行 (传入超时参数)
+    // 6. 落到 queryAsync 执行 (传入超时参数)
     HttpResult r = co_await queryAsync(req.logicalName, sqlFinal, req.params, req.timeoutMs);
 
     if (r.code == 0 && !req.requestId.empty()) {
         r.jsondata["requestId"] = req.requestId;
     }
 
-    // 6. 审计日志 (异步, 不阻塞响应; 以 requestId 作为幂等键)
+    // 6. 写幂等缓存 (仅成功结果)
+    if (r.code == 0 && !req.requestId.empty()) {
+        IdempotentService::put(req.requestId, r.toJsonString());
+    }
+
+    // 7. 审计日志 (异步, 不阻塞响应; 以 requestId 作为幂等键)
     {
         Json::Value detail;
         detail["logicalName"] = req.logicalName;
@@ -782,6 +809,27 @@ drogon::Task<HttpResult> SQLiteService::handleExecuteRpc(const SqliteRpcRequest&
         co_return result;
     }
 
+    // 幂等去重: 命中则直接返回上次结果
+    if (!req.requestId.empty()) {
+        auto cached = IdempotentService::get(req.requestId);
+        if (cached) {
+            Json::CharReaderBuilder builder;
+            std::string errs;
+            std::istringstream iss(*cached);
+            Json::Value root;
+            if (Json::parseFromStream(builder, iss, &root, &errs)) {
+                HttpResult r;
+                r.code = root.get("code", 0).asInt();
+                r.msg = root.get("msg", "success").asString();
+                if (root.isMember("data") && !root["data"].isNull()) {
+                    r.jsondata = root["data"];
+                }
+                co_return r;
+            }
+            LOG_WARN << "Idempotent cache 解析失败, requestId=" << req.requestId << ", err=" << errs;
+        }
+    }
+
     if (!req.txId.empty()) {
         std::lock_guard<std::mutex> lock(_txMutex);
         auto it = _activeTx.find(req.txId);
@@ -803,6 +851,11 @@ drogon::Task<HttpResult> SQLiteService::handleExecuteRpc(const SqliteRpcRequest&
 
     if (r.code == 0 && !req.requestId.empty()) {
         r.jsondata["requestId"] = req.requestId;
+    }
+
+    // 写幂等缓存 (仅成功结果)
+    if (r.code == 0 && !req.requestId.empty()) {
+        IdempotentService::put(req.requestId, r.toJsonString());
     }
 
     // 审计日志 (以 requestId 作为幂等键)
