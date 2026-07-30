@@ -61,6 +61,12 @@ custom_config:
       ClientId: [这里填微信 ClientId]
       ClientSecret: [这里填微信 ClientSecret]
 
+  # MDB 转 SQLite 迁移工具配置
+  MdbMigrator:
+    # MDB 转 SQLite 迁移工具可执行文件路径. 也可用环境变量 MDB_MIGRATOR_PATH 覆盖.
+    # 均未设置时 uploadMdb 接口将返回错误.
+    path: ""
+
   # 测试模式配置 (自动化测试用, 生产环境务必保持 Enable: false)
   TestMode:
     Enable: false          # 测试模式总开关

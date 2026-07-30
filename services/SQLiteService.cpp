@@ -162,6 +162,14 @@ SQLiteService::SQLiteService(const Json::Value& config) {
         defaultDbName = "default";
     }
 
+    // 读取 MdbMigrator 节点配置 (迁移工具路径)
+    if (config.isMember("MdbMigrator") && config["MdbMigrator"].isObject()) {
+        const Json::Value& migNode = config["MdbMigrator"];
+        if (migNode.isMember("path") && migNode["path"].isString()) {
+            _migratorExePath = stripQuotesAndSpaces(migNode["path"].asString());
+        }
+    }
+
     namespace fs = std::filesystem;
     fs::path rootPath(rootDir);
     if (!rootPath.is_absolute()) {
@@ -180,7 +188,8 @@ SQLiteService::SQLiteService(const Json::Value& config) {
     _defaultDbName = defaultDbName;
 
     LOG_INFO << "SQLiteService 初始化完成, root=" << _rootDir
-             << ", default=" << _defaultDbName;
+             << ", default=" << _defaultDbName
+             << ", migrator=" << (_migratorExePath.empty() ? "(未配置, 需通过 MDB_MIGRATOR_PATH 环境变量提供)" : _migratorExePath);
 
     startTxCleanupThread();
 }
@@ -1185,10 +1194,13 @@ drogon::Task<HttpResult> SQLiteService::uploadMdb(
         fs::path sqlitePath = sqliteDir / (logicalName + ".sqlite");
 
         // 2d. 调用 MdbToSqliteMigrator.exe (32 位, 通过 CreateProcessW 避免 cmd.exe 中文路径问题)
-        // 迁移工具路径: 相对服务端的固定位置, 或通过环境变量 MDB_MIGRATOR_PATH 配置
+        // 迁移工具路径: 优先环境变量 MDB_MIGRATOR_PATH 覆盖, 其次 config MdbMigrator.path, 均未设置则报错
         const char* migratorEnv = std::getenv("MDB_MIGRATOR_PATH");
-        std::string migratorExe = migratorEnv ? migratorEnv :
-            "D:\\vc\\ObjectPRX\\sln\\MdbToSqliteMigrator\\build\\Debug\\MdbToSqliteMigrator.exe";
+        std::string migratorExe = migratorEnv ? std::string(migratorEnv) : _migratorExePath;
+        if (migratorExe.empty()) {
+            res.errMsg = "未配置迁移工具路径, 请在 config.yaml 的 custom_config.MdbMigrator.path 设置, 或设置环境变量 MDB_MIGRATOR_PATH";
+            return res;
+        }
 
         // 用 CreateProcessW 直接调用迁移工具, 绕过 cmd.exe (避免中文路径/特殊字符问题)
         // cmd 是 UTF-8, 转为 UTF-16 命令行

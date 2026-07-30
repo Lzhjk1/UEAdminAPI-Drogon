@@ -167,6 +167,7 @@ private:
 private:
     std::string _rootDir;
     std::string _defaultDbName;
+    std::string _migratorExePath;                                  // MdbToSqliteMigrator 路径, 来自 config MdbMigrator.path
 
     mutable std::mutex _poolMutex;
     std::map<std::string, UEAdminAPI::SQLite::SqliteConnectionPtr> _pool;
