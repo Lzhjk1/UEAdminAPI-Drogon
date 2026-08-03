@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - '*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '覆盖默认分支名生成的标签后缀（Docker 标签/产物名使用）；留空则自动使用分支名'
+        required: false
+        default: ''
 
 concurrency:
   group: build-${{ github.ref }}
@@ -11,7 +17,7 @@ concurrency:
 
 jobs:
   build-linux:
-    if: startsWith(github.event.head_commit.message, '[build]') || contains(github.event.head_commit.message, '[build]')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[build]') || contains(github.event.head_commit.message, '[build]')
     runs-on: ubuntu-22.04
     timeout-minutes: 60
 
@@ -53,12 +59,17 @@ jobs:
       - name: Set branch name
         shell: bash
         run: |
+          # 手动触发时可指定 tag_name 覆盖默认后缀；否则按分支名生成
           # 分支名用于 Docker 标签/产物命名；其中的 / 在 Docker 标签中非法，替换为 -（如 feature/foo -> feature-foo）
-          BRANCH_SAFE="${GITHUB_REF_NAME//\//-}"
-          # Docker 标签仅支持 ASCII，中文分支名需映射为 ASCII 别名；新增映射在此追加 case 分支
-          case "${BRANCH_SAFE}" in
-            "PDMS数据库拓展用后端") BRANCH_SAFE="PDMS" ;;
-          esac
+          if [ -n "${{ inputs.tag_name }}" ]; then
+            BRANCH_SAFE="${{ inputs.tag_name }}"
+          else
+            BRANCH_SAFE="${GITHUB_REF_NAME//\//-}"
+            # Docker 标签仅支持 ASCII，中文分支名需映射为 ASCII 别名；新增映射在此追加 case 分支
+            case "${BRANCH_SAFE}" in
+              "PDMS数据库拓展用后端") BRANCH_SAFE="PDMS" ;;
+            esac
+          fi
           echo "BRANCH_SAFE=${BRANCH_SAFE}" >> $GITHUB_ENV
 
       - name: Set short sha
@@ -109,7 +120,7 @@ jobs:
           if-no-files-found: error
 
   build-windows:
-    if: startsWith(github.event.head_commit.message, '[build]') || contains(github.event.head_commit.message, '[build]')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[build]') || contains(github.event.head_commit.message, '[build]')
     runs-on: windows-latest
     timeout-minutes: 90
 
@@ -124,12 +135,17 @@ jobs:
       - name: Set branch name
         shell: bash
         run: |
+          # 手动触发时可指定 tag_name 覆盖默认后缀；否则按分支名生成
           # 分支名用于产物命名；其中的 / 不合法，替换为 -
-          BRANCH_SAFE="${GITHUB_REF_NAME//\//-}"
-          # Docker 标签仅支持 ASCII，中文分支名需映射为 ASCII 别名；新增映射在此追加 case 分支
-          case "${BRANCH_SAFE}" in
-            "PDMS数据库拓展用后端") BRANCH_SAFE="PDMS" ;;
-          esac
+          if [ -n "${{ inputs.tag_name }}" ]; then
+            BRANCH_SAFE="${{ inputs.tag_name }}"
+          else
+            BRANCH_SAFE="${GITHUB_REF_NAME//\//-}"
+            # Docker 标签仅支持 ASCII，中文分支名需映射为 ASCII 别名；新增映射在此追加 case 分支
+            case "${BRANCH_SAFE}" in
+              "PDMS数据库拓展用后端") BRANCH_SAFE="PDMS" ;;
+            esac
+          fi
           echo "BRANCH_SAFE=${BRANCH_SAFE}" >> $GITHUB_ENV
 
       - name: Cache vcpkg
