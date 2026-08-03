@@ -24,7 +24,7 @@ Task<HttpResponsePtr> SystemController::SqlitePing(HttpRequestPtr req) {
         auto _sqliteService = UEAdminAPI::Services::SQLiteService::Instance();
         result = co_await _sqliteService->ping();
     } catch (const std::exception& e) {
-        result.setResult(UEAdminAPI::ApiError_InternalError, std::string("SQLiteService 未就绪: ") + e.what());
+        result.setResult(UEAdminAPI::ApiError_InternalError, std::string("SQLiteService 未就绪  : ") + e.what());
     }
 
     resp->setBody(result.toJsonString());
