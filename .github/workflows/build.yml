@@ -55,6 +55,10 @@ jobs:
         run: |
           # 分支名用于 Docker 标签/产物命名；其中的 / 在 Docker 标签中非法，替换为 -（如 feature/foo -> feature-foo）
           BRANCH_SAFE="${GITHUB_REF_NAME//\//-}"
+          # Docker 标签仅支持 ASCII，中文分支名需映射为 ASCII 别名；新增映射在此追加 case 分支
+          case "${BRANCH_SAFE}" in
+            "PDMS数据库拓展用后端") BRANCH_SAFE="PDMS" ;;
+          esac
           echo "BRANCH_SAFE=${BRANCH_SAFE}" >> $GITHUB_ENV
 
       - name: Set short sha
@@ -122,6 +126,10 @@ jobs:
         run: |
           # 分支名用于产物命名；其中的 / 不合法，替换为 -
           BRANCH_SAFE="${GITHUB_REF_NAME//\//-}"
+          # Docker 标签仅支持 ASCII，中文分支名需映射为 ASCII 别名；新增映射在此追加 case 分支
+          case "${BRANCH_SAFE}" in
+            "PDMS数据库拓展用后端") BRANCH_SAFE="PDMS" ;;
+          esac
           echo "BRANCH_SAFE=${BRANCH_SAFE}" >> $GITHUB_ENV
 
       - name: Cache vcpkg
