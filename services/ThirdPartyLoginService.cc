@@ -930,7 +930,7 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
 
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
-    resp->setContentTypeCode(CT_APPLICATION_JSON);
+    resp->setContentTypeCode(CT_APPLICATION_XHTML);
     resp->setBody(std::move(htmlContent));
 
     co_return resp;
