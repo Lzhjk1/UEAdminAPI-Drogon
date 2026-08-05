@@ -3,6 +3,7 @@
 #include <drogon/HttpClient.h>
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
+#include <drogon/HttpViewData.h>
 #include <json/json.h>
 #include <iostream>
 #include <sstream>
@@ -895,48 +896,14 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
     // 构造自定义协议地址
     std::string customProtocol = "ueloginreturn://success?state=" + state;
 
-    // 构造简洁美观的提示页面
-    std::string htmlContent =
-        "<!DOCTYPE html>"
-        "<html>"
-        "<head>"
-        "    <meta charset=\"UTF-8\">"
-        "    <title>登录跳转中...</title>"
-        "    "
-        "    <meta http-equiv=\"refresh\" content=\"0;url=" + customProtocol + "\">"
-        "    <style>"
-        "        body { font-family: 'Microsoft YaHei', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f5f5f5; }"
-        "        .card { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }"
-        "        .icon { color: #52c41a; font-size: 48px; margin-bottom: 20px; }"
-        "        .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #1890ff; color: white; text-decoration: none; border-radius: 4px; }"
-        "    </style>"
-        "</head>"
-        "<body>"
-        "    <div class=\"card\">"
-        "        <div class=\"icon\">✔</div>"
-        "        <h2 style=\"margin:0 0 10px 0;\">验证成功</h2>"
-        "        <p style=\"color: #666;\">正在为您跳转回应用，请稍候...</p>"
-        "        <p style=\"font-size: 14px; color: #999;\">如果您的应用没有自动弹出，请点击下方按钮：</p>"
-        "        <a href=\"" + customProtocol + "\" class=\"btn\">返回应用</a>"
-        "        <hr style=\"border:none; border-top:1px solid #eee; margin:20px 0;\">"
-        "        <p style=\"color: #999; font-size: 12px;\">现在您可以安全地关闭此浏览器窗口</p>"
-        "    </div>"
-        "    <script>"
-        "        // 第二重保险：JS 跳转"
-        "        window.location.href = '" + customProtocol + "';"
-        "    </script>"
-        "</body>"
-        "</html>";
+    // 渲染登录跳转提示页 (views/login_redirect.csp, 编译期已嵌入 exe)
+    HttpViewData viewData;
+    viewData.insert("customProtocol", customProtocol);
 
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
+    auto resp = HttpResponse::newHttpViewResponse("login_redirect.csp", viewData);
     resp->setContentTypeCode(CT_APPLICATION_XHTML);
-    resp->setBody(std::move(htmlContent));
 
     co_return resp;
-
-    //resp->addHeader("Location", "ueloginreturn://");
-    //co_return resp;
 }
 
 Task<HttpResult> ThirdPartyLoginService::BindAccount(int userId, const std::string &platform, const std::string &code, const std::string &verifyCode) {
