@@ -901,7 +901,6 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
     viewData.insert("customProtocol", customProtocol);
 
     auto resp = HttpResponse::newHttpViewResponse("login_redirect.csp", viewData);
-    resp->setContentTypeCode(CT_APPLICATION_XHTML);
 
     co_return resp;
 }
