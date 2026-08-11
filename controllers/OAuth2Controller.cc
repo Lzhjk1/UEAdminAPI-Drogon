@@ -150,10 +150,12 @@ Task<HttpResponsePtr> OAuth2Controller::introspect(HttpRequestPtr req) {
             }
         } catch (...) {}
 
+        bool userExists = false;
         try {
             auto dbClientPtr = drogon::app().getDbClient();
             drogon::orm::Mapper<drogon_model::UEAdminAPI::User> mapper(dbClientPtr);
             auto user = mapper.findByPrimaryKey(userId);
+            userExists = true;
             jbody["username"] = user.getValueOfName();
             if (user.getNickName()) jbody["nickname"] = user.getValueOfNickName();
             if (user.getEmail()) jbody["email"] = user.getValueOfEmail();
@@ -165,7 +167,17 @@ Task<HttpResponsePtr> OAuth2Controller::introspect(HttpRequestPtr req) {
                 else roles.append("default");
                 jbody["roles"] = roles;
             }
-        } catch (...) {}
+        } catch (const drogon::orm::UnexpectedRows &) {
+            // 用户不存在: Token 即使签名有效也不应视为活跃
+        } catch (const std::exception &e) {
+            LOG_ERROR << "Introspect error: " << e.what();
+        }
+
+        // 签名有效但数据库中不存在对应用户时, 视为不活跃
+        if (!userExists) {
+            jbody.clear();
+            jbody["active"] = false;
+        }
     }
 
     co_return HttpResponse::newHttpJsonResponse(jbody);
