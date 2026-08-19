@@ -153,7 +153,7 @@ public:
     drogon::Task<void> deletePlatform(UEAdminAPI::utils::EnumThirdPartyPlatform platform);
     drogon::Task<void> clearExpired();
 
-    drogon::Task<UEAdminAPI::utils::HttpResult> GetLoginUrl(const std::string &platform);
+    drogon::Task<UEAdminAPI::utils::HttpResult> GetLoginUrl(const std::string &platform, const std::string &deviceState = "");
     drogon::Task<UEAdminAPI::utils::HttpResult> Callback(const std::string &platform, const std::string &code, const std::string &state);
     drogon::Task<drogon::HttpResponsePtr> CallbackRedirect(const std::string &platform, const std::string &code, const std::string &state);
     drogon::Task<UEAdminAPI::utils::HttpResult> BindAccount(int userId, const std::string &platform, const std::string &code, const std::string &verifyCode);

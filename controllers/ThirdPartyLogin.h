@@ -11,8 +11,8 @@ class ThirdPartyLogin : public drogon::HttpController<ThirdPartyLogin> {
 public:
     METHOD_LIST_BEGIN
     // 获取第三方登录URL
-    ADD_METHOD_TO(ThirdPartyLogin::getLoginUrl,                 "/api/third/authorization_url?platform={1}", 
-        Get);
+    ADD_METHOD_TO(ThirdPartyLogin::getLoginUrl,                 "/api/third/authorization_url?platform={1}&ueadmin_state={2}", 
+        Get, "DeviceLoginOptional");
 
     // 第三方登录回调
     ADD_METHOD_TO(ThirdPartyLogin::callback,                    "/api/third/{1}?code={2}&state={3}", 
@@ -43,7 +43,7 @@ public:
 
     // GET
     // 获取第三方登录URL
-    Task<HttpResponsePtr> getLoginUrl(HttpRequestPtr req, const std::string platform);
+    Task<HttpResponsePtr> getLoginUrl(HttpRequestPtr req, const std::string platform, const std::string ueadmin_state);
 
     // GET
     // 第三方登录回调

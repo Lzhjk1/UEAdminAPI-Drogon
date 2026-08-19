@@ -63,7 +63,8 @@ bool DeviceLoginSessionService::MarkLoggedIn(const std::string &state, int userI
     }
 
     info.userId = userId;
-    // 重新插入并保留剩余过期时间（CacheMap 重新 insert 会重置 TTL，此处可接受）
+    // CacheMap::insert 不覆盖已存在 key，必须先 erase 再 insert
+    _sessionCache->erase(state);
     _sessionCache->insert(state, info, _expireSeconds);
     return true;
 }
@@ -87,6 +88,8 @@ void DeviceLoginSessionService::RestoreSession(const DeviceLoginSessionInfo &inf
     if (info.state.empty()) {
         return;
     }
+    // CacheMap::insert 不覆盖已存在 key，必须先 erase 再 insert
+    _sessionCache->erase(info.state);
     _sessionCache->insert(info.state, info, _expireSeconds);
 }
 

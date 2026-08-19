@@ -205,7 +205,29 @@
 | | `success: false` | 无效的访问级别 |
 | | `success: false` | 邀请用户加入GitLab项目失败 |
 
-### 7. 系统模块 (System Controller)
+### 7. OAuth2 设备登录模块 (OAuth2 Device Login Controller)
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/oauth2/login/start** (POST) | 0 | `ApiError_Success` | 创建会话成功 |
+| | -703 | `ApiError_DeviceLoginRedirectUriNotAllowed` | redirect_uri 仅允许 http://127.0.0.1 或 http://localhost |
+| | -103 | `ApiError_InternalError` | DeviceLoginSessionService 未初始化 |
+| **/api/oauth2/login/check** (GET) | 0 | `ApiError_Success` | 未完成时返回 active:false；完成时返回 token/flashToken/username |
+| | -701 | `ApiError_DeviceLoginStateInvalid` | state 不存在、已过期或已消费 |
+| | -308 | `ApiError_UserUpdateFailed` | 更新状态失败 |
+| **/login** (GET) | 0 | `ApiError_Success` | 渲染登录页成功 |
+| | -701 | `ApiError_DeviceLoginStateInvalid` | state 不存在或已过期 |
+| **/login** (POST) | 0 | `ApiError_Success` | 登录成功并跳转通知 |
+| | -101 | `ApiError_InvalidJsonFormat` | 请求体必须是JSON格式 |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少必要参数 |
+| | -701 | `ApiError_DeviceLoginStateInvalid` | state 不存在或已过期 |
+| | -702 | `ApiError_DeviceLoginStateConsumed` | state 已登录或不存在 |
+| | -301 | `ApiError_InvalidCredentials` | 用户名或密码错误 |
+| **/api/third/authorization_url** (GET)<br>（带 ueadmin_state 的设备登录路径） | 0 | `ApiError_Success` | (返回授权URL数据) |
+| | -501 | `ApiError_UnsupportedPlatform` | 不支持的第三方平台 |
+| | -701 | `ApiError_DeviceLoginStateInvalid` | ueadmin_state 不存在、已过期或已消费 |
+
+### 8. 系统模块 (System Controller)
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |

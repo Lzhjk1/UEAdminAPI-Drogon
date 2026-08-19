@@ -417,27 +417,34 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `GET`
 - **Params**:
   - `platform` (string, required): 平台名称 (目前有 `qq`, `wechat` 两个平台)
+  - `ueadmin_state` (string, optional): 设备登录会话 state。当从 `/login` 设备登录页发起第三方登录时传入；服务端会把它作为独立 query 参数追加到 `authorizationUrl`，第三方回调返回时据此跳转回 loopback `redirect_uri`。不传则保持旧版 ueclient 兼容流程。
 - **Response**:
   ```json
   {
     "code": 0,
     "msg": "success",
     "data": {
-      "authorizationUrl": "https://...", // 第三方授权页面地址
+      "authorizationUrl": "https://...&ueadmin_state=<deviceState>",
       "code": "...",                     // 临时会话 Code (用于后续接口)
-      "verifyCode": "..."                // 临时会话 VerifyCode (用于后续接口)
+      "verifyCode": "...",               // 临时会话 VerifyCode (用于后续接口)
+      "state": "..."                     // 设备登录 state（仅传入 ueadmin_state 时返回）
     }
   }
   ```
 - **Description**: 获取第三方登录的授权地址。返回的 `code` 和 `verifyCode` 必须保存，用于后续的 `login/check`, `bind`, `register` 等接口。客户端应引导用户在浏览器中打开 `authorizationUrl`。
+- **错误码**:
+  - `-501` 不支持的第三方平台
+  - `-701` `ueadmin_state` 不存在、已过期或已消费（由 `DeviceLoginOptional` 过滤器返回）
 
 ### 4.2 登录回调 (Callback)
 - **URL**: `/api/third/{platform}`
 - **Method**: `GET`
 - **Params**:
   - `code`: OAuth 授权码
-  - `state`: OAuth 状态码 (包含服务器生成的 verify info)
+  - `state`: OAuth 状态码 (包含服务器生成的 verify info；若由设备登录页发起，还会以 `&ueadmin_state=<deviceState>` 追加设备会话 state)
 - **Description**: 第三方平台授权完成后重定向回来的地址。通常由浏览器自动访问。服务器接收到此请求后，会将 OAuth 信息与 4.1 中生成的临时会话关联。
+  - 若回调 URL 带 `ueadmin_state` 且对应设备登录会话存在 loopback `redirect_uri`，服务端返回 `login_redirect.csp` 并跳转到该 loopback 地址（**仅通知，不传 token**）。
+  - 不带 `ueadmin_state` 时保留旧行为：跳转 `ueloginreturn://success?state=<第三方state>`。
 
 ### 4.3 验证登录 (Check Login Status)
 - **URL**: `/api/third/login/check`
@@ -725,3 +732,73 @@ GitLab 相关接口目前使用独立的响应格式：
     "result": "ok"
   }
   ```
+
+### 7.4 设备登录发起 (Device Login Start)
+- **URL**: `/api/oauth2/login/start`
+- **Method**: `POST`
+- **Body**: `{ "redirect_uri": "http://127.0.0.1:45678/cb" }`
+- **Description**: 发起 OAuth2 设备登录会话，用于 Pidgin 等客户端“浏览器登录 → 轮询取 token”。`redirect_uri` 仅允许 `http://127.0.0.1` 或 `http://localhost` 开头；为空时兼容旧 `ueloginreturn://` 流程。
+- **Response (Success)**:
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "state": "ab12cd34...",
+      "login_url": "/login?state=ab12cd34...&redirect_uri=http%3A%2F%2F127.0.0.1%3A45678%2Fcb",
+      "expires": 600
+    }
+  }
+  ```
+- **错误码**:
+  - `-703` `redirect_uri` 非法（非 loopback）
+  - `-103` 服务未初始化
+
+### 7.5 设备登录状态轮询 (Device Login Check)
+- **URL**: `/api/oauth2/login/check?state={1}`
+- **Method**: `GET`
+- **Params**:
+  - `state` (string, required): `login/start` 返回的一次性 state
+- **Description**: 轮询设备登录结果。未登录完成返回 `active:false` 且不消费 state（可继续轮询）；登录完成后返回 `active:true` 并携带 `token`、`flashToken`、`username`，**取后即废**（第二次调用返回错误）。
+- **Response (未完成)**:
+  ```json
+  { "code": 0, "msg": "success", "data": { "active": false } }
+  ```
+- **Response (已完成)**:
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "active": true,
+      "token": "...",
+      "flashToken": "...",
+      "username": "roasal"
+    }
+  }
+  ```
+- **错误码**:
+  - `-701` state 不存在、已过期或已消费
+  - `-308` 更新用户状态失败
+
+### 7.6 设备登录页 (Device Login Page)
+- **URL**: `/login?state={1}&redirect_uri={2}`
+- **Method**: `GET`
+- **Description**: 渲染设备登录 HTML 页面。第一阶段仅支持账号密码登录；后续可扩展邮箱/手机验证码和第三方登录入口。
+- **Params**:
+  - `state` (string, required): `login/start` 返回的 state
+  - `redirect_uri` (string, optional): 登录成功后的 loopback 通知地址
+- **Response**: HTML 页面。state 无效/过期返回 400。
+
+### 7.7 设备登录页密码登录 (Device Login By Password)
+- **URL**: `/login`
+- **Method**: `POST`
+- **Body**: `{ "state": "...", "userName": "...", "passWord": "...", "redirect_uri": "..." }`
+- **Description**: 设备登录页的账号密码登录。登录成功把 `userId` 写入设备会话，并 302 跳转到 `redirect_uri`（loopback，仅通知）；未传 `redirect_uri` 时跳转 `ueloginreturn://success?state=<state>` 兼容旧客户端。
+- **Response**: 302 重定向（成功）或 JSON 错误（失败）。
+- **错误码**:
+  - `-101` 请求体非 JSON
+  - `-102` 缺少参数
+  - `-701` state 不存在或已过期
+  - `-702` state 已登录或不存在（不可重复绑定）
+  - `-301` 用户名或密码错误

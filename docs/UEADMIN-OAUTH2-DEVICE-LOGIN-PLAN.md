@@ -137,19 +137,43 @@ U1 设备登录会话服务（内存存储）
 - ✅ 非法 `redirect_uri`（非 loopback）返回 400
 - ✅ `GET /login` 正常渲染登录页
 - ✅ `POST /login` 错误密码返回 401，且 state 仍保持未登录
-- ⏳ 真实账号登录成功 → `login/check` 返回 token 的端到端验证（需要测试账号）
+- ✅ 真实账号登录成功 → `login/check` 返回 token 的端到端验证通过
 
 ### 端到端验证记录（2026-08-19）
 
-- 使用账号 `User_95493544` / 密码 `Porthack123` 验证：
-  - `POST /login` 返回 **401**；
-  - `GET /api/oauth2/login/check` 保持 `active:false`；
-  - 用现有 `/api/user/login/pwd` 直接登录同样返回 **-301 用户名或密码错误**。
-- **结论**：该账号/密码在当前本地数据库中不可用，不是新接口逻辑问题；需要用有效账号完成最终端到端。
+- 使用账号 `roasal` / 密码 `Porthack123` 验证：
+  - `POST /api/oauth2/login/start` → 返回 `state`、`login_url`、`expires`
+  - `POST /login`（账号密码登录）→ 返回 **302** 到 `http://127.0.0.1:45678/cb`
+  - `GET /api/oauth2/login/check?state=` → **`active:true`**，返回 `token`、`flashToken`、`username=roasal`
+  - 第二次 `check` 同一 state → **已消费**，返回错误
+- **结论**：CacheMap 覆盖修复后，设备登录全流程本地验证通过。
+
+### 修复记录（CacheMap 不覆盖问题）
+
+- **现象**：`POST /login` 返回 302，但 `login/check` 仍 `active:false`。
+- **根因**：Drogon `CacheMap::insert()` 使用 `std::map::insert`，key 已存在时**不覆盖旧值**；`MarkLoggedIn` 无法把 `userId` 写回已存在的 state。
+- **修复**：`DeviceLoginSessionService::MarkLoggedIn()` / `RestoreSession()` 更新前先 `erase(state)` 再 `insert(state, info, ttl)`。
+- **影响文件**：`services/DeviceLoginSessionService.cpp`
+
+### U5/U6 实施记录（已完成）
+
+- ✅ U5：第三方登录回调通知参数化
+  - `ThirdPartyLoginService::GetLoginUrl(platform, deviceState)`：支持从设备登录页携带 `ueadmin_state` 发起第三方登录，`ueadmin_state` 作为独立 query 参数追加到第三方 `authorizationUrl`。
+  - `ThirdPartyLoginService::CallbackRedirect`：回调时剥离 `&ueadmin_state=`，还原原始第三方 state 后交给平台回调；若设备会话存在 loopback `redirect_uri`，渲染 `login_redirect.csp` 跳转到该地址（仅通知，不传 token）。同时若该第三方账号已绑定本地用户，会把 `userId` 写回设备会话，使 `/api/oauth2/login/check` 能返回 token/flashToken；未绑定场景保持 `userId=-1`，由客户端继续走绑定/注册。
+  - `ThirdPartyLoginService::Callback`：同样剥离 `ueadmin_state`，保持旧 API 语义兼容。
+  - `controllers/ThirdPartyLogin`：`GET /api/third/authorization_url?platform={1}&ueadmin_state={2}`。
+  - 新增 `filters/DeviceLoginOptional.{h,cc}`：带 `ueadmin_state` 时校验设备会话存在；不带时放行（兼容旧客户端）。
+- ✅ U6：文档与错误码
+  - `utils/ApiErrorCodes.h` 新增：
+    - `ApiError_DeviceLoginStateInvalid` = -701
+    - `ApiError_DeviceLoginStateConsumed` = -702
+    - `ApiError_DeviceLoginRedirectUriNotAllowed` = -703
+  - `docs/API Reference Documentation.md` 新增 7.4–7.7 设备登录接口文档，并补充 4.1/4.2 第三方登录的 `ueadmin_state` 说明。
+  - `docs/API_Error_Codes.md` 新增第 7 节“OAuth2 设备登录模块”错误码表。
+- 遗留：线上部署、登录页邮箱/手机/第三方入口（第二阶段）。
 
 ### 待办 / 后续阶段
 
-- 用真实账号完成 U-M3 端到端验证
-- U5：`ThirdPartyLoginService::CallbackRedirect` 支持动态 loopback `redirect_uri`（当前 `POST /login` 已实现 loopback 跳转，但第三方登录回调尚未参数化）
-- U6：更新 API 文档与错误码
-- 第三方登录、邮箱/手机验证码登录入口（第二阶段）
+- 将修复后的版本部署到 `im.uesoft.com`（线上当前仍是旧版，`login/check` 会 active:false）
+- 登录页增加邮箱/手机验证码登录入口（第二阶段）
+- 第三方登录页入口 UI（当前已支持通过 `ueadmin_state` 参数对接，但 `views/oauth2_login.csp` 尚未渲染第三方登录按钮）

@@ -279,7 +279,7 @@ Task<HttpResponsePtr> OAuth2Controller::loginStart(HttpRequestPtr req) {
     }
 
     if (!isAllowedLoopbackRedirectUri(redirectUri)) {
-        result.setResult(ApiErrorCode::ApiError_InvalidOperation,
+        result.setResult(ApiErrorCode::ApiError_DeviceLoginRedirectUriNotAllowed,
                          "redirect_uri 仅允许 http://127.0.0.1 或 http://localhost");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k400BadRequest);
@@ -327,7 +327,7 @@ Task<HttpResponsePtr> OAuth2Controller::loginCheck(HttpRequestPtr req, std::stri
 
     auto sessionOpt = sessionService->ExtractSession(state);
     if (!sessionOpt) {
-        result.setResult(ApiErrorCode::ApiError_InvalidOperation,
+        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateInvalid,
                          "state 不存在、已过期或已消费");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k404NotFound);
@@ -449,7 +449,7 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
 
     auto sessionOpt = sessionService->FindSession(state);
     if (!sessionOpt) {
-        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "state 不存在或已过期");
+        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateInvalid, "state 不存在或已过期");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k400BadRequest);
         co_return resp;
@@ -465,7 +465,7 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
 
     int userId = loginResult.jsondata["id"].asInt();
     if (!sessionService->MarkLoggedIn(state, userId)) {
-        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "state 已登录或不存在");
+        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed, "state 已登录或不存在");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k400BadRequest);
         co_return resp;

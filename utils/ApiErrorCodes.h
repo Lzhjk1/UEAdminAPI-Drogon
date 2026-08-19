@@ -51,6 +51,10 @@
     X(ApiError_LoginProcessing, -508, "登录请求处理中 ") \
     X(ApiError_BindingFailed, -509, "绑定第三方账号失败 ") \
     X(ApiError_ThirdPartyInfoCreationFailure, -510, "创建第三方登录信息失败 ") \
+    /* --- Device/OAuth2 Login Errors (-7xx) --- */ \
+    X(ApiError_DeviceLoginStateInvalid, -701, "设备登录会话无效、已过期或已消费 ") \
+    X(ApiError_DeviceLoginStateConsumed, -702, "设备登录会话已消费 ") \
+    X(ApiError_DeviceLoginRedirectUriNotAllowed, -703, "redirect_uri 仅允许 http://127.0.0.1 或 http://localhost ") \
     /* --- GitLab Integration Errors (-6xx) --- */ \
     X(ApiError_GitLabAccountCreationFailure, -601, "创建 GitLab 账号失败 ") \
     X(ApiError_GitLabAccountDeletionFailure, -602, "删除 GitLab 用户失败 ") \

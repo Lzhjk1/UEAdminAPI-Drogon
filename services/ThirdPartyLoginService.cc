@@ -15,6 +15,7 @@
 #include "models/UserThirdPartyInfo.h"
 #include <drogon/orm/Mapper.h>
 #include "services/AuthService.h"
+#include "services/DeviceLoginSessionService.h"
 #include "services/MFAService.h"
 #include "utils/MFA/MFA_Channels.h"
 #include "utils/MFA/MFACodePair.h"
@@ -844,7 +845,7 @@ drogon::Task<void> ThirdPartyLoginService::clearExpired() {
 
 
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(const std::string &platform) {
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(const std::string &platform, const std::string &deviceState) {
     UEAdminAPI::utils::HttpResult result;
     if (platform.empty()) {
         result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform, "请指定平台.");
@@ -860,9 +861,18 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(
     auto loginValue = co_await platformService->createNewThirdLoginValue();
     std::string authUrl = co_await platformService->getAuthorizationUrl(loginValue);
 
+    // 若调用方是设备登录页（OAuth2 login/start 会话），把设备 state 透传给第三方授权 URL，
+    // 第三方回调回来时由 CallbackRedirect 据此定位到 loopback redirect_uri。
+    // 注意：不能追加到 authUrl 的 state 值之后，因为第三方平台的 state 值通常会被 URL 编码后回传；
+    // 这里把它作为独立 query 参数追加，保证回调能按 &ueadmin_state= 解析。
+    if (!deviceState.empty()) {
+        authUrl += (authUrl.find('?') == std::string::npos ? "?" : "&") + std::string("ueadmin_state=") + deviceState;
+    }
+
     result.jsondata["code"] = loginValue->code;
     result.jsondata["verifyCode"] = loginValue->verifyCode;
     result.jsondata["authorizationUrl"] = authUrl;
+    result.jsondata["state"] = deviceState;
     co_return result;
 }
 
@@ -875,11 +885,19 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::Callback(con
         result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform);
         co_return result;
     }
-    if (!co_await platformService->callBack(code, state)) {
+
+    // 与 CallbackRedirect 保持一致：剥离 ueadmin_state 后再按第三方原始 state 处理回调
+    std::string thirdPartyState = state;
+    auto uePos = thirdPartyState.find("&ueadmin_state=");
+    if (uePos != std::string::npos) {
+        thirdPartyState = thirdPartyState.substr(0, uePos);
+    }
+
+    if (!co_await platformService->callBack(code, thirdPartyState)) {
         result.setResult(ApiErrorCode::ApiError_ThirdPartyCallbackFailed, "处理第三方登录回调失败, 可能是登录操作超时");
         co_return result;
     }
-    if (!co_await platformService->getLoginValue(state)) {
+    if (!co_await platformService->getLoginValue(thirdPartyState)) {
         result.setResult(ApiErrorCode::ApiError_LoginValueNotFound);
         co_return result;
     }
@@ -890,11 +908,56 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
     auto platformService = co_await getPlatform(platform);
 
     if (platformService) {
-        co_await platformService->callBack(code, state);
+        // state 可能携带 ueadmin_state，必须把原始第三方 state 还原后再交给平台回调
+        std::string thirdPartyState = state;
+        auto uePos = thirdPartyState.find("&ueadmin_state=");
+        if (uePos != std::string::npos) {
+            thirdPartyState = thirdPartyState.substr(0, uePos);
+        }
+        co_await platformService->callBack(code, thirdPartyState);
     }
 
-    // 构造自定义协议地址
-    std::string customProtocol = "ueloginreturn://success?state=" + state;
+    // 第三方登录回调现在可能携带 ueadmin 设备登录 state（见 GetLoginUrl 的 ueadmin_state）。
+    // 若存在且属于 OAuth2 设备登录会话，则跳转到会话保存的 loopback redirect_uri（仅通知，不传 token）。
+    std::string deviceState;
+    std::string thirdPartyState = state;
+    auto pos = thirdPartyState.find("&ueadmin_state=");
+    if (pos != std::string::npos) {
+        deviceState = thirdPartyState.substr(pos + strlen("&ueadmin_state="));
+        thirdPartyState = thirdPartyState.substr(0, pos);
+    }
+    auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
+    if (!deviceState.empty() && sessionService) {
+        auto session = sessionService->FindSession(deviceState);
+        if (session && !session->redirectUri.empty()) {
+            // 第三方登录回调已完成，若该第三方账号已绑定本地用户，则把 userId 写回设备会话，
+            // 使 /api/oauth2/login/check 轮询能返回 token/flashToken。
+            // 注意：这里不创建/绑定新用户，未绑定场景仍由设备登录页引导走绑定/注册接口。
+            if (platformService && session->userId <= 0) {
+                auto loginValue = co_await platformService->getLoginValue(thirdPartyState);
+                if (loginValue && !loginValue->openId.empty()) {
+                    auto dbClientPtr = drogon::app().getDbClient();
+                    Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
+                    try {
+                        auto thirdPartyInfo = mapperThirdPartyInfo.findOne(
+                            Criteria(UserThirdPartyInfo::Cols::_open_id, CompareOperator::EQ, loginValue->openId) &&
+                            Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform())));
+                        sessionService->MarkLoggedIn(deviceState, thirdPartyInfo.getValueOfUserId());
+                    } catch (const drogon::orm::UnexpectedRows &e) {
+                        LOG_WARN << "设备登录第三方回调: 第三方账号未绑定本地用户, 不标记设备会话 userId, deviceState=" << deviceState;
+                    }
+                }
+            }
+            std::string customProtocol = session->redirectUri;
+            HttpViewData viewData;
+            viewData.insert("customProtocol", customProtocol);
+            auto resp = HttpResponse::newHttpViewResponse("login_redirect.csp", viewData);
+            co_return resp;
+        }
+    }
+
+    // 构造自定义协议地址（兼容 ueclient / 非设备登录流程）
+    std::string customProtocol = "ueloginreturn://success?state=" + thirdPartyState;
 
     // 渲染登录跳转提示页 (views/login_redirect.csp, 编译期已嵌入 exe)
     HttpViewData viewData;

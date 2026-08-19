@@ -28,9 +28,10 @@ namespace UEAdminAPI {
 namespace Controllers {
 
 Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req,
-                                 const std::string platform) {
+                                 const std::string platform,
+                                 const std::string ueadmin_state) {
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto result = co_await _thirdPartyLoginService->GetLoginUrl(platform);
+    auto result = co_await _thirdPartyLoginService->GetLoginUrl(platform, ueadmin_state);
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
