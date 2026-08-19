@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ueadmin 登录</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; background: #f5f7fa; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: #fff; padding: 40px 44px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); width: 360px; box-sizing: border-box; }
+        h2 { margin: 0 0 8px; text-align: center; color: #1f2937; }
+        .sub { text-align: center; color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+        label { display: block; font-size: 13px; color: #374151; margin: 14px 0 6px; }
+        input { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; font-size: 14px; outline: none; }
+        input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        button { width: 100%; margin-top: 22px; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .err { color: #dc2626; font-size: 13px; margin-top: 12px; text-align: center; min-height: 18px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>通过 ueadmin 登录</h2>
+        <p class="sub">此页面将授权您的客户端登录 IRC</p>
+        <form id="loginForm">
+            <input type="hidden" name="state" value="[[state]]" />
+            <input type="hidden" name="redirect_uri" value="[[redirect_uri]]" />
+            <label for="userName">用户名</label>
+            <input type="text" id="userName" name="userName" autocomplete="username" required />
+            <label for="passWord">密码</label>
+            <input type="password" id="passWord" name="passWord" autocomplete="current-password" required />
+            <button type="submit">登 录</button>
+            <div class="err" id="errMsg"></div>
+        </form>
+    </div>
+    <script>
+        const form = document.getElementById('loginForm');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const err = document.getElementById('errMsg');
+            err.textContent = '';
+            const body = {
+                state: form.state.value,
+                userName: form.userName.value.trim(),
+                passWord: form.passWord.value,
+                redirect_uri: form.redirect_uri.value
+            };
+            try {
+                const resp = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (resp.redirected) {
+                    window.location.href = resp.url;
+                    return;
+                }
+                const data = await resp.json();
+                err.textContent = data.msg || '登录失败';
+            } catch (ex) {
+                err.textContent = '网络错误，请重试';
+            }
+        });
+    </script>
+</body>
+</html>

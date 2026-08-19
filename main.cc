@@ -11,6 +11,7 @@
 #include "services/MFAService.h"
 #include "services/EmailService.h"
 #include "services/AuthService.h"
+#include "services/DeviceLoginSessionService.h"
 #include "services/GitlabService.h"
 #include "services/ThirdPartyLoginService.h"
 #include "services/SystemService.h"
@@ -142,6 +143,7 @@ int main() {
         );
         UEAdminAPI::GitlabService::Init(drogon::app().getCustomConfig());
         UEAdminAPI::Services::ThirdPartyLoginService::Init(drogon::app().getCustomConfig());
+        UEAdminAPI::Services::DeviceLoginSessionService::Init(drogon::app().getCustomConfig());
         SystemService::Init();
         UEAdminAPI::Services::ActionTokenService::Init(drogon::app().getCustomConfig());
 
