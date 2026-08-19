@@ -53,14 +53,18 @@ public:
     /// @param status 状态码, 用于在数据库中标记一个Token, 以实现旧Token失效机制
     /// @param durationSeconds Token有效期, 单位为秒, 默认使用配置中的tokenExpeirSec或3600
     /// @return 
-    std::string CreateToken(int id, int status, uint64_t durationSeconds = 0); 
+    std::string CreateToken(int id, int status, uint64_t durationSeconds = 0,
+                            const std::string &username = "",
+                            const std::string &nickname = ""); 
     
     /// @brief 创建一个FlashToken
     /// @param id 用户Id
     /// @param status 状态码, 用于在数据库中标记一个Token, 以实现旧Token失效机制
     /// @param durationSeconds Token有效期, 单位为秒, 默认使用配置中的tokenFlashTokenSec或259200
     /// @return 
-    std::string CreateFlashToken(int id, int status, uint64_t durationSeconds = 0); 
+    std::string CreateFlashToken(int id, int status, uint64_t durationSeconds = 0,
+                                 const std::string &username = "",
+                                 const std::string &nickname = ""); 
 
     // 颁发一对 Token 与 FlashToken，并将 status 同步到数据库
     drogon::Task<std::tuple<std::string, std::string, int>> NewTokenPair(int userId);

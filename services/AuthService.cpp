@@ -208,7 +208,9 @@ bool AuthService::VerifyPasswordHash(const std::string &password,
     return VerifyPasswordHash(password, hashView, saltView);
 }
 
-std::string AuthService::CreateToken(int id, int status, uint64_t durationSeconds) {
+std::string AuthService::CreateToken(int id, int status, uint64_t durationSeconds,
+                                     const std::string &username,
+                                     const std::string &nickname) {
     if (durationSeconds == 0) {
         durationSeconds = _tokenExpireSec;
     }
@@ -219,6 +221,8 @@ std::string AuthService::CreateToken(int id, int status, uint64_t durationSecond
                      .set_payload_claim(std::string("tokenType"), jwt::claim(std::string("token")))
                      // status是附加验证信息
                      .set_payload_claim(std::string("status"), jwt::claim(std::to_string(status)))
+                     .set_payload_claim(std::string("username"), jwt::claim(username.empty() ? std::to_string(id) : username))
+                     .set_payload_claim(std::string("nickname"), jwt::claim(nickname.empty() ? (username.empty() ? std::to_string(id) : username) : nickname))
                      .set_expires_in(std::chrono::seconds{durationSeconds});
 
     // 优先 RS256 签名，fallback 到 HS512
@@ -232,7 +236,9 @@ std::string AuthService::CreateToken(int id, int status, uint64_t durationSecond
 
     return builder.sign(jwt::algorithm::hs512{ _secret });
 }
-std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationSeconds) {
+std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationSeconds,
+                                          const std::string &username,
+                                          const std::string &nickname) {
     if (durationSeconds == 0) {
         durationSeconds = _flashTokenExpireSec;
     }
@@ -243,6 +249,8 @@ std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationS
                      .set_payload_claim(std::string("tokenType"), jwt::claim(std::string("flashToken")))
                      // status是附加验证信息
                      .set_payload_claim(std::string("status"), jwt::claim(std::to_string(status)))
+                     .set_payload_claim(std::string("username"), jwt::claim(username.empty() ? std::to_string(id) : username))
+                     .set_payload_claim(std::string("nickname"), jwt::claim(nickname.empty() ? (username.empty() ? std::to_string(id) : username) : nickname))
                      .set_expires_in(std::chrono::seconds{durationSeconds});
 
     if (!_privateKeyPem.empty() && !_publicKeyPem.empty()) {
@@ -270,8 +278,19 @@ drogon::Task<std::tuple<std::string, std::string, int>> AuthService::NewTokenPai
         needInsert = true;
     }
 
-    std::string flashToken = CreateFlashToken(userId, status);
-    std::string token = CreateToken(userId, status);
+    std::string flashToken, token;
+    try {
+        Mapper<User> userMapper(dbClientPtr);
+        User user = userMapper.findByPrimaryKey(userId);
+        std::string username = user.getValueOfName();
+        std::string nickname = user.getNickName() ? user.getValueOfNickName() : username;
+        flashToken = CreateFlashToken(userId, status, 0, username, nickname);
+        token = CreateToken(userId, status, 0, username, nickname);
+    } catch (const std::exception &e) {
+        LOG_ERROR << "NewTokenPair: failed to load user " << userId << ": " << e.what();
+        flashToken = CreateFlashToken(userId, status);
+        token = CreateToken(userId, status);
+    }
 
     if (needInsert) {
         UserFlashtoken newRow;
@@ -317,7 +336,18 @@ drogon::Task<std::tuple<std::string, int>> AuthService::NewToken(int userId, int
     //    (void)mapper.update(row);
     //}
 
-    std::string token = CreateToken(userId, status);
+    std::string token;
+    try {
+        auto dbClientPtr = drogon::app().getDbClient();
+        Mapper<User> mapperUsers(dbClientPtr);
+        User user = mapperUsers.findByPrimaryKey(userId);
+        std::string username = user.getValueOfName();
+        std::string nickname = user.getNickName() ? user.getValueOfNickName() : username;
+        token = CreateToken(userId, status, 0, username, nickname);
+    } catch (const std::exception &e) {
+        LOG_ERROR << "NewToken: failed to load user " << userId << ": " << e.what();
+        token = CreateToken(userId, status);
+    }
     co_return std::make_tuple(token, status);
 }
 
