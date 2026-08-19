@@ -39,11 +39,23 @@ class ApiClient:
             h.update(extra)
         return h
 
+    def _raw_request(self, method: str, path: str, *, params=None, json_body=None,
+                     headers: dict | None = None, allow_redirects: bool = False, **kwargs):
+        """发送请求并返回原始 requests.Response（不解析 JSON，不校验 code）。
+
+        allow_redirects 默认 False：设备登录的 POST /login 成功会 302 到 loopback
+        地址，而测试机通常没有监听该地址，跟随跳转会产生 ConnectionError。
+        """
+        url = f"{self.base_url}{path}"
+        return self.session.request(method, url, params=params, json=json_body,
+                                    headers=self._headers(headers),
+                                    allow_redirects=allow_redirects, **kwargs)
+
     def _request(self, method: str, path: str, *, params=None, json_body=None,
-                 headers: dict | None = None, check: bool = True):
+                 headers: dict | None = None, check: bool = True, **kwargs):
         url = f"{self.base_url}{path}"
         resp = self.session.request(method, url, params=params, json=json_body,
-                                    headers=self._headers(headers))
+                                    headers=self._headers(headers), **kwargs)
         try:
             body = resp.json()
         except Exception:
@@ -159,6 +171,62 @@ class ApiClient:
 
     def delete_user(self):
         return self._request("DELETE", "/api/user/delete")
+
+    # ---------- OAuth2 设备登录 / 标准端点 ----------
+    def device_login_start(self, redirect_uri: str | None = None):
+        body = {} if redirect_uri is None else {"redirect_uri": redirect_uri}
+        return self._request("POST", "/api/oauth2/login/start", json_body=body)
+
+    def device_login_start_raw(self, redirect_uri: str | None = None):
+        body = {} if redirect_uri is None else {"redirect_uri": redirect_uri}
+        resp = self._raw_request("POST", "/api/oauth2/login/start", json_body=body)
+        return resp.status_code, resp.json()
+
+    def device_login_check(self, state: str):
+        return self._request("GET", "/api/oauth2/login/check",
+                             params={"state": state})
+
+    def device_login_check_raw(self, state: str):
+        resp = self._raw_request("GET", "/api/oauth2/login/check",
+                                 params={"state": state})
+        return resp.status_code, resp.json()
+
+    def device_login_page(self, state: str, redirect_uri: str | None = None):
+        params = {"state": state}
+        if redirect_uri is not None:
+            params["redirect_uri"] = redirect_uri
+        return self._raw_request("GET", "/login", params=params)
+
+    def device_login_pwd(self, state: str, username: str, password: str,
+                         redirect_uri: str | None = None):
+        body = {"state": state, "userName": username, "passWord": password}
+        if redirect_uri is not None:
+            body["redirect_uri"] = redirect_uri
+        return self._raw_request("POST", "/login", json_body=body)
+
+    def oauth2_jwks(self):
+        return self._raw_request("GET", "/.well-known/jwks.json")
+
+    def oauth2_introspect_raw(self, token: str = ""):
+        return self._raw_request("POST", "/api/oauth2/introspect",
+                                 data={"token": token})
+
+    def oauth2_revoke_raw(self, token: str = ""):
+        return self._raw_request("POST", "/api/oauth2/revoke",
+                                 data={"token": token})
+
+    def third_authorization_url(self, platform: str, ueadmin_state: str | None = None):
+        params = {"platform": platform}
+        if ueadmin_state is not None:
+            params["ueadmin_state"] = ueadmin_state
+        return self._request("GET", "/api/third/authorization_url", params=params)
+
+    def third_authorization_url_raw(self, platform: str, ueadmin_state: str | None = None):
+        params = {"platform": platform}
+        if ueadmin_state is not None:
+            params["ueadmin_state"] = ueadmin_state
+        resp = self._raw_request("GET", "/api/third/authorization_url", params=params)
+        return resp.status_code, resp.json()
 
     # ---------- 内部工具 ----------
     def _set_login(self, body):
