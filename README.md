@@ -11,7 +11,7 @@ OAuth2 授权服务器 & 用户中心 API，基于 [Drogon](https://github.com/d
 - **多因素认证（MFA）**：邮箱验证码、腾讯云短信验证码
 
 ### 安全
-- **非对称签名**：RS256 优先签名，HS512 fallback；支持自动生成密钥对
+- **非对称签名**：RS256 非对称签名，支持自动生成密钥对（不再支持 HS512 回退，防止静态密钥伪造 Token）
 - **敏感操作防护**：ActionToken 状态机机制，防止重放攻击
 - **请求限流**：内置 `RateLimitFilter`
 
@@ -25,7 +25,7 @@ OAuth2 授权服务器 & 用户中心 API，基于 [Drogon](https://github.com/d
 |------|------|
 | Web 框架 | Drogon（C++20 协程） |
 | 数据库 | PostgreSQL + Drogon ORM |
-| JWT | jwt-cpp（RS256 + HS512） |
+| JWT | jwt-cpp（RS256） |
 | 邮件 | SMTP（插件化） |
 | 短信 | 腾讯云 SMS（HTTP API） |
 

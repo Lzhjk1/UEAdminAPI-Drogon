@@ -225,16 +225,13 @@ std::string AuthService::CreateToken(int id, int status, uint64_t durationSecond
                      .set_payload_claim(std::string("nickname"), jwt::claim(nickname.empty() ? (username.empty() ? std::to_string(id) : username) : nickname))
                      .set_expires_in(std::chrono::seconds{durationSeconds});
 
-    // 优先 RS256 签名，fallback 到 HS512
-    if (!_privateKeyPem.empty() && !_publicKeyPem.empty()) {
-        try {
-            return builder.sign(jwt::algorithm::rs256(_publicKeyPem, _privateKeyPem, "", ""));
-        } catch (const std::exception &e) {
-            LOG_ERROR << "RS256 sign failed: " << e.what();
-        }
+    // 仅使用 RS256 非对称签名。不再回退到 HS512, 否则签出的 Token 无法通过仅 RS256 的验证。
+    if (_privateKeyPem.empty() || _publicKeyPem.empty()) {
+        LOG_ERROR << "AuthService: RSA key pair not configured, cannot sign token";
+        throw std::runtime_error("RSA key pair not configured");
     }
 
-    return builder.sign(jwt::algorithm::hs512{ _secret });
+    return builder.sign(jwt::algorithm::rs256(_publicKeyPem, _privateKeyPem, "", ""));
 }
 std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationSeconds,
                                           const std::string &username,
@@ -253,15 +250,13 @@ std::string AuthService::CreateFlashToken(int id, int status, uint64_t durationS
                      .set_payload_claim(std::string("nickname"), jwt::claim(nickname.empty() ? (username.empty() ? std::to_string(id) : username) : nickname))
                      .set_expires_in(std::chrono::seconds{durationSeconds});
 
-    if (!_privateKeyPem.empty() && !_publicKeyPem.empty()) {
-        try {
-            return builder.sign(jwt::algorithm::rs256(_publicKeyPem, _privateKeyPem, "", ""));
-        } catch (const std::exception &e) {
-            LOG_ERROR << "RS256 sign failed: " << e.what();
-        }
+    // 仅使用 RS256 非对称签名。不再回退到 HS512, 否则签出的 Token 无法通过仅 RS256 的验证。
+    if (_privateKeyPem.empty() || _publicKeyPem.empty()) {
+        LOG_ERROR << "AuthService: RSA key pair not configured, cannot sign flashToken";
+        throw std::runtime_error("RSA key pair not configured");
     }
 
-    return builder.sign(jwt::algorithm::hs512{ _secret });
+    return builder.sign(jwt::algorithm::rs256(_publicKeyPem, _privateKeyPem, "", ""));
 }
 
 drogon::Task<std::tuple<std::string, std::string, int>> AuthService::NewTokenPair(int userId) {
@@ -360,28 +355,23 @@ std::tuple<bool, int, int, int> AuthService::CheckTokenAndParseUserId(const std:
         // 解码并验证token
         auto decoded = jwt::decode(token);
 
-        // 尝试 RS256 验证
-        bool verified = false;
-        if (!_publicKeyPem.empty()) {
-            try {
-                auto verifier = jwt::verify()
-                    .allow_algorithm(jwt::algorithm::rs256(_publicKeyPem, "", "", ""))
-                    .with_issuer(_jwtIssuer);
-                verifier.verify(decoded);
-                verified = true;
-            } catch (const std::exception &) {
-                // RS256 失败，尝试 HS512
-                verified = false;
-            }
+        // 仅接受 RS256 非对称签名验证。
+        // 注意: 不允许回退到 HS512 (静态共享密钥), 否则拿到 config 中 jwt_secret 的攻击者可伪造任意用户 Token。
+        if (_publicKeyPem.empty()) {
+            LOG_ERROR << "AuthService: RSA public key not configured, cannot verify token";
+            return std::make_tuple(false, -1, -1, -1);
         }
 
-        // Fallback: HS512 验证
-        if (!verified) {
-            auto verifier = jwt::verify()
-                .allow_algorithm(jwt::algorithm::hs512{_secret})
-                .with_issuer(_jwtIssuer);
-            verifier.verify(decoded);
+        // 强制要求 exp 声明, 防止缺失 exp 的永久有效 Token
+        if (!decoded.has_payload_claim("exp")) {
+            LOG_ERROR << std::format("对于Token: {}, 缺失 exp 声明", token);
+            return std::make_tuple(false, -1, -1, -1);
         }
+
+        auto verifier = jwt::verify()
+            .allow_algorithm(jwt::algorithm::rs256(_publicKeyPem, "", "", ""))
+            .with_issuer(_jwtIssuer);
+        verifier.verify(decoded);
 
         tokenType = decoded.get_payload_claim("tokenType").as_string();
         if(tokenType != "token" && tokenType != "flashToken"){
