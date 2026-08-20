@@ -69,7 +69,7 @@ bool DeviceLoginSessionService::MarkLoggedIn(const std::string &state, int userI
     return true;
 }
 
-std::optional<DeviceLoginSessionInfo> DeviceLoginSessionService::ExtractSession(const std::string &state) {
+std::optional<DeviceLoginSessionInfo> DeviceLoginSessionService::ConsumeSession(const std::string &state) {
     if (state.empty()) {
         return std::nullopt;
     }
@@ -78,26 +78,11 @@ std::optional<DeviceLoginSessionInfo> DeviceLoginSessionService::ExtractSession(
     if (!_sessionCache->findAndFetch(state, info)) {
         return std::nullopt;
     }
-
-    // 取后即废：立即删除，防止并发轮询重复领取
-    _sessionCache->erase(state);
-    return info;
-}
-
-void DeviceLoginSessionService::RestoreSession(const DeviceLoginSessionInfo &info) {
-    if (info.state.empty()) {
-        return;
-    }
-    // CacheMap::insert 不覆盖已存在 key，必须先 erase 再 insert
-    _sessionCache->erase(info.state);
-    _sessionCache->insert(info.state, info, _expireSeconds);
-}
-
-std::optional<DeviceLoginSessionInfo> DeviceLoginSessionService::ConsumeSession(const std::string &state) {
-    auto info = FindSession(state);
-    if (!info || info->userId <= 0) {
+    if (info.userId <= 0) {
         return std::nullopt;
     }
+
+    // 只有已登录会话才允许消费；消费即删除，避免并发 check 重复领取。
     _sessionCache->erase(state);
     return info;
 }

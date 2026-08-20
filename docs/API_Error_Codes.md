@@ -210,18 +210,22 @@
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
 | **/api/oauth2/login/start** (POST) | 0 | `ApiError_Success` | 创建会话成功 |
-| | -703 | `ApiError_DeviceLoginRedirectUriNotAllowed` | redirect_uri 仅允许 http://127.0.0.1 或 http://localhost |
+| | -703 | `ApiError_DeviceLoginRedirectUriNotAllowed` | redirect_uri 仅允许 http://127.0.0.1 / http://localhost / http://[::1] |
 | | -103 | `ApiError_InternalError` | DeviceLoginSessionService 未初始化 |
 | **/api/oauth2/login/check** (GET) | 0 | `ApiError_Success` | 未完成时返回 active:false；完成时返回 token/flashToken/username |
 | | -701 | `ApiError_DeviceLoginStateInvalid` | state 不存在、已过期或已消费 |
-| | -308 | `ApiError_UserUpdateFailed` | 更新状态失败 |
-| **/login** (GET) | 0 | `ApiError_Success` | 渲染登录页成功 |
+| | -702 | `ApiError_DeviceLoginStateConsumed` | state 已被其他请求消费（含并发轮询抢占） |
+| | -302 | `ApiError_UserNotFound` | 用户已被删除 |
+| | -103 | `ApiError_InternalError` | 查询用户失败 |
+| | -308 | `ApiError_UserUpdateFailed` | 更新失败 |
+| **/login** (GET) | — | — | 渲染登录页成功，返回 HTML；不返回 JSON `{code:0}` |
 | | -701 | `ApiError_DeviceLoginStateInvalid` | state 不存在或已过期 |
 | **/login** (POST) | 0 | `ApiError_Success` | 登录成功并跳转通知 |
 | | -101 | `ApiError_InvalidJsonFormat` | 请求体必须是JSON格式 |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必要参数 |
 | | -701 | `ApiError_DeviceLoginStateInvalid` | state 不存在或已过期 |
-| | -702 | `ApiError_DeviceLoginStateConsumed` | state 已登录或不存在 |
+| | -702 | `ApiError_DeviceLoginStateConsumed` | 该登录会话已完成，请直接使用 login/check 获取 token |
+| | -703 | `ApiError_DeviceLoginRedirectUriNotAllowed` | redirect_uri 与登录会话不一致 |
 | | -301 | `ApiError_InvalidCredentials` | 用户名或密码错误 |
 | **/api/third/authorization_url** (GET)<br>（带 ueadmin_state 的设备登录路径） | 0 | `ApiError_Success` | (返回授权URL数据) |
 | | -501 | `ApiError_UnsupportedPlatform` | 不支持的第三方平台 |

@@ -24,7 +24,7 @@ def test_login_start_success(client):
     assert data["state"]
     assert data["login_url"].startswith("/login?state=")
     assert "redirect_uri=" in data["login_url"]
-    assert data["expires"] == 600  # config UserManage.DeviceLoginSec=600
+    assert data["expires"] > 0  # 避免硬编码 TTL，配置文件修改后仍可通过
 
 
 def test_login_start_empty_redirect_uri(client):
@@ -43,11 +43,37 @@ def test_login_start_rejects_non_loopback(client):
     assert body["code"] == -703  # ApiError_DeviceLoginRedirectUriNotAllowed
 
 
+def test_login_start_rejects_prefix_bypass(client):
+    """redirect_uri 前缀匹配绕过（127.0.0.1.evil.com 等）应被严格拒绝"""
+    for evil in (
+        "http://127.0.0.1.evil.com/cb",
+        "http://localhost.evil.com/cb",
+        "http://127.0.0.1@evil.com/cb",
+    ):
+        code, body = client.device_login_start_raw(evil)
+        assert code == 400, evil
+        assert body["code"] == -703, evil
+
+
+def test_login_start_allows_ipv6_loopback(client):
+    """IPv6 loopback http://[::1]:45678/cb 应放行"""
+    body = client.device_login_start("http://[::1]:45678/cb")
+    assert body["code"] == 0
+
+
 def test_login_check_invalid_state(client):
     """不存在的 state 应返回 -701"""
     code, body = client.device_login_check_raw("state-does-not-exist")
     assert code == 404
     assert body["code"] == -701  # ApiError_DeviceLoginStateInvalid
+
+
+def test_login_check_mismatched_redirect_uri(client):
+    """POST /login 的 redirect_uri 必须与创建会话时保存的一致"""
+    state = client.device_login_start("http://127.0.0.1:45678/cb")["data"]["state"]
+    resp = client.device_login_pwd(state, "someone", "whatever", "https://evil.example.com/cb")
+    assert resp.status_code == 400
+    assert resp.json()["code"] == -703
 
 
 def test_login_check_pending_then_completed(client, registered_email_account):
@@ -84,7 +110,7 @@ def test_login_check_pending_then_completed(client, registered_email_account):
     assert data["flashToken"]
     assert data["username"] == account.username
 
-    # 二次 check 已消费
+    # 二次 check 已消费（state 已删除，与“不存在/过期/已消费”同属 -701）
     code, body = client.device_login_check_raw(state)
     assert code == 404
     assert body["code"] == -701
@@ -104,6 +130,15 @@ def test_login_page_valid_state(client):
     assert resp.status_code == 200
     assert "text/html" in resp.headers.get("Content-Type", "").lower()
     assert state in resp.text
+
+
+def test_login_page_escapes_redirect_uri(client):
+    """GET /login 的 redirect_uri 应做 HTML 转义，防止 XSS"""
+    state = client.device_login_start("http://127.0.0.1:45678/cb")["data"]["state"]
+    resp = client.device_login_page(state, '"><script>alert(1)</script>')
+    assert resp.status_code == 200
+    assert resp.text.count("&lt;script&gt;") >= 1
+    assert "<script>alert(1)</script>" not in resp.text
 
 
 def test_jwks_endpoint(client):

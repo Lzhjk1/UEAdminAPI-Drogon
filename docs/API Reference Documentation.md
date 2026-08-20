@@ -737,7 +737,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **URL**: `/api/oauth2/login/start`
 - **Method**: `POST`
 - **Body**: `{ "redirect_uri": "http://127.0.0.1:45678/cb" }`
-- **Description**: 发起 OAuth2 设备登录会话，用于 Pidgin 等客户端“浏览器登录 → 轮询取 token”。`redirect_uri` 仅允许 `http://127.0.0.1` 或 `http://localhost` 开头；为空时兼容旧 `ueloginreturn://` 流程。
+- **Description**: 发起 OAuth2 设备登录会话，用于 Pidgin 等客户端“浏览器登录 → 轮询取 token”。`redirect_uri` 仅允许 loopback 地址（host 严格为 `127.0.0.1` / `localhost` / `[::1]`，scheme 仅 `http`）；为空时兼容旧 `ueloginreturn://` 流程。
 - **Response (Success)**:
   ```json
   {
@@ -751,7 +751,7 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 - **错误码**:
-  - `-703` `redirect_uri` 非法（非 loopback）
+  - `-703` `redirect_uri` 非法（非严格 loopback）
   - `-103` 服务未初始化
 
 ### 7.5 设备登录状态轮询 (Device Login Check)
@@ -759,7 +759,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `GET`
 - **Params**:
   - `state` (string, required): `login/start` 返回的一次性 state
-- **Description**: 轮询设备登录结果。未登录完成返回 `active:false` 且不消费 state（可继续轮询）；登录完成后返回 `active:true` 并携带 `token`、`flashToken`、`username`，**取后即废**（第二次调用返回错误）。
+- **Description**: 轮询设备登录结果。未登录完成返回 `active:false` 且不消费 state（可继续轮询）；登录完成后返回 `active:true` 并携带 `token`、`flashToken`、`username`，**取后即废**（第二次调用返回 `-702`）。
 - **Response (未完成)**:
   ```json
   { "code": 0, "msg": "success", "data": { "active": false } }
@@ -779,7 +779,10 @@ GitLab 相关接口目前使用独立的响应格式：
   ```
 - **错误码**:
   - `-701` state 不存在、已过期或已消费
-  - `-308` 更新用户状态失败
+  - `-702` state 已被其他请求消费（含并发轮询抢占）
+  - `-302` 用户不存在（用户已删除）
+  - `-103` 查询用户失败
+  - `-308` 更新失败
 
 ### 7.6 设备登录页 (Device Login Page)
 - **URL**: `/login?state={1}&redirect_uri={2}`
@@ -794,11 +797,12 @@ GitLab 相关接口目前使用独立的响应格式：
 - **URL**: `/login`
 - **Method**: `POST`
 - **Body**: `{ "state": "...", "userName": "...", "passWord": "...", "redirect_uri": "..." }`
-- **Description**: 设备登录页的账号密码登录。登录成功把 `userId` 写入设备会话，并 302 跳转到 `redirect_uri`（loopback，仅通知）；未传 `redirect_uri` 时跳转 `ueloginreturn://success?state=<state>` 兼容旧客户端。
+- **Description**: 设备登录页的账号密码登录。登录成功把 `userId` 写入设备会话，并 302 跳转到创建会话时保存的 `redirect_uri`（loopback，仅通知）；请求体里的 `redirect_uri` 必须与会话保存值一致，否则拒绝。未传 `redirect_uri` 时跳转 `ueloginreturn://success?state=<state>` 兼容旧客户端。
 - **Response**: 302 重定向（成功）或 JSON 错误（失败）。
 - **错误码**:
   - `-101` 请求体非 JSON
   - `-102` 缺少参数
   - `-701` state 不存在或已过期
-  - `-702` state 已登录或不存在（不可重复绑定）
+  - `-702` 该登录会话已完成，请直接使用 login/check 获取 token
+  - `-703` redirect_uri 与登录会话不一致
   - `-301` 用户名或密码错误

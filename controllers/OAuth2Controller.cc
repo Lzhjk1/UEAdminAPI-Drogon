@@ -238,32 +238,41 @@ Task<HttpResponsePtr> OAuth2Controller::revoke(HttpRequestPtr req) {
     co_return resp;
 }
 
-/// @brief 校验 redirect_uri 是否允许：仅放行 http://127.0.0.1 / http://localhost
+/// @brief 校验 redirect_uri 是否允许：仅放行 http://127.0.0.1 / http://localhost / http://[::1]
+/// 使用严格 host 解析，防止 http://127.0.0.1.evil.com 之类的前缀绕过。
 static bool isAllowedLoopbackRedirectUri(const std::string &uri) {
     if (uri.empty()) {
         return true; // 空 = 兼容旧 ueloginreturn 流程
     }
-    if (uri.rfind("http://127.0.0.1", 0) == 0 || uri.rfind("http://localhost", 0) == 0) {
-        return true;
+    if (uri.rfind("http://", 0) != 0) {
+        return false; // 仅允许 http，禁止 https 之外的自定义 scheme
     }
-    return false;
-}
 
-/// @brief URL 编码（Drogon 未直接暴露 urlEncode，这里用 curl 风格手动编码）
-static std::string urlEncode(const std::string &s) {
-    static const char *hex = "0123456789ABCDEF";
-    std::string out;
-    out.reserve(s.size() * 3);
-    for (unsigned char c : s) {
-        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-            out.push_back((char)c);
-        } else {
-            out.push_back('%');
-            out.push_back(hex[(c >> 4) & 0xF]);
-            out.push_back(hex[c & 0xF]);
+    // 取出 host 部分（含端口），要求 host 恰好是 loopback 地址。
+    size_t schemeLen = 7; // strlen("http://")
+    size_t pathStart = uri.find_first_of("/?#", schemeLen);
+    std::string hostPort = uri.substr(schemeLen, pathStart == std::string::npos ? std::string::npos : pathStart - schemeLen);
+    if (hostPort.empty()) {
+        return false;
+    }
+
+    // 支持 [::1]（含端口形式 [::1]:port）；其余按 host:port 解析。
+    std::string host;
+    if (hostPort[0] == '[') {
+        auto closeBracket = hostPort.find(']');
+        if (closeBracket == std::string::npos) {
+            return false;
+        }
+        host = hostPort.substr(1, closeBracket - 1);
+    } else {
+        host = hostPort;
+        auto colonPos = host.rfind(':');
+        if (colonPos != std::string::npos) {
+            host = host.substr(0, colonPos);
         }
     }
-    return out;
+
+    return host == "127.0.0.1" || host == "localhost" || host == "::1";
 }
 
 /// @brief POST /api/oauth2/login/start — 发起设备登录
@@ -280,7 +289,7 @@ Task<HttpResponsePtr> OAuth2Controller::loginStart(HttpRequestPtr req) {
 
     if (!isAllowedLoopbackRedirectUri(redirectUri)) {
         result.setResult(ApiErrorCode::ApiError_DeviceLoginRedirectUriNotAllowed,
-                         "redirect_uri 仅允许 http://127.0.0.1 或 http://localhost");
+                         "redirect_uri 仅允许 http://127.0.0.1 / http://localhost / http://[::1]");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k400BadRequest);
         co_return resp;
@@ -297,9 +306,9 @@ Task<HttpResponsePtr> OAuth2Controller::loginStart(HttpRequestPtr req) {
     std::string state = sessionService->CreateSession(redirectUri);
     int expireSec = sessionService->GetExpireSeconds();
 
-    std::string loginUrl = "/login?state=" + urlEncode(state);
+    std::string loginUrl = "/login?state=" + drogon::utils::urlEncodeComponent(state);
     if (!redirectUri.empty()) {
-        loginUrl += "&redirect_uri=" + urlEncode(redirectUri);
+        loginUrl += "&redirect_uri=" + drogon::utils::urlEncodeComponent(redirectUri);
     }
 
     result.setResult(ApiErrorCode::ApiError_Success);
@@ -325,7 +334,7 @@ Task<HttpResponsePtr> OAuth2Controller::loginCheck(HttpRequestPtr req, std::stri
         co_return resp;
     }
 
-    auto sessionOpt = sessionService->ExtractSession(state);
+    auto sessionOpt = sessionService->FindSession(state);
     if (!sessionOpt) {
         result.setResult(ApiErrorCode::ApiError_DeviceLoginStateInvalid,
                          "state 不存在、已过期或已消费");
@@ -336,8 +345,7 @@ Task<HttpResponsePtr> OAuth2Controller::loginCheck(HttpRequestPtr req, std::stri
 
     const auto &session = *sessionOpt;
     if (session.userId <= 0) {
-        // 尚未登录完成：放回缓存（保持未消费状态），返回 active:false
-        sessionService->RestoreSession(session);
+        // 尚未登录完成：不消费 state，保证并发轮询均可继续拿到 active:false
         result.setResult(ApiErrorCode::ApiError_Success);
         result.jsondata["active"] = false;
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
@@ -345,9 +353,21 @@ Task<HttpResponsePtr> OAuth2Controller::loginCheck(HttpRequestPtr req, std::stri
         co_return resp;
     }
 
-    // 已登录：生成新 Token 对并返回
+    // 已登录：原子消费会话后生成新 Token 对并返回。
+    // 先消费再生成 token，避免两个并发 check 同时通过 FindSession 并各自返回 token。
+    auto consumedSession = sessionService->ConsumeSession(state);
+    if (!consumedSession) {
+        // 另一个并发请求已消费：按“已被领取”语义处理。
+        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed,
+                         "state 已被使用，请勿重复获取 token");
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        resp->setStatusCode(k409Conflict);
+        co_return resp;
+    }
+
+    // 后续流程如果失败（如用户查询失败），会话已消费不再恢复；客户端可重新发起设备登录。
     auto authService = AuthService::Instance();
-    auto [token, flashToken, status] = co_await authService->NewTokenPair(session.userId);
+    auto [token, flashToken, status] = co_await authService->NewTokenPair(consumedSession->userId);
     if (status == -1) {
         result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新状态失败");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
@@ -359,10 +379,20 @@ Task<HttpResponsePtr> OAuth2Controller::loginCheck(HttpRequestPtr req, std::stri
     try {
         auto dbClientPtr = drogon::app().getDbClient();
         drogon::orm::Mapper<drogon_model::UEAdminAPI::User> mapper(dbClientPtr);
-        auto user = mapper.findByPrimaryKey(session.userId);
+        auto user = mapper.findByPrimaryKey(consumedSession->userId);
         username = user.getValueOfName();
+    } catch (const drogon::orm::UnexpectedRows &) {
+        // 用户已被删除：会话已消费，返回明确错误，避免返回空用户名。
+        result.setResult(ApiErrorCode::ApiError_UserNotFound, "用户不存在");
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        resp->setStatusCode(k404NotFound);
+        co_return resp;
     } catch (const std::exception &e) {
         LOG_ERROR << "loginCheck: 查询用户失败: " << e.what();
+        result.setResult(ApiErrorCode::ApiError_InternalError, "查询用户失败");
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        resp->setStatusCode(k500InternalServerError);
+        co_return resp;
     }
 
     result.setResult(ApiErrorCode::ApiError_Success);
@@ -399,9 +429,10 @@ Task<HttpResponsePtr> OAuth2Controller::loginPage(HttpRequestPtr req) {
         co_return resp;
     }
 
+    // 视图层做 HTML 转义，防止 GET /login 的 redirect_uri 参数注入 XSS。
     HttpViewData viewData;
-    viewData.insert("state", state);
-    viewData.insert("redirect_uri", redirectUri);
+    viewData.insertAsString("state", HttpViewData::htmlTranslate(state));
+    viewData.insertAsString("redirect_uri", HttpViewData::htmlTranslate(redirectUri));
     auto resp = HttpResponse::newHttpViewResponse("oauth2_login.csp", viewData);
     resp->setStatusCode(k200OK);
     co_return resp;
@@ -455,6 +486,24 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
         co_return resp;
     }
 
+    const auto &session = *sessionOpt;
+    if (session.userId > 0) {
+        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed,
+                         "该登录会话已完成，请直接使用 login/check 获取 token");
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        resp->setStatusCode(k400BadRequest);
+        co_return resp;
+    }
+
+    // 通知地址必须以创建会话时保存的 redirect_uri 为准，防止请求体篡改跳转目标。
+    if (redirectUri != session.redirectUri) {
+        result.setResult(ApiErrorCode::ApiError_DeviceLoginRedirectUriNotAllowed,
+                         "redirect_uri 与登录会话不一致");
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        resp->setStatusCode(k400BadRequest);
+        co_return resp;
+    }
+
     auto authService = AuthService::Instance();
     auto loginResult = co_await authService->LoginByPwd(userName, passWord);
     if (loginResult.code != 0) {
@@ -465,14 +514,15 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
 
     int userId = loginResult.jsondata["id"].asInt();
     if (!sessionService->MarkLoggedIn(state, userId)) {
-        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed, "state 已登录或不存在");
+        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed,
+                         "该登录会话已完成，请直接使用 login/check 获取 token");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k400BadRequest);
         co_return resp;
     }
 
-    // 登录成功：通知跳转。有 redirect_uri 则跳 loopback；否则兼容 ueloginreturn。
-    std::string notifyUri = redirectUri;
+    // 登录成功：通知跳转。使用会话保存的 redirect_uri；无则兼容 ueloginreturn。
+    std::string notifyUri = session.redirectUri;
     if (notifyUri.empty()) {
         notifyUri = "ueloginreturn://success?state=" + state;
     }

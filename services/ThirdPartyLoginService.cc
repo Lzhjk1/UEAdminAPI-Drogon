@@ -4,6 +4,7 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/HttpViewData.h>
+#include <drogon/utils/Utilities.h>
 #include <json/json.h>
 #include <iostream>
 #include <sstream>
@@ -30,6 +31,89 @@ using namespace UEAdminAPI::utils;
 
 namespace UEAdminAPI {
 namespace Services {
+
+namespace {
+
+/// @brief 从第三方回调 state 中解析 ueadmin_state 设备会话参数。
+/// 平台可能对 state 整体做 URL 编码，因此先解码；随后按 query 参数方式分割，
+/// 取 ueadmin_state 的值，避免固定分隔符 + 截取到末尾导致多余参数混入。
+struct ParsedUeAdminState {
+    std::string thirdPartyState;
+    std::string deviceState;
+};
+
+ParsedUeAdminState ParseUeAdminState(const std::string &state) {
+    ParsedUeAdminState result;
+    if (state.empty()) {
+        return result;
+    }
+
+    // 平台可能把整个 state 作为 query 参数回传（例如 state=xyz&ueadmin_state=abc），
+    // 也可能直接把 ueadmin_state 拼在原始 state 后。先做一次 URL 解码统一形态。
+    std::string decoded = drogon::utils::urlDecode(state);
+    if (decoded.empty()) {
+        decoded = state;
+    }
+
+    // 优先处理带 ? 的完整回调 URL（形如 http://host/cb?code=xx&state=yy）。
+    // 第三方 state 本身通常是一段不包含 '=' 的随机串，因此直接用 find 保持兼容；
+    // 若平台把第三方 state 也做成了 key=value 形式，则由下面的参数分割逻辑提取。
+    auto markerPos = decoded.find("ueadmin_state=");
+    if (markerPos != std::string::npos) {
+        size_t valueStart = markerPos + strlen("ueadmin_state=");
+        auto valueEnd = decoded.find('&', valueStart);
+        if (valueEnd == std::string::npos) {
+            valueEnd = decoded.size();
+        }
+        result.deviceState = drogon::utils::urlDecode(decoded.substr(valueStart, valueEnd - valueStart));
+        // 原始第三方 state = ueadmin_state 之前的部分；若该部分是完整 URL，保留其 ?state= 形态。
+        result.thirdPartyState = decoded.substr(0, markerPos);
+        // 兼容 “ueadmin_state=xxx” 位于字符串最前（旧格式没有第三方 state）的情况。
+        if (result.thirdPartyState.empty()) {
+            result.thirdPartyState = decoded;
+        }
+        return result;
+    }
+
+    // 兼容“第三方 state 被平台编码成 key=value 参数”的场景：
+    // 按 & 分割，取 ueadmin_state 值，并还原 ueadmin_state 之前的原始第三方 state。
+    std::string query = decoded;
+    auto qPos = query.find('?');
+    if (qPos != std::string::npos) {
+        query = query.substr(qPos + 1);
+    }
+
+    size_t start = 0;
+    while (start <= query.size()) {
+        auto ampPos = query.find('&', start);
+        if (ampPos == std::string::npos) {
+            ampPos = query.size();
+        }
+        std::string param = query.substr(start, ampPos - start);
+        if (!param.empty()) {
+            auto eqPos = param.find('=');
+            std::string key = eqPos == std::string::npos ? param : param.substr(0, eqPos);
+            std::string value = eqPos == std::string::npos ? "" : param.substr(eqPos + 1);
+            if (key == "ueadmin_state") {
+                result.deviceState = drogon::utils::urlDecode(value);
+            } else if (result.thirdPartyState.empty() && key == "state") {
+                // 只认标准 OAuth 的 state 参数，避免把 redirect_uri 等参数误当第三方 state。
+                result.thirdPartyState = drogon::utils::urlDecode(value);
+            }
+        }
+        if (ampPos == query.size()) {
+            break;
+        }
+        start = ampPos + 1;
+    }
+
+    if (result.deviceState.empty()) {
+        result.thirdPartyState = decoded;
+    }
+    return result;
+}
+
+} // namespace
 
 // ThirdPartyLoginValue 实现
 ThirdPartyLoginValue::ThirdPartyLoginValue(const std::string& code, const std::string& verifyCode, 
@@ -864,9 +948,10 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(
     // 若调用方是设备登录页（OAuth2 login/start 会话），把设备 state 透传给第三方授权 URL，
     // 第三方回调回来时由 CallbackRedirect 据此定位到 loopback redirect_uri。
     // 注意：不能追加到 authUrl 的 state 值之后，因为第三方平台的 state 值通常会被 URL 编码后回传；
-    // 这里把它作为独立 query 参数追加，保证回调能按 &ueadmin_state= 解析。
+    // 这里把它作为独立 query 参数追加，并对值做 URL 编码，防止特殊字符破坏 OAuth URL 或参数注入。
     if (!deviceState.empty()) {
-        authUrl += (authUrl.find('?') == std::string::npos ? "?" : "&") + std::string("ueadmin_state=") + deviceState;
+        authUrl += (authUrl.find('?') == std::string::npos ? "?" : "&")
+                 + std::string("ueadmin_state=") + drogon::utils::urlEncodeComponent(deviceState);
     }
 
     result.jsondata["code"] = loginValue->code;
@@ -886,12 +971,10 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::Callback(con
         co_return result;
     }
 
-    // 与 CallbackRedirect 保持一致：剥离 ueadmin_state 后再按第三方原始 state 处理回调
-    std::string thirdPartyState = state;
-    auto uePos = thirdPartyState.find("&ueadmin_state=");
-    if (uePos != std::string::npos) {
-        thirdPartyState = thirdPartyState.substr(0, uePos);
-    }
+    // 与 CallbackRedirect 保持一致：剥离 ueadmin_state 后再按第三方原始 state 处理回调。
+    // 平台可能对 state 整体做 URL 编码，因此先解码再按 query 参数方式解析。
+    auto parsed = ParseUeAdminState(state);
+    std::string thirdPartyState = parsed.thirdPartyState;
 
     if (!co_await platformService->callBack(code, thirdPartyState)) {
         result.setResult(ApiErrorCode::ApiError_ThirdPartyCallbackFailed, "处理第三方登录回调失败, 可能是登录操作超时");
@@ -907,25 +990,17 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::Callback(con
 Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string &platform, const std::string &code, const std::string &state) {
     auto platformService = co_await getPlatform(platform);
 
+    auto parsed = ParseUeAdminState(state);
+    std::string thirdPartyState = parsed.thirdPartyState;
+    std::string deviceState = parsed.deviceState;
+
     if (platformService) {
         // state 可能携带 ueadmin_state，必须把原始第三方 state 还原后再交给平台回调
-        std::string thirdPartyState = state;
-        auto uePos = thirdPartyState.find("&ueadmin_state=");
-        if (uePos != std::string::npos) {
-            thirdPartyState = thirdPartyState.substr(0, uePos);
-        }
         co_await platformService->callBack(code, thirdPartyState);
     }
 
     // 第三方登录回调现在可能携带 ueadmin 设备登录 state（见 GetLoginUrl 的 ueadmin_state）。
     // 若存在且属于 OAuth2 设备登录会话，则跳转到会话保存的 loopback redirect_uri（仅通知，不传 token）。
-    std::string deviceState;
-    std::string thirdPartyState = state;
-    auto pos = thirdPartyState.find("&ueadmin_state=");
-    if (pos != std::string::npos) {
-        deviceState = thirdPartyState.substr(pos + strlen("&ueadmin_state="));
-        thirdPartyState = thirdPartyState.substr(0, pos);
-    }
     auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
     if (!deviceState.empty() && sessionService) {
         auto session = sessionService->FindSession(deviceState);

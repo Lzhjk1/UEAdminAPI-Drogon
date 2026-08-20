@@ -36,15 +36,8 @@ public:
     /// @return 会话存在且未消费返回 true；否则 false
     bool MarkLoggedIn(const std::string &state, int userId);
 
-    /// @brief 提取并消费会话（取后即废）
-    /// @return 成功返回会话信息并删除；不存在/已消费返回 std::nullopt
-    std::optional<DeviceLoginSessionInfo> ExtractSession(const std::string &state);
-
-    /// @brief 恢复会话（用于未完成登录的轮询：提取后放回，保持原 state）
-    void RestoreSession(const DeviceLoginSessionInfo &info);
-
-    /// @brief 消费已登录会话（取后即废，仅应在确认 userId>0 后调用）
-    /// @return 成功返回会话信息并删除；不存在/已消费返回 std::nullopt
+    /// @brief 消费已登录会话（取后即废）
+    /// @return 成功返回已登录会话信息并删除；不存在/未登录/已消费返回 std::nullopt
     std::optional<DeviceLoginSessionInfo> ConsumeSession(const std::string &state);
 
     /// @brief 会话有效期（秒）
