@@ -34,33 +34,16 @@
         </form>
     </div>
     <script>
+        // 登录页与后端同源，直接用原生表单提交可避免 fetch 的 CORS 预检限制。
+        // 后端登录成功会 302 到 loopback 通知地址（http://127.0.0.1:<port>/cb），
+        // 原生表单导航会直接跟随，不读取跨源响应，因此不会触发 CORS 报错。
         const form = document.getElementById('loginForm');
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        form.addEventListener('submit', (e) => {
             const err = document.getElementById('errMsg');
             err.textContent = '';
-            const body = {
-                state: form.state.value,
-                userName: form.userName.value.trim(),
-                passWord: form.passWord.value,
-                redirect_uri: form.redirect_uri.value
-            };
-            try {
-                const resp = await fetch('/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (resp.redirected) {
-                    window.location.href = resp.url;
-                    return;
-                }
-                const data = await resp.json();
-                err.textContent = data.msg || '登录失败';
-            } catch (ex) {
-                console.error('登录请求失败:', ex);
-                err.textContent = '网络错误，请重试';
-            }
+            form.action = '/login';
+            form.method = 'POST';
+            // 保留原生表单提交行为
         });
     </script>
 </body>

@@ -443,7 +443,27 @@ Task<HttpResponsePtr> OAuth2Controller::loginPage(HttpRequestPtr req) {
 Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
     HttpResult result;
 
+    // 兼容两种提交格式：
+    // 1) JSON body（设备/脚本调用）
+    // 2) 原生 HTML 表单 application/x-www-form-urlencoded（登录页原生表单导航，避免 CORS）
     auto reqJson = req->getJsonObject();
+    if (!reqJson) {
+        // 尝试从 form 参数读取
+        auto params = req->getParameters();
+        Json::Value formJson(Json::objectValue);
+        if (params.find("state") != params.end())
+            formJson["state"] = params["state"];
+        if (params.find("userName") != params.end())
+            formJson["userName"] = params["userName"];
+        if (params.find("passWord") != params.end())
+            formJson["passWord"] = params["passWord"];
+        if (params.find("redirect_uri") != params.end())
+            formJson["redirect_uri"] = params["redirect_uri"];
+        if (formJson.isMember("state") && formJson.isMember("userName") &&
+            formJson.isMember("passWord")) {
+            reqJson = std::make_shared<Json::Value>(formJson);
+        }
+    }
     if (!reqJson) {
         result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
