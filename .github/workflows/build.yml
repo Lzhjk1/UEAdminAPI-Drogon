@@ -94,12 +94,12 @@ jobs:
           path: build/UEAdminAPI_drogon
           if-no-files-found: error
 
-      - name: Upload run image
-        uses: actions/upload-artifact@v4
-        with:
-          name: UEAdminAPI_drogon-run-ci-image
-          path: ueadmin-api-drogon-run-ci.tar.gz
-          if-no-files-found: error
+      # - name: Upload run image
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: UEAdminAPI_drogon-run-ci-image
+      #     path: ueadmin-api-drogon-run-ci.tar.gz
+      #     if-no-files-found: error
 
   build-windows:
     if: startsWith(github.event.head_commit.message, '[build]') || contains(github.event.head_commit.message, '[build]')
