@@ -221,12 +221,13 @@
 | **/login** (GET) | — | — | 渲染登录页成功，返回 HTML；不返回 JSON `{code:0}` |
 | | -701 | `ApiError_DeviceLoginStateInvalid` | state 不存在或已过期 |
 | **/login** (POST) | 0 | `ApiError_Success` | 登录成功并跳转通知 |
-| | -101 | `ApiError_InvalidJsonFormat` | 请求体必须是JSON格式 |
+| | -101 | `ApiError_InvalidJsonFormat` | 请求体必须是JSON格式（Content-Type 为 application/json 但解析失败） |
 | | -102 | `ApiError_MissingRequiredArgs` | 缺少必要参数 |
 | | -701 | `ApiError_DeviceLoginStateInvalid` | state 不存在或已过期 |
 | | -702 | `ApiError_DeviceLoginStateConsumed` | 该登录会话已完成，请直接使用 login/check 获取 token |
 | | -703 | `ApiError_DeviceLoginRedirectUriNotAllowed` | redirect_uri 与登录会话不一致 |
 | | -301 | `ApiError_InvalidCredentials` | 用户名或密码错误 |
+| | 说明 | — | 支持 JSON 与 application/x-www-form-urlencoded 表单两种提交格式；表单提交失败时不返回 JSON，而是 302 回登录页 `/login?state=...&redirect_uri=...&error=<错误信息>` |
 | **/api/third/authorization_url** (GET)<br>（带 ueadmin_state 的设备登录路径） | 0 | `ApiError_Success` | (返回授权URL数据) |
 | | -501 | `ApiError_UnsupportedPlatform` | 不支持的第三方平台 |
 | | -701 | `ApiError_DeviceLoginStateInvalid` | ueadmin_state 不存在、已过期或已消费 |

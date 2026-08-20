@@ -35,11 +35,19 @@
     </div>
     <script>
         // 登录页与后端同源，直接用原生表单提交可避免 fetch 的 CORS 预检限制。
-        // 后端登录成功会 302 到 loopback 通知地址（http://127.0.0.1:<port>/cb），
+        // 后端登录成功会 302 到会话保存的 loopback 通知地址（http://127.0.0.1:<port>/cb 或 ueloginreturn://），
         // 原生表单导航会直接跟随，不读取跨源响应，因此不会触发 CORS 报错。
         const form = document.getElementById('loginForm');
+        const err = document.getElementById('errMsg');
+
+        // 表单提交失败时后端 302 回本页并携带 error 参数，这里将其展示出来
+        const params = new URLSearchParams(window.location.search);
+        const errText = params.get('error');
+        if (errText) {
+            err.textContent = errText;
+        }
+
         form.addEventListener('submit', (e) => {
-            const err = document.getElementById('errMsg');
             err.textContent = '';
             form.action = '/login';
             form.method = 'POST';

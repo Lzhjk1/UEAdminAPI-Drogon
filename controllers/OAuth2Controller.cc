@@ -446,8 +446,20 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
     // 兼容两种提交格式：
     // 1) JSON body（设备/脚本调用）
     // 2) 原生 HTML 表单 application/x-www-form-urlencoded（登录页原生表单导航，避免 CORS）
+    // 判断是否为表单提交（原生表单导航无法读取 JSON 响应，失败时需 302 回错误页）
+    auto contentType = req->getHeader("content-type");
+    bool isFormSubmit = (contentType.find("application/x-www-form-urlencoded") != std::string::npos) ||
+                        (contentType.find("multipart/form-data") != std::string::npos);
+
     auto reqJson = req->getJsonObject();
     if (!reqJson) {
+        // 请求声明为 JSON 但解析失败（body 非法/为空），直接报 JSON 格式错误
+        if (contentType.find("application/json") != std::string::npos) {
+            result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+            auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+            resp->setStatusCode(k400BadRequest);
+            co_return resp;
+        }
         // 尝试从 form 参数读取
         auto params = req->getParameters();
         Json::Value formJson(Json::objectValue);
@@ -462,6 +474,16 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
         if (formJson.isMember("state") && formJson.isMember("userName") &&
             formJson.isMember("passWord")) {
             reqJson = std::make_shared<Json::Value>(formJson);
+        } else if (isFormSubmit) {
+            // 表单缺参：302 回登录页并携带错误信息
+            std::string state = params["state"];
+            std::string redirectUri = params["redirect_uri"];
+            auto resp = HttpResponse::newRedirectionResponse(
+                "/login?state=" + drogon::utils::urlEncodeComponent(state) +
+                "&redirect_uri=" + drogon::utils::urlEncodeComponent(redirectUri) +
+                "&error=" + drogon::utils::urlEncodeComponent("缺少参数，请重试"));
+            resp->setStatusCode(k303SeeOther);
+            co_return resp;
         }
     }
     if (!reqJson) {
@@ -490,8 +512,21 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
     std::string passWord = paramMap.getParam("passWord");
     std::string redirectUri = paramMap.getParam("redirect_uri");
 
+    // 表单提交失败时 302 回登录页并携带错误信息（原生表单导航无法展示 JSON 错误）
+    auto failWithFormRedirect = [&](const std::string &errorMsg) -> HttpResponsePtr {
+        auto resp = HttpResponse::newRedirectionResponse(
+            "/login?state=" + drogon::utils::urlEncodeComponent(state) +
+            "&redirect_uri=" + drogon::utils::urlEncodeComponent(redirectUri) +
+            "&error=" + drogon::utils::urlEncodeComponent(errorMsg));
+        resp->setStatusCode(k303SeeOther);
+        return resp;
+    };
+
     auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
     if (!sessionService) {
+        if (isFormSubmit) {
+            co_return failWithFormRedirect("服务异常，请稍后重试");
+        }
         result.setResult(ApiErrorCode::ApiError_InternalError, "DeviceLoginSessionService 未初始化");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k500InternalServerError);
@@ -500,6 +535,9 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
 
     auto sessionOpt = sessionService->FindSession(state);
     if (!sessionOpt) {
+        if (isFormSubmit) {
+            co_return failWithFormRedirect("登录会话无效或已过期，请重新发起登录");
+        }
         result.setResult(ApiErrorCode::ApiError_DeviceLoginStateInvalid, "state 不存在或已过期");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         resp->setStatusCode(k400BadRequest);
@@ -508,6 +546,9 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
 
     const auto &session = *sessionOpt;
     if (session.userId > 0) {
+        if (isFormSubmit) {
+            co_return failWithFormRedirect("该登录会话已完成，请直接使用 login/check 获取 token");
+        }
         result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed,
                          "该登录会话已完成，请直接使用 login/check 获取 token");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
@@ -517,6 +558,9 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
 
     // 通知地址必须以创建会话时保存的 redirect_uri 为准，防止请求体篡改跳转目标。
     if (redirectUri != session.redirectUri) {
+        if (isFormSubmit) {
+            co_return failWithFormRedirect("redirect_uri 与登录会话不一致");
+        }
         result.setResult(ApiErrorCode::ApiError_DeviceLoginRedirectUriNotAllowed,
                          "redirect_uri 与登录会话不一致");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
@@ -527,6 +571,9 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
     auto authService = AuthService::Instance();
     auto loginResult = co_await authService->LoginByPwd(userName, passWord);
     if (loginResult.code != 0) {
+        if (isFormSubmit) {
+            co_return failWithFormRedirect(loginResult.msg);
+        }
         auto resp = HttpResponse::newHttpJsonResponse(loginResult.toJson());
         resp->setStatusCode(k401Unauthorized);
         co_return resp;
@@ -534,6 +581,9 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
 
     int userId = loginResult.jsondata["id"].asInt();
     if (!sessionService->MarkLoggedIn(state, userId)) {
+        if (isFormSubmit) {
+            co_return failWithFormRedirect("该登录会话已完成，请直接使用 login/check 获取 token");
+        }
         result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed,
                          "该登录会话已完成，请直接使用 login/check 获取 token");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());

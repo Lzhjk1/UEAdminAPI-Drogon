@@ -796,9 +796,14 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 7.7 设备登录页密码登录 (Device Login By Password)
 - **URL**: `/login`
 - **Method**: `POST`
-- **Body**: `{ "state": "...", "userName": "...", "passWord": "...", "redirect_uri": "..." }`
+- **Body**: 支持两种提交格式
+  - JSON: `{ "state": "...", "userName": "...", "passWord": "...", "redirect_uri": "..." }`
+  - 原生 HTML 表单: `application/x-www-form-urlencoded`（登录页使用原生表单导航，避免跨域预检）；字段名与 JSON 相同
 - **Description**: 设备登录页的账号密码登录。登录成功把 `userId` 写入设备会话，并 302 跳转到创建会话时保存的 `redirect_uri`（loopback，仅通知）；请求体里的 `redirect_uri` 必须与会话保存值一致，否则拒绝。未传 `redirect_uri` 时跳转 `ueloginreturn://success?state=<state>` 兼容旧客户端。
-- **Response**: 302 重定向（成功）或 JSON 错误（失败）。
+- **Response**:
+  - 成功: 302 重定向到通知地址
+  - 失败（JSON 请求）: JSON 错误
+  - 失败（表单提交）: 302 回登录页 `/login?state=...&redirect_uri=...&error=<错误信息>`，由登录页展示错误（原生表单导航无法读取 JSON 响应体）
 - **错误码**:
   - `-101` 请求体非 JSON
   - `-102` 缺少参数
