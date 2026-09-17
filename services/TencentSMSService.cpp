@@ -64,9 +64,9 @@ string hmacSha256Raw(const string& key, const string& data) {
 string TencentSMSService::sign(const string& secretKey, const string& date,
                                const string& service, const string& stringToSign) const {
     // SignKey = HMAC_SHA256(HMAC_SHA256(HMAC_SHA256("TC3" + secretKey, date), service), "tc3_request")
-    auto secretDate = hmacSha256Raw(date, "TC3" + secretKey);
-    auto secretService = hmacSha256Raw(service, secretDate);
-    auto signKey = hmacSha256Raw("tc3_request", secretService);
+    auto secretDate = hmacSha256Raw("TC3" + secretKey, date);
+    auto secretService = hmacSha256Raw(secretDate, service);
+    auto signKey = hmacSha256Raw(secretService, "tc3_request");
     return hmacSha256Hex(signKey, stringToSign);
 }
 
