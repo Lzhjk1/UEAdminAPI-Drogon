@@ -945,19 +945,22 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(
     auto loginValue = co_await platformService->createNewThirdLoginValue();
     std::string authUrl = co_await platformService->getAuthorizationUrl(loginValue);
 
-    // 若调用方是设备登录页（OAuth2 login/start 会话），把设备 state 透传给第三方授权 URL，
-    // 第三方回调回来时由 CallbackRedirect 据此定位到 loopback redirect_uri。
-    // 注意：不能追加到 authUrl 的 state 值之后，因为第三方平台的 state 值通常会被 URL 编码后回传；
-    // 这里把它作为独立 query 参数追加，并对值做 URL 编码，防止特殊字符破坏 OAuth URL 或参数注入。
+    // 若调用方是设备登录页（OAuth2 login/start 会话），记下设备 state 以便回调时定位
+    // loopback redirect_uri。
+    // 注意：只能存在服务端（loginValue->deviceState），不能追加到 authUrl 上 ——
+    // 第三方平台回调只会带回 code 和 state（redirect_uri 也是固定值），任何附加的
+    // 自定义 query 参数都会被平台丢弃，回调时按 code 反查才是可靠的做法。
     if (!deviceState.empty()) {
-        authUrl += (authUrl.find('?') == std::string::npos ? "?" : "&")
-                 + std::string("ueadmin_state=") + drogon::utils::urlEncodeComponent(deviceState);
+        loginValue->deviceState = deviceState;
     }
 
     result.jsondata["code"] = loginValue->code;
     result.jsondata["verifyCode"] = loginValue->verifyCode;
     result.jsondata["authorizationUrl"] = authUrl;
     result.jsondata["state"] = deviceState;
+    // appid / redirectUri: 供登录页在页内实例化微信 wxLogin.js 渲染二维码
+    result.jsondata["appId"] = platformService->getClientId();
+    result.jsondata["redirectUri"] = platformService->getRedirectUrl();
     co_return result;
 }
 
@@ -994,35 +997,63 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
     std::string thirdPartyState = parsed.thirdPartyState;
     std::string deviceState = parsed.deviceState;
 
+    // 按第三方 code 反查本次登录记录 —— 由设备登录页发起的登录把设备 state 存在那里
+    // （见 GetLoginUrl）。parsed.deviceState 只在旧格式（state 里夹带参数）下非空，保留作兼容回退。
+    std::shared_ptr<ThirdPartyLoginValue> loginValue;
     if (platformService) {
+        loginValue = co_await platformService->getLoginValue(thirdPartyState);
+        if (deviceState.empty() && loginValue && !loginValue->deviceState.empty()) {
+            deviceState = loginValue->deviceState;
+        }
         // state 可能携带 ueadmin_state，必须把原始第三方 state 还原后再交给平台回调
         co_await platformService->callBack(code, thirdPartyState);
+        // callBack 会把 openId 等写回同一个对象 (shared_ptr)，因此上面拿到的 loginValue 仍然有效
     }
 
-    // 第三方登录回调现在可能携带 ueadmin 设备登录 state（见 GetLoginUrl 的 ueadmin_state）。
-    // 若存在且属于 OAuth2 设备登录会话，则跳转到会话保存的 loopback redirect_uri（仅通知，不传 token）。
+    // 由设备登录页发起时，回调后要跳转到该设备会话保存的 loopback redirect_uri（仅通知，不传 token）。
     auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
     if (!deviceState.empty() && sessionService) {
         auto session = sessionService->FindSession(deviceState);
         if (session && !session->redirectUri.empty()) {
-            // 第三方登录回调已完成，若该第三方账号已绑定本地用户，则把 userId 写回设备会话，
-            // 使 /api/oauth2/login/check 轮询能返回 token/flashToken。
-            // 注意：这里不创建/绑定新用户，未绑定场景仍由设备登录页引导走绑定/注册接口。
-            if (platformService && session->userId <= 0) {
-                auto loginValue = co_await platformService->getLoginValue(thirdPartyState);
-                if (loginValue && !loginValue->openId.empty()) {
-                    auto dbClientPtr = drogon::app().getDbClient();
-                    Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
-                    try {
-                        auto thirdPartyInfo = mapperThirdPartyInfo.findOne(
-                            Criteria(UserThirdPartyInfo::Cols::_open_id, CompareOperator::EQ, loginValue->openId) &&
-                            Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform())));
-                        sessionService->MarkLoggedIn(deviceState, thirdPartyInfo.getValueOfUserId());
-                    } catch (const drogon::orm::UnexpectedRows &e) {
-                        LOG_WARN << "设备登录第三方回调: 第三方账号未绑定本地用户, 不标记设备会话 userId, deviceState=" << deviceState;
-                    }
+            // 只有该第三方账号已绑定本地用户才能完成设备登录（这里不创建/绑定新用户）；
+            // 绑定了就把 userId 写回设备会话，使 /api/oauth2/login/check 能返回 token/flashToken。
+            bool loggedIn = session->userId > 0;
+            if (!loggedIn && loginValue && !loginValue->openId.empty()) {
+                auto dbClientPtr = drogon::app().getDbClient();
+                Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
+                try {
+                    auto thirdPartyInfo = mapperThirdPartyInfo.findOne(
+                        Criteria(UserThirdPartyInfo::Cols::_open_id, CompareOperator::EQ, loginValue->openId) &&
+                        Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform())));
+                    loggedIn = sessionService->MarkLoggedIn(deviceState, thirdPartyInfo.getValueOfUserId());
+                } catch (const drogon::orm::UnexpectedRows &) {
+                    LOG_WARN << "设备登录第三方回调: 第三方账号未绑定本地用户, 不标记设备会话 userId, deviceState=" << deviceState;
                 }
             }
+
+            if (!loggedIn) {
+                // 未绑定：绝不能跳 loopback —— 否则浏览器显示"验证成功"而客户端永远等不到 token。
+                // 渲染提示页让用户先去 ueadmin 完成绑定，本次设备会话按超时自然结束。
+                std::string platformLabel;
+                switch (getPlatformFromString(platform)) {
+                    case EnumThirdPartyPlatform::WeChat: platformLabel = "微信"; break;
+                    case EnumThirdPartyPlatform::QQ:     platformLabel = "QQ";   break;
+                    default:                             platformLabel = platform; break;
+                }
+                std::string reason;
+                if (!loginValue || loginValue->openId.empty()) {
+                    // 回调本身没走完（记录过期、授权被取消等），与"未绑定"是两回事，文案要分开
+                    reason = platformLabel + "登录未完成或已过期，请回到客户端重新发起登录。";
+                } else {
+                    reason = "该" + platformLabel + "账号还没有绑定 ueadmin 账号，无法用它登录客户端。"
+                             "请先登录 ueadmin 完成绑定，再回到客户端重新扫码。";
+                }
+                HttpViewData unboundData;
+                unboundData.insertAsString("reason", HttpViewData::htmlTranslate(reason));
+                auto resp = HttpResponse::newHttpViewResponse("third_party_unbound.csp", unboundData);
+                co_return resp;
+            }
+
             std::string customProtocol = session->redirectUri;
             HttpViewData viewData;
             viewData.insert("customProtocol", customProtocol);

@@ -33,6 +33,10 @@ public:
     std::string openId;
     std::string nickName;
     std::string avatarImgUrl;
+    // 发起本次第三方登录的设备登录会话 state (可为空, 旧 ueclient 流程不传)。
+    // 第三方平台只会回传 code/state, 任何附加到授权 URL 上的自定义参数都会丢失,
+    // 所以设备 state 必须存在服务端, 回调时按第三方 code 反查。
+    std::string deviceState;
     std::chrono::system_clock::time_point expireTime;
     bool consumed = false;
     bool ready = false; // 表示第三方登录流程是否完全结束(包括获取Token, OpenId等)
@@ -69,6 +73,9 @@ public:
 
     virtual UEAdminAPI::utils::EnumThirdPartyPlatform getPlatform() const = 0;
     virtual std::string getRedirectUrl() const = 0;
+    // appid: 公开值, 供登录页在页内渲染二维码 (微信 wxLogin.js) 使用。
+    // 注意: clientSecret 属于机密, 任何情况下都不得经接口暴露。
+    virtual std::string getClientId() const = 0;
 };
 
 // 第三方登录平台基类
@@ -89,6 +96,10 @@ public:
 
     std::string getRedirectUrl() const override {
         return redirectUrl;
+    }
+
+    std::string getClientId() const override {
+        return clientId;
     }
 
 protected:
