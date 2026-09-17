@@ -113,6 +113,24 @@ ParsedUeAdminState ParseUeAdminState(const std::string &state) {
     return result;
 }
 
+/// @brief 按 (open_id, platform_id) 反查已绑定的本地用户 ID；未绑定（或无 openId）返回 -1。
+/// 设备登录回调里"该第三方账号绑没绑"要判断两次（注册前、注册后各一次），故抽出来。
+int FindBoundUserId(const std::string &openId, int platformId) {
+    if (openId.empty()) {
+        return -1;
+    }
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
+    try {
+        auto info = mapperThirdPartyInfo.findOne(
+            Criteria(UserThirdPartyInfo::Cols::_open_id, CompareOperator::EQ, openId) &&
+            Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, platformId));
+        return info.getValueOfUserId();
+    } catch (const drogon::orm::UnexpectedRows &) {
+        return -1;
+    }
+}
+
 } // namespace
 
 // ThirdPartyLoginValue 实现
@@ -1015,25 +1033,39 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
     if (!deviceState.empty() && sessionService) {
         auto session = sessionService->FindSession(deviceState);
         if (session && !session->redirectUri.empty()) {
-            // 只有该第三方账号已绑定本地用户才能完成设备登录（这里不创建/绑定新用户）；
-            // 绑定了就把 userId 写回设备会话，使 /api/oauth2/login/check 能返回 token/flashToken。
+            // 把 userId 写回设备会话后，/api/oauth2/login/check 才能返回 token/flashToken。
+            // 顺序：已绑定则直接用；没绑定则按 /api/third/register 的做法快速注册并绑定，
+            // 免得用户扫码后卡在"验证成功但客户端登录不上"。
+            const int platformId = int(platformService->getPlatform());
             bool loggedIn = session->userId > 0;
+            std::string regError;
             if (!loggedIn && loginValue && !loginValue->openId.empty()) {
-                auto dbClientPtr = drogon::app().getDbClient();
-                Mapper<UserThirdPartyInfo> mapperThirdPartyInfo(dbClientPtr);
-                try {
-                    auto thirdPartyInfo = mapperThirdPartyInfo.findOne(
-                        Criteria(UserThirdPartyInfo::Cols::_open_id, CompareOperator::EQ, loginValue->openId) &&
-                        Criteria(UserThirdPartyInfo::Cols::_platform_id, CompareOperator::EQ, int(platformService->getPlatform())));
-                    loggedIn = sessionService->MarkLoggedIn(deviceState, thirdPartyInfo.getValueOfUserId());
-                } catch (const drogon::orm::UnexpectedRows &) {
-                    LOG_WARN << "设备登录第三方回调: 第三方账号未绑定本地用户, 不标记设备会话 userId, deviceState=" << deviceState;
+                int userId = FindBoundUserId(loginValue->openId, platformId);
+                if (userId <= 0) {
+                    auto regResult = co_await CreateUserFromThirdParty(platform, thirdPartyState, loginValue->verifyCode);
+                    if (regResult.code == 0) {
+                        LOG_INFO << "设备登录第三方回调: 该第三方账号未绑定, 已自动注册并绑定新账号, deviceState=" << deviceState;
+                    } else if (regResult.code == ApiErrorCode::ApiError_PlatformAlreadyBound) {
+                        // 并发下（比如同一二维码被扫两次）可能刚好已被另一个请求绑定，按已绑定继续
+                        LOG_WARN << "设备登录第三方回调: 自动注册时发现已被绑定, 按已绑定继续, deviceState=" << deviceState;
+                    } else {
+                        regError = regResult.msg;
+                        LOG_WARN << "设备登录第三方回调: 自动注册失败: " << regResult.msg
+                                 << ", deviceState=" << deviceState;
+                    }
+                    // 注册成功或已被绑定，这里都能查到 userId
+                    userId = FindBoundUserId(loginValue->openId, platformId);
+                }
+                if (userId > 0) {
+                    loggedIn = sessionService->MarkLoggedIn(deviceState, userId);
+                } else {
+                    LOG_WARN << "设备登录第三方回调: 未能定位到本地用户, 不标记设备会话 userId, deviceState=" << deviceState;
                 }
             }
 
             if (!loggedIn) {
-                // 未绑定：绝不能跳 loopback —— 否则浏览器显示"验证成功"而客户端永远等不到 token。
-                // 渲染提示页让用户先去 ueadmin 完成绑定，本次设备会话按超时自然结束。
+                // 兜底：绝不能跳 loopback —— 否则浏览器显示"验证成功"而客户端永远等不到 token。
+                // 渲染提示页说明原因，本次设备会话按超时自然结束。
                 std::string platformLabel;
                 switch (getPlatformFromString(platform)) {
                     case EnumThirdPartyPlatform::WeChat: platformLabel = "微信"; break;
@@ -1042,11 +1074,14 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
                 }
                 std::string reason;
                 if (!loginValue || loginValue->openId.empty()) {
-                    // 回调本身没走完（记录过期、授权被取消等），与"未绑定"是两回事，文案要分开
+                    // 回调本身没走完（记录过期、授权被取消等），与"注册/绑定失败"是两回事，文案要分开
                     reason = platformLabel + "登录未完成或已过期，请回到客户端重新发起登录。";
                 } else {
-                    reason = "该" + platformLabel + "账号还没有绑定 ueadmin 账号，无法用它登录客户端。"
-                             "请先登录 ueadmin 完成绑定，再回到客户端重新扫码。";
+                    reason = "无法用该" + platformLabel + "账号登录客户端（自动注册账号未成功）。"
+                             "请回到客户端重新扫码，或联系管理员。";
+                    if (!regError.empty()) {
+                        reason += " 原因：" + regError;
+                    }
                 }
                 HttpViewData unboundData;
                 unboundData.insertAsString("reason", HttpViewData::htmlTranslate(reason));

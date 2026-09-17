@@ -82,6 +82,25 @@ def test_callback_links_device_session(client):
     assert "无法完成登录" in resp.text
     # 关键: 带设备会话时绝不能跳自定义协议 (跳了客户端就永远等不到 token)
     assert "ueloginreturn" not in resp.text
+    # 回调本身没走完 (openId 为空) 与"自动注册失败"是两种原因, 文案不能混
+    assert "登录未完成或已过期" in resp.text
+
+
+def test_callback_auto_registers_when_unbound(client):
+    """未绑定的第三方账号应由 /api/third/register 的同一实现自动注册后继续登录。
+
+    真实扫码回调依赖腾讯, 自动化里拿不到带 openId 的 loginValue, 所以这里只固化
+    "不跳 ueloginreturn、且不把回调未完成误报成注册失败" 这条可确定验证的行为;
+    完整的"扫码 -> 自动建号 -> 客户端拿到 token"需要人工用手机验一次。
+    """
+    state = client.device_login_start(LOOPBACK)["data"]["state"]
+    third_code = client.third_authorization_url("qq", ueadmin_state=state)["data"]["code"]
+
+    resp = client.third_callback_raw("qq", code="bogus-code", state=third_code)
+    assert resp.status_code == 200
+    assert "ueloginreturn" not in resp.text
+    # 不应出现注册失败的措辞 (openId 为空时压根没走到注册那一步)
+    assert "自动注册账号未成功" not in resp.text
 
 
 def test_callback_without_device_session_keeps_custom_protocol(client):
