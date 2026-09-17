@@ -600,3 +600,9 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
     co_return resp2;
 }
 
+Task<HttpResponsePtr> OAuth2Controller::loginDone(HttpRequestPtr req) {
+    // 无状态校验：客户端 loopback 收到通知后立刻轮询 login/check，state 此时可能已被消费，
+    // 这一页只负责展示结果，不依赖会话。
+    auto resp = HttpResponse::newHttpViewResponse("login_done.csp");
+    co_return resp;
+}

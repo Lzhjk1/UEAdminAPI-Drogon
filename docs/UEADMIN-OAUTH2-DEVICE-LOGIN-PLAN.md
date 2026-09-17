@@ -177,3 +177,51 @@ U1 设备登录会话服务（内存存储）
 - 将修复后的版本部署到 `im.uesoft.com`（线上当前仍是旧版，`login/check` 会 active:false）
 - 登录页增加邮箱/手机验证码登录入口（第二阶段）
 - 第三方登录页入口 UI（当前已支持通过 `ueadmin_state` 参数对接，但 `views/oauth2_login.csp` 尚未渲染第三方登录按钮）
+
+---
+
+## 扫码登录与完成页实施记录（2026-09-17）
+
+### 修复：`ueadmin_state` 透传（U5 遗留的真实缺陷）
+
+U5 记录里"把 `ueadmin_state` 作为独立 query 参数追加到第三方 `authorizationUrl`"的做法**在真实回调中必然失效**：
+QQ / 微信授权完成后只重定向到 `redirect_uri?code=..&state=..`（`redirect_uri` 本身是固定值），
+任何附加的自定义 query 参数都会被平台丢弃。于是 `ParseUeAdminState(state)` 解析出的 `deviceState` 恒为空，
+`CallbackRedirect` 里 `if (!deviceState.empty())` 那一整块永不进入、`MarkLoggedIn` 从不执行，
+客户端 `/api/oauth2/login/check` 永远是 `active:false` —— 这条"登录页里走第三方登录"的路径**从未真正可用过**。
+
+修法是不再依赖任何回传，改为服务端自己记住：
+
+- `ThirdPartyLoginValue` 新增 `deviceState` 字段，`GetLoginUrl` 创建会话时写入；
+- `CallbackRedirect` 按回调的 `state`（即第三方 code）反查该字段，取不到再回退 `ParseUeAdminState`（兼容旧格式）；
+- `GetLoginUrl` 删掉了往 `authorizationUrl` 追加 `ueadmin_state` 的代码，响应新增 `appId` / `redirectUri`
+  （公开值，供页内二维码实例化 `wxLogin.js` 用；`clientSecret` 不暴露）。
+
+### 新增
+
+| 内容 | 位置 |
+|---|---|
+| 登录页「扫码登录」tab：微信页内二维码（官方 `wxLogin.js`，`self_redirect=false`）+ QQ 跳转按钮 | `views/oauth2_login.csp` |
+| 登录完成页 ✔「登录成功 / 可以关闭此窗口」 | `views/login_done.csp` + `GET /login/done` |
+| 第三方账号未绑定 / 回调未完成时的提示页（**不跳 loopback**） | `views/third_party_unbound.csp` + `CallbackRedirect` 内判定 |
+| 那一针的回归测试 + PDMS 不受影响的回归测试 + 完成页可访问 | `tests/test_third_party_device_login.py` |
+
+关于完成页：服务端出页、客户端 loopback 收到通知后 302 过来，而不是让浏览器停在 loopback 上显示客户端返回的
+纯文本 `OK`。之所以不复用 `login_redirect.csp`，是因为那一页会 `meta refresh` + `location.href` 跳
+`customProtocol`，桌面客户端场景没有可跳目标，照搬会在原地打转。
+
+### 仍未做
+
+- **未绑定第三方账号的快速失败**：目前是"不跳 loopback + 渲染提示页"，客户端要等自己的 120s 超时。
+  要做到秒级报错，需要在设备会话里存错误态并由 `login/check` 返回 —— 但客户端只在收到 loopback 通知后才轮询，
+  所以还得同时把用户导到提示页（即客户端 loopback 需接受服务端给出的跳转路径）。本轮未做，先靠提示页文案兜住。
+- 邮箱/手机验证码登录入口。
+- 线上部署（含微信「网站应用」的授权回调域需包含 `im.uesoft.com`）。
+
+### 踩到的坑（构建，非代码）
+
+- **本项目的 Ninja 规则不跟踪头文件依赖**：只改 `.h` 时 `cmake --build` 会认为无事可做，
+  编译 0 个文件、链接也不执行，得到一个**静默的旧二进制**。本次调试中它伪装成"新加的
+  路由不生效"，白排查了一轮（一度误判成 drogon 的路由限制）。
+  改头文件后请用 `cmake --build outuildd-Debug --clean-first`（或先删掉对应的 `.obj`）。
+- 新增 `views/*.csp` 需要重新 configure（`drogon_create_views` 在 configure 期扫描目录）。

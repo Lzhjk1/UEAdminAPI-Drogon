@@ -6,53 +6,228 @@
     <title>ueadmin 登录</title>
     <style>
         body { font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; background: #f5f7fa; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .card { background: #fff; padding: 40px 44px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); width: 360px; box-sizing: border-box; }
+        .card { background: #fff; padding: 32px 40px 36px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); width: 400px; box-sizing: border-box; }
         h2 { margin: 0 0 8px; text-align: center; color: #1f2937; }
-        .sub { text-align: center; color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+        .sub { text-align: center; color: #6b7280; font-size: 13px; margin-bottom: 20px; }
         label { display: block; font-size: 13px; color: #374151; margin: 14px 0 6px; }
         input { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; font-size: 14px; outline: none; }
         input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
-        button { width: 100%; margin-top: 22px; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
+        button { width: 100%; margin-top: 18px; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
         button:hover { background: #1d4ed8; }
         .err { color: #dc2626; font-size: 13px; margin-top: 12px; text-align: center; min-height: 18px; }
+        /* 一级 tab: 账号密码 / 扫码登录 */
+        .tabs { display: flex; border-bottom: 1px solid #e5e7eb; margin-bottom: 4px; }
+        .tab { flex: 1; text-align: center; padding: 10px 0; font-size: 14px; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab.active { color: #2563eb; border-bottom-color: #2563eb; font-weight: 600; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        /* 二级 tab: 微信 / QQ */
+        .ptabs { display: flex; justify-content: center; gap: 24px; margin: 12px 0 0; }
+        .ptab { padding: 4px 2px; font-size: 13px; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; }
+        .ptab.active { color: #2563eb; border-bottom-color: #2563eb; }
+        .qrbox { display: flex; align-items: center; justify-content: center; min-height: 300px; }
+        .hint { color: #6b7280; font-size: 13px; text-align: center; line-height: 1.8; margin: 0; }
+        .linkbtn { display: block; width: 100%; margin-top: 14px; padding: 0; font-size: 13px; color: #2563eb; background: none; border: none; cursor: pointer; text-align: center; }
+        .linkbtn:hover { background: none; text-decoration: underline; }
+        .ghost { background: #fff; color: #2563eb; border: 1px solid #bfdbfe; }
+        .ghost:hover { background: #eff6ff; }
+        .ghost-lite { background: #fff; color: #6b7280; border: 1px solid #e5e7eb; font-size: 14px; }
+        .ghost-lite:hover { background: #f9fafb; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2>通过 ueadmin 登录</h2>
         <p class="sub">此页面将授权您的客户端登录 IRC</p>
-        <form id="loginForm">
-            <!-- 该页面在 controller 中已对 state/redirect_uri 做 HTML 转义，防止查询参数 XSS -->
-            <input type="hidden" name="state" value="[[state]]" />
-            <input type="hidden" name="redirect_uri" value="[[redirect_uri]]" />
-            <label for="userName">用户名</label>
-            <input type="text" id="userName" name="userName" autocomplete="username" required />
-            <label for="passWord">密码</label>
-            <input type="password" id="passWord" name="passWord" autocomplete="current-password" required />
-            <button type="submit">登 录</button>
-            <div class="err" id="errMsg"></div>
-        </form>
+
+        <div class="tabs">
+            <div class="tab active" data-tab="pwd">账号密码</div>
+            <div class="tab" data-tab="qr">扫码登录</div>
+        </div>
+
+        <!-- 账号密码: 保持原生表单提交 (同源, 避开了 fetch 的 CORS 预检) -->
+        <div class="panel active" id="panel-pwd">
+            <form id="loginForm">
+                <!-- 该页面在 controller 中已对 state/redirect_uri 做 HTML 转义，防止查询参数 XSS -->
+                <input type="hidden" name="state" value="[[state]]" />
+                <input type="hidden" name="redirect_uri" value="[[redirect_uri]]" />
+                <label for="userName">用户名</label>
+                <input type="text" id="userName" name="userName" autocomplete="username" required />
+                <label for="passWord">密码</label>
+                <input type="password" id="passWord" name="passWord" autocomplete="current-password" required />
+                <button type="submit">登 录</button>
+                <div class="err" id="errMsg"></div>
+            </form>
+        </div>
+
+        <!-- 扫码登录 -->
+        <div class="panel" id="panel-qr">
+            <div class="ptabs">
+                <div class="ptab active" data-platform="wechat">微信</div>
+                <div class="ptab" data-platform="qq">QQ</div>
+            </div>
+            <div class="qrbox" id="qrBox">
+                <p class="hint">正在生成二维码…</p>
+            </div>
+            <button type="button" class="ghost ghost-lite" id="refreshQr">刷新二维码</button>
+            <button type="button" class="linkbtn" id="fallbackQr">二维码显示不出来？改用跳转腾讯登录页</button>
+            <div class="err" id="qrErr"></div>
+        </div>
     </div>
     <script>
         // 登录页与后端同源，直接用原生表单提交可避免 fetch 的 CORS 预检限制。
         // 后端登录成功会 302 到会话保存的 loopback 通知地址（http://127.0.0.1:<port>/cb 或 ueloginreturn://），
         // 原生表单导航会直接跟随，不读取跨源响应，因此不会触发 CORS 报错。
-        const form = document.getElementById('loginForm');
-        const err = document.getElementById('errMsg');
+        (function () {
+            var form = document.getElementById('loginForm');
+            var err = document.getElementById('errMsg');
+            var qrErr = document.getElementById('qrErr');
+            var qrBox = document.getElementById('qrBox');
+            var qrFallback = document.getElementById('fallbackQr');
+            var deviceState = form.querySelector('input[name="state"]').value;
 
-        // 表单提交失败时后端 302 回本页并携带 error 参数，这里将其展示出来
-        const params = new URLSearchParams(window.location.search);
-        const errText = params.get('error');
-        if (errText) {
-            err.textContent = errText;
-        }
+            // 表单提交失败时后端 302 回本页并携带 error 参数，这里将其展示出来
+            var params = new URLSearchParams(window.location.search);
+            var errText = params.get('error');
+            if (errText) {
+                err.textContent = errText;
+            }
 
-        form.addEventListener('submit', (e) => {
-            err.textContent = '';
-            form.action = '/login';
-            form.method = 'POST';
-            // 保留原生表单提交行为
-        });
+            form.addEventListener('submit', function () {
+                err.textContent = '';
+                form.action = '/login';
+                form.method = 'POST';
+                // 保留原生表单提交行为
+            });
+
+            // ---- 一级 tab ----
+            var qrStarted = false;
+            var tabs = document.querySelectorAll('.tabs .tab');
+            for (var i = 0; i < tabs.length; i++) {
+                tabs[i].addEventListener('click', function () {
+                    var self = this;
+                    for (var k = 0; k < tabs.length; k++) { tabs[k].classList.remove('active'); }
+                    self.classList.add('active');
+                    var name = self.getAttribute('data-tab');
+                    var panels = document.querySelectorAll('.panel');
+                    for (var k2 = 0; k2 < panels.length; k2++) { panels[k2].classList.remove('active'); }
+                    document.getElementById('panel-' + name).classList.add('active');
+                    // 首次切到扫码 tab 才创建第三方登录记录（每次调用都会新建一条 2 分钟有效的记录）
+                    if (name === 'qr' && !qrStarted) {
+                        qrStarted = true;
+                        renderQr();
+                    }
+                });
+            }
+
+            // ---- 二级 tab: 平台 ----
+            // 两个平台各自持有一条第三方登录记录（都指向同一个设备登录会话），
+            // 谁先扫码完成都能让设备会话登录，所以可以自由切换。
+            var currentPlatform = 'wechat';
+            var currentAuth = null;
+            var ptabs = document.querySelectorAll('.ptab');
+
+            for (var j = 0; j < ptabs.length; j++) {
+                ptabs[j].addEventListener('click', function () {
+                    var self = this;
+                    for (var k = 0; k < ptabs.length; k++) { ptabs[k].classList.remove('active'); }
+                    self.classList.add('active');
+                    currentPlatform = self.getAttribute('data-platform');
+                    currentAuth = null;
+                    renderQr();
+                });
+            }
+
+            function setHint(text) {
+                qrBox.innerHTML = '<p class="hint">' + text + '</p>';
+            }
+
+            function loadScript(src) {
+                return new Promise(function (resolve, reject) {
+                    var s = document.createElement('script');
+                    s.src = src;
+                    s.onload = resolve;
+                    s.onerror = function () { reject(new Error('无法加载 ' + src)); };
+                    document.head.appendChild(s);
+                });
+            }
+
+            function fetchAuth(platform) {
+                var url = '/api/third/authorization_url?platform=' + encodeURIComponent(platform) +
+                          '&ueadmin_state=' + encodeURIComponent(deviceState);
+                return fetch(url).then(function (r) { return r.json(); }).then(function (body) {
+                    if (!body || body.code !== 0 || !body.data) {
+                        throw new Error((body && body.msg) || '获取第三方登录信息失败');
+                    }
+                    return body.data;
+                });
+            }
+
+            function renderQr() {
+                qrErr.textContent = '';
+                setHint('正在生成二维码…');
+                var platform = currentPlatform;
+                // 微信页内二维码要靠外部脚本，加载不出来时把降级链接显示出来
+                qrFallback.style.display = (platform === 'wechat') ? 'block' : 'none';
+
+                fetchAuth(platform).then(function (data) {
+                    currentAuth = data;
+                    if (platform === 'wechat') {
+                        // 页内二维码: 用微信官方 wxLogin.js（二维码由腾讯渲染在 iframe 里）
+                        return loadScript('https://res.wx.qq.com/connect/zh_CN/htmledition/js/wxLogin.js')
+                            .then(function () {
+                                if (typeof WxLogin !== 'function') {
+                                    throw new Error('wxLogin.js 未正确加载');
+                                }
+                                qrBox.innerHTML = '<div id="wxQrContainer"></div>';
+                                // self_redirect 必须为 false: 扫码确认后需要整页跳到
+                                // /api/third/wechat?code=..&state=..; 若为 true 则只在 iframe 内跳，
+                                // 父页面原地不动，回调通知就发不出去
+                                new WxLogin({
+                                    self_redirect: false,
+                                    id: 'wxQrContainer',
+                                    appid: data.appId,
+                                    scope: 'snsapi_login',
+                                    redirect_uri: encodeURIComponent(data.redirectUri),
+                                    state: data.code,
+                                    style: 'black'
+                                });
+                            });
+                    }
+                    // QQ: QQ互联没有官方页内二维码组件，只能去它的登录页（那页自带扫码 tab）
+                    qrBox.innerHTML = '<div style="text-align:center">' +
+                        '<p class="hint">QQ 互联未提供页内二维码组件，<br />请点击下方按钮前往 QQ 登录页扫码。</p>' +
+                        '<button type="button" class="ghost" id="qqGo" style="width:auto;padding:10px 24px;margin-top:20px;">前往 QQ 登录页</button>' +
+                        '</div>';
+                    document.getElementById('qqGo').addEventListener('click', function () {
+                        window.location.href = currentAuth.authorizationUrl;
+                    });
+                    return null;
+                }).catch(function (e) {
+                    setHint('二维码生成失败：' + ((e && e.message) ? e.message : '未知错误'));
+                    qrErr.textContent = '可点击上方「刷新二维码」重试。';
+                });
+            }
+
+            document.getElementById('refreshQr').addEventListener('click', function () {
+                // 每次调用会新建一条第三方登录记录（2 分钟有效），旧二维码随即作废
+                qrFallback.style.display = 'block';
+                currentAuth = null;
+                renderQr();
+            });
+
+            qrFallback.addEventListener('click', function () {
+                if (currentAuth && currentAuth.authorizationUrl) {
+                    window.location.href = currentAuth.authorizationUrl;
+                    return;
+                }
+                fetchAuth(currentPlatform).then(function (data) {
+                    window.location.href = data.authorizationUrl;
+                }).catch(function (e) {
+                    qrErr.textContent = '跳转失败：' + ((e && e.message) ? e.message : '未知错误');
+                });
+            });
+        })();
     </script>
 </body>
 </html>

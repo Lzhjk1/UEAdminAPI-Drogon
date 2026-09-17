@@ -417,21 +417,26 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `GET`
 - **Params**:
   - `platform` (string, required): 平台名称 (目前有 `qq`, `wechat` 两个平台)
-  - `ueadmin_state` (string, optional): 设备登录会话 state。当从 `/login` 设备登录页发起第三方登录时传入；服务端会把它作为独立 query 参数追加到 `authorizationUrl`，第三方回调返回时据此跳转回 loopback `redirect_uri`。不传则保持旧版 ueclient 兼容流程。
+  - `ueadmin_state` (string, optional): 设备登录会话 state。当从 `/login` 设备登录页发起第三方登录时传入；服务端会**把设备 state 记在该次第三方登录会话里**（`ThirdPartyLoginValue.deviceState`），第三方回调时按 `code` 反查，据此跳转回 loopback `redirect_uri`。不传则保持旧版 ueclient 兼容流程。
+    > 注意：设备 state **不会**被追加到 `authorizationUrl` 上。第三方平台回调只带回 `code` 和 `state`（`redirect_uri` 也是固定值），任何附加的自定义 query 参数都会被平台丢弃，所以只能存在服务端。
 - **Response**:
   ```json
   {
     "code": 0,
     "msg": "success",
     "data": {
-      "authorizationUrl": "https://...&ueadmin_state=<deviceState>",
-      "code": "...",                     // 临时会话 Code (用于后续接口)
+      "authorizationUrl": "https://graph.qq.com/oauth2.0/authorize?...&state=<code>",
+      "code": "...",                     // 临时会话 Code (用于后续接口，同时作为 OAuth 的 state)
       "verifyCode": "...",               // 临时会话 VerifyCode (用于后续接口)
-      "state": "..."                     // 设备登录 state（仅传入 ueadmin_state 时返回）
+      "state": "...",                    // 设备登录 state（仅传入 ueadmin_state 时返回）
+      "appId": "...",                    // 第三方平台 appid（公开值），供登录页在页内渲染二维码
+      "redirectUri": "https://..."       // 第三方回调地址，wxLogin.js 需要它
     }
   }
   ```
 - **Description**: 获取第三方登录的授权地址。返回的 `code` 和 `verifyCode` 必须保存，用于后续的 `login/check`, `bind`, `register` 等接口。客户端应引导用户在浏览器中打开 `authorizationUrl`。
+  - 登录页在**页内**渲染二维码时用 `appId` + `redirectUri` + `code`（作为 `state`）实例化微信官方 `wxLogin.js`；`authorizationUrl` 作为降级跳转地址。
+  - `clientSecret` 属机密，任何情况下都不会经接口返回。
 - **错误码**:
   - `-501` 不支持的第三方平台
   - `-701` `ueadmin_state` 不存在、已过期或已消费（由 `DeviceLoginOptional` 过滤器返回）
@@ -441,10 +446,12 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Method**: `GET`
 - **Params**:
   - `code`: OAuth 授权码
-  - `state`: OAuth 状态码 (包含服务器生成的 verify info；若由设备登录页发起，还会以 `&ueadmin_state=<deviceState>` 追加设备会话 state)
+  - `state`: OAuth 状态码（即 4.1 返回的临时会话 `code`；服务端据此反查该次登录会话，包括其中记录的设备登录 state）
 - **Description**: 第三方平台授权完成后重定向回来的地址。通常由浏览器自动访问。服务器接收到此请求后，会将 OAuth 信息与 4.1 中生成的临时会话关联。
-  - 若回调 URL 带 `ueadmin_state` 且对应设备登录会话存在 loopback `redirect_uri`，服务端返回 `login_redirect.csp` 并跳转到该 loopback 地址（**仅通知，不传 token**）。
-  - 不带 `ueadmin_state` 时保留旧行为：跳转 `ueloginreturn://success?state=<第三方state>`。
+  - 该次登录由设备登录页发起（4.1 传了 `ueadmin_state`）且对应设备会话存在 loopback `redirect_uri` 时：
+    - 该第三方账号**已绑定**本地用户 → 把 `userId` 写回设备会话，渲染 `login_redirect.csp` 跳转到该 loopback 地址（**仅通知，不传 token**），客户端随后用 `/api/oauth2/login/check` 取 token；
+    - **未绑定**（或回调本身未完成/已过期）→ 渲染 `third_party_unbound.csp` 提示页并**不跳转**。跳了会让浏览器显示"验证成功"而客户端永远等不到 token。
+  - 不带 `ueadmin_state` 时保留旧行为：跳转 `ueloginreturn://success?state=<第三方state>`（PDMS / 旧 ueclient 依赖此行为）。
 
 ### 4.3 验证登录 (Check Login Status)
 - **URL**: `/api/third/login/check`
@@ -787,7 +794,10 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 7.6 设备登录页 (Device Login Page)
 - **URL**: `/login?state={1}&redirect_uri={2}`
 - **Method**: `GET`
-- **Description**: 渲染设备登录 HTML 页面。第一阶段仅支持账号密码登录；后续可扩展邮箱/手机验证码和第三方登录入口。
+- **Description**: 渲染设备登录 HTML 页面。提供两个 tab：
+  - **账号密码**：原生表单 POST 到 `/login`（同源，避开 fetch 的 CORS 预检）。
+  - **扫码登录**：首次切到该 tab 时调 `GET /api/third/authorization_url?platform=<qq|wechat>&ueadmin_state=<state>` 建一条第三方登录会话；微信用官方 `wxLogin.js` 在页内渲染二维码（`self_redirect=false`，扫码确认后整页跳到 `/api/third/wechat`），QQ 因无官方页内二维码组件改为跳转 QQ 登录页。二维码 2 分钟有效，页面提供「刷新二维码」。
+  - 两个平台各自持有一条第三方登录记录、都指向同一个设备会话，谁先扫码完成都能让该会话登录。
 - **Params**:
   - `state` (string, required): `login/start` 返回的 state
   - `redirect_uri` (string, optional): 登录成功后的 loopback 通知地址
@@ -811,3 +821,10 @@ GitLab 相关接口目前使用独立的响应格式：
   - `-702` 该登录会话已完成，请直接使用 login/check 获取 token
   - `-703` redirect_uri 与登录会话不一致
   - `-301` 用户名或密码错误
+
+### 7.8 设备登录完成页 (Device Login Done)
+- **URL**: `/login/done`
+- **Method**: `GET`
+- **Description**: 登录完成提示页（✔ 登录成功 / 可以关闭此浏览器窗口）。客户端 loopback 收到通知后不再返回纯文本，而是 302 跳到这里展示结果。
+- **Params**: 无。
+- **Response**: HTML 页面。**不做任何状态校验** —— 客户端收到 loopback 通知后会立刻轮询 `login/check`，此时 state 可能已被一次性消费，所以这一页必须与会话解耦。

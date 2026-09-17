@@ -228,6 +228,18 @@ class ApiClient:
         resp = self._raw_request("GET", "/api/third/authorization_url", params=params)
         return resp.status_code, resp.json()
 
+    def third_callback_raw(self, platform: str, code: str, state: str):
+        """第三方平台回调地址（浏览器授权完成后会被重定向到这里）。
+
+        该接口渲染 HTML 页面而非 JSON，所以返回原始 Response 供断言页面内容。
+        """
+        return self._raw_request("GET", f"/api/third/{platform}",
+                                 params={"code": code, "state": state})
+
+    def device_login_done_page(self):
+        """登录完成页（客户端 loopback 收到通知后再跳到这里展示）。"""
+        return self._raw_request("GET", "/login/done")
+
     # ---------- 内部工具 ----------
     def _set_login(self, body):
         data = body.get("data") or {}
