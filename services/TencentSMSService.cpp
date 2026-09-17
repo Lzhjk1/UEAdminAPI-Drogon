@@ -89,7 +89,7 @@ TencentSMSService::TencentSMSService(const Json::Value& config) {
 
 /// @brief 发送短信
 /// 构造 TC3-HMAC-SHA256 签名，通过 HTTP POST 调用腾讯云 SMS API
-/// @param phoneNumber 手机号（不含 +86 前缀，内部自动拼接）
+/// @param phoneNumber 手机号，需自带国家码前缀（如 "+8618978162304"）
 /// @param type MFA 类型，用于选择模板
 /// @param templateParams 模板参数
 drogon::Task<bool> TencentSMSService::SendSms(const string& phoneNumber, eMFAType type,
@@ -104,7 +104,8 @@ drogon::Task<bool> TencentSMSService::SendSms(const string& phoneNumber, eMFATyp
     // 构造请求 body (JSON)
     Json::Value body;
     body["PhoneNumberSet"] = Json::Value(Json::arrayValue);
-    body["PhoneNumberSet"].append("+86" + phoneNumber);
+    // phoneNumber 由调用方(SMSCodePair::BaseInfo())归一化, 已自带国家码前缀, 此处不可再拼 "+86"
+    body["PhoneNumberSet"].append(phoneNumber);
     body["SmsSdkAppId"] = _smsSdkAppId;
     body["SignName"] = _signName;
     body["TemplateId"] = it->second;
@@ -159,7 +160,19 @@ drogon::Task<bool> TencentSMSService::SendSms(const string& phoneNumber, eMFATyp
     req->addHeader("X-TC-Version", "2021-01-11");
     req->addHeader("Authorization", authorization);
 
-    auto result = co_await client->sendRequestCoro(req);
+    // 网络异常不允许向上抛出: 否则会变成 500 未捕获异常, 调用方拿不到失败原因
+    drogon::HttpResponsePtr result;
+    try {
+        result = co_await client->sendRequestCoro(req);
+    } catch (const std::exception& e) {
+        LOG_ERROR << "短信发送异常: " << e.what();
+        co_return false;
+    }
+
+    if (!result) {
+        LOG_ERROR << "短信发送失败: HTTP请求无响应";
+        co_return false;
+    }
 
     if (result->statusCode() != 200) {
         LOG_ERROR << "短信发送失败, HTTP " << result->statusCode()

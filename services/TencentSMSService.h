@@ -32,7 +32,8 @@ public:
     TencentSMSService(const Json::Value& config);
 
     /// @brief 发送短信
-    /// @param phoneNumber 手机号（不含国家码前缀，内部自动加 +86）
+    /// @param phoneNumber 手机号，需自带国家码前缀（如 "+8618978162304"），
+    ///                    SMSCodePair::BaseInfo() 已做归一化，内部不再拼接前缀
     /// @param type MFA 类型，用于查找对应模板 ID
     /// @param templateParams 短信模板参数列表
     /// @return true 表示发送成功
