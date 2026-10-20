@@ -24,6 +24,7 @@
 #include "utils/PostParamMap.h"
 #include "models/UserFlashtoken.h"
 #include "models/User.h"
+#include "utils/EnumUserPrivileges.h"
 
 using namespace UEAdminAPI;
 using namespace UEAdminAPI::utils;
@@ -164,9 +165,12 @@ Task<HttpResponsePtr> OAuth2Controller::introspect(HttpRequestPtr req) {
             if (user.getPrivilege()) {
                 int priv = user.getValueOfPrivilege();
                 Json::Value roles(Json::arrayValue);
-                if (priv >= 2) roles.append("admin");
-                else if (priv >= 1) roles.append("user");
-                else roles.append("default");
+                // privilege 是位标志(UserPrivileges): Default=1, User=2, Admin=4,
+                // 必须按位判断; 旧代码用 priv>=2 做大小比较, 会把普通用户(2)误判成 admin
+                if (priv & static_cast<int>(UserPrivileges::Admin)) roles.append("admin");
+                if (priv & static_cast<int>(UserPrivileges::User)) roles.append("user");
+                if (priv & static_cast<int>(UserPrivileges::Default)) roles.append("default");
+                if (roles.empty()) roles.append("default");
                 jbody["roles"] = roles;
             }
         } catch (const drogon::orm::UnexpectedRows &) {
