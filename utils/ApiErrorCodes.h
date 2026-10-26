@@ -1,4 +1,4 @@
-#ifndef API_ERROR_CODES_H
+﻿#ifndef API_ERROR_CODES_H
 #define API_ERROR_CODES_H
 
 /* 
@@ -59,7 +59,31 @@
     X(ApiError_GitLabAccountCreationFailure, -601, "创建 GitLab 账号失败 ") \
     X(ApiError_GitLabAccountDeletionFailure, -602, "删除 GitLab 用户失败 ") \
     X(ApiError_GitLabProjectInvitationFailure, -603, "邀请用户加入项目失败 ") \
-    X(ApiError_GitLabTokenCreationFailure, -604, "创建 GitLab Impersonation Token失败 ")
+    X(ApiError_GitLabTokenCreationFailure, -604, "创建 GitLab Impersonation Token失败 ") \
+    /* --- Team / Role / Authorization Errors (-8xx) --- */ \
+    X(ApiError_TeamNotFound, -801, "团队不存在 ") \
+    X(ApiError_NotTeamMember, -802, "用户不属于任何团队 ") \
+    X(ApiError_NotTeamAdmin, -803, "只有团队管理员可以执行该操作 ") \
+    X(ApiError_TeamMemberCreateFailure, -804, "创建团队成员失败 ") \
+    X(ApiError_InvalidRoleCode, -805, "角色不存在或不允许分配 ") \
+    X(ApiError_SubscriptionInvalid, -806, "付费起止日期不合法 ") \
+    X(ApiError_AdminPrivilegeRequired, -807, "需要管理员权限 ") \
+    X(ApiError_UserNotPaid, -808, "团队未付费或已过期 ") \
+    X(ApiError_FeatureNotAuthorized, -809, "该功能未授权 ") \
+    X(ApiError_UserAlreadyInTeam, -810, "该用户已属于某个团队 ") \
+    X(ApiError_RoleNotFound, -811, "角色不存在 ") \
+    X(ApiError_PermissionNotFound, -812, "权限不存在 ") \
+    X(ApiError_PermissionGroupNotFound, -813, "权限组不存在 ") \
+    X(ApiError_ResourceInUse, -814, "该资源仍被引用，不能删除 ") \
+    X(ApiError_CodeAlreadyExists, -815, "编码或名称已存在 ") \
+    X(ApiError_SystemRoleProtected, -816, "系统内置角色不允许该操作 ") \
+    X(ApiError_InstallerNotFound, -817, "安装包不存在或未发布 ") \
+    /* --- Billing / Payment Errors (-9xx) --- */ \
+    X(ApiError_OrderNotFound, -901, "订单不存在 ") \
+    X(ApiError_OrderStateInvalid, -902, "订单状态不允许该操作 ") \
+    X(ApiError_AmountInvalid, -903, "金额不合法 ") \
+    X(ApiError_PayChannelUnsupported, -904, "不支持的支付渠道 ") \
+    X(ApiError_MockPayDisabled, -905, "模拟支付未开启 ")
 
 namespace UEAdminAPI {
 

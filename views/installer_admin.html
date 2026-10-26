@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>安装包发布 · UEAdminAPI</title>
+<style>
+  body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 24px; color: #222; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .hint { color: #666; font-size: 12px; margin-bottom: 16px; }
+  fieldset { border: 1px solid #ccc; padding: 12px 16px; margin-bottom: 20px; max-width: 720px; }
+  legend { font-weight: bold; padding: 0 6px; }
+  label { display: inline-block; width: 90px; }
+  input[type=text], input[type=password], input[type=file] { width: 360px; margin-bottom: 8px; }
+  button { padding: 4px 12px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+  th { background: #f5f5f5; }
+  #msg { margin: 8px 0 16px; padding: 8px; display: none; white-space: pre-wrap; }
+  .ok { background: #e8f5e9; border: 1px solid #a5d6a7; }
+  .err { background: #ffebee; border: 1px solid #ef9a9a; }
+  .tag { padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+  .tag-pub { background: #c8e6c9; }
+  .tag-draft { background: #ffe0b2; }
+  .tag-off { background: #e0e0e0; }
+</style>
+</head>
+<body>
+<h1>安装包发布</h1>
+<div class="hint">
+  需要厂商超管（privilege 含 Admin 位）的<b>登录 token</b>；token 只在浏览器内存中使用，不落盘。
+  接口：<code>/api/admin/installer/*</code>，发布后客户端 <code>/api/update/check</code> 才能看到。
+</div>
+
+<fieldset>
+  <legend>登录 token</legend>
+  <label>Token</label>
+  <input type="password" id="token" placeholder="粘贴 Authorization Bearer 后面的 token">
+  <button onclick="loadList()">加载列表</button>
+</fieldset>
+
+<fieldset>
+  <legend>上传安装包（草稿）</legend>
+  <label>版本号</label><input type="text" id="version" placeholder="11.7.121"><br>
+  <label>Build</label><input type="text" id="buildNo" placeholder="121（可空）"><br>
+  <label>说明</label><input type="text" id="notes" placeholder="本次更新内容（可空）"><br>
+  <label>文件</label><input type="file" id="file" accept=".exe"><br>
+  <button onclick="upload()">上传</button>
+</fieldset>
+
+<div id="msg"></div>
+
+<table>
+  <thead>
+    <tr><th>ID</th><th>版本</th><th>Build</th><th>文件</th><th>大小</th><th>SHA256</th><th>状态</th><th>发布时间</th><th>操作</th></tr>
+  </thead>
+  <tbody id="rows"><tr><td colspan="9" style="color:#888">填写 token 后点「加载列表」</td></tr></tbody>
+</table>
+
+<script>
+const api = (path) => location.origin + path;
+
+function token() {
+  return document.getElementById('token').value.trim();
+}
+
+function show(text, ok) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = ok ? 'ok' : 'err';
+  el.style.display = 'block';
+}
+
+async function call(method, path, body) {
+  const headers = { 'Authorization': 'Bearer ' + token() };
+  if (body && !(body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  const resp = await fetch(api(path), { method, headers, body });
+  let data;
+  try { data = await resp.json(); } catch (e) { data = { code: -1, msg: 'HTTP ' + resp.status + ' 非 JSON 响应' }; }
+  if (resp.status !== 200 || data.code !== 0) {
+    throw new Error('[' + (data.code ?? resp.status) + '] ' + (data.msg || '请求失败'));
+  }
+  return data;
+}
+
+function statusTag(s) {
+  if (s === 1) return '<span class="tag tag-pub">已发布</span>';
+  if (s === 2) return '<span class="tag tag-off">已下线</span>';
+  return '<span class="tag tag-draft">草稿</span>';
+}
+
+function fmtSize(n) {
+  if (!n) return '-';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+async function loadList() {
+  try {
+    const data = await call('GET', '/api/admin/installer/list');
+    const rows = data.data.installers || [];
+    const tbody = document.getElementById('rows');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="color:#888">暂无安装包</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.id}</td>
+        <td>${r.version}</td>
+        <td>${r.buildNo || '-'}</td>
+        <td title="${r.fileName}">${r.fileName}</td>
+        <td>${fmtSize(r.sizeBytes)}</td>
+        <td title="${r.sha256}">${(r.sha256 || '').slice(0, 12)}…</td>
+        <td>${statusTag(r.status)}</td>
+        <td>${r.publishedAt || '-'}</td>
+        <td>${r.status === 1 ? '' : `<button onclick="publish(${r.id})">发布</button>`}</td>
+      </tr>`).join('');
+    show('已加载 ' + rows.length + ' 条记录', true);
+  } catch (e) {
+    show('加载失败：' + e.message, false);
+  }
+}
+
+async function upload() {
+  const version = document.getElementById('version').value.trim();
+  const fileInput = document.getElementById('file');
+  if (!version) { show('请填写版本号', false); return; }
+  if (!fileInput.files.length) { show('请选择 .exe 安装包', false); return; }
+
+  const form = new FormData();
+  form.append('version', version);
+  form.append('buildNo', document.getElementById('buildNo').value.trim());
+  form.append('notes', document.getElementById('notes').value.trim());
+  form.append('file', fileInput.files[0]);
+
+  show('上传中…（大包请耐心等待）', true);
+  try {
+    const data = await call('POST', '/api/admin/installer/upload', form);
+    show('上传成功：id=' + data.data.id + '，sha256=' + data.data.sha256 + '\n请在下方点「发布」', true);
+    document.getElementById('file').value = '';
+    await loadList();
+  } catch (e) {
+    show('上传失败：' + e.message, false);
+  }
+}
+
+async function publish(id) {
+  if (!confirm('发布 id=' + id + ' 后，其他已发布版本会转为下线。继续？')) return;
+  try {
+    await call('POST', '/api/admin/installer/' + id + '/publish');
+    show('已发布 id=' + id, true);
+    await loadList();
+  } catch (e) {
+    show('发布失败：' + e.message, false);
+  }
+}
+</script>
+</body>
+</html>

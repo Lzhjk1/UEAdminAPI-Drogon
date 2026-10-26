@@ -828,3 +828,184 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Description**: 登录完成提示页（✔ 登录成功 / 可以关闭此浏览器窗口）。客户端 loopback 收到通知后不再返回纯文本，而是 302 跳到这里展示结果。
 - **Params**: 无。
 - **Response**: HTML 页面。**不做任何状态校验** —— 客户端收到 loopback 通知后会立刻轮询 `login/check`，此时 state 可能已被一次性消费，所以这一页必须与会话解耦。
+
+
+## 8. 账号中心 / 团队 / 授权（阶段 1）
+
+> 登录后客户端只调 `bootstrap` 一个接口即可拿到余额、团队、付费期、角色与云端功能授权；
+> 团队管理由团队管理员在客户端内完成；付费期与功能授权由厂商超管（`privilege` 的 `Admin` 位）在后台设置。
+>
+> 说明：`POST /api/team/member` 目前只要求登录（`AuthFilter`），未强制 ActionToken —— 团队管理员未必绑定 MFA。
+> 后续接入时在路由上补 `ActionTokenMiddleware` 并在 `services/ActionTokenService.cpp` 登记同样路由。
+
+### 8.1 账号中心聚合 (Bootstrap)
+- **URL**: `/api/me/bootstrap`
+- **Method**: `GET`
+- **Header**: `Authorization: Bearer {token}`
+- **Response**:
+```json
+{
+  "code": 0, "msg": "success",
+  "data": {
+    "userId": 12, "privilege": 3, "mustChangePwd": false, "balanceCents": 0,
+    "team": { "id": 5, "name": "Team-5-acme", "roleCode": "team_admin" },
+    "subscription": { "startDate": "2026-10-26", "endDate": "2027-10-26", "active": true },
+    "featureAuth": { "cloud_project": true, "online_update": false },
+    "latestVersion": ""
+  }
+}
+```
+- 无团队时 `team` 字段缺失；无付费记录时 `startDate`/`endDate` 为空串、`active=false`；
+  功能授权缺失视为关闭（账号级 `user_feature_auth` 覆盖团队级 `team_feature_auth`）。
+
+### 8.2 我的团队 (Get Team)
+- **URL**: `/api/team`
+- **Method**: `GET`，`Authorization: Bearer {token}`
+- **Response**: `data = { team{id,name,roleCode}, subscription{startDate,endDate,active}, members[] }`，
+  `members[]` 元素：`userId, userName, nickName, roleCode, roleName, status(1 正常/2 停用), mustChangePwd, createdAt`
+- **错误码**: `-802` 用户不属于任何团队
+
+### 8.3 团队管理员新建成员 (Create Member)
+- **URL**: `/api/team/member`
+- **Method**: `POST`，`Authorization: Bearer {token}`
+- **Body**: `{ "userName": "...", "password": "...", "roleCode": "engineer|pm", "nickName": "..." }`
+- **说明**: 仅团队管理员可调用；新账号 `must_change_pwd=true`（首次登录强制改密），并自动加入调用者所在团队、余额 0。
+  不允许分配 `team_admin`（防止越权扩权）。
+- **Response**: `data = { userId }`
+- **错误码**: `-102` 参数缺失/密码过短、`-303` 用户名已存在、`-802` 不在团队、`-803` 非团队管理员、`-805` 角色不允许、`-804` 创建失败
+
+### 8.4 厂商后台：团队列表 (Admin List Teams)
+- **URL**: `/api/admin/teams?paid=1&expired=1`
+- **Method**: `GET`，需要 `Admin` 权限
+- **Response**: `data = { teams[]{ id, name, status, createdAt, subscription{startDate,endDate,active}, memberCount } }`
+- **错误码**: `-807` 需要管理员权限（HTTP 403）
+
+### 8.5 厂商后台：设置付费期 (Admin Set Subscription)
+- **URL**: `/api/admin/teams/{teamId}/subscription`
+- **Method**: `PUT`，需要 `Admin` 权限
+- **Body**: `{ "startDate": "2026-10-26", "endDate": "2027-10-26", "plan": "standard" }`
+- **说明**: 追加一条订阅记录（保留历史），当前生效记录取 `end_date` 最大且 `status=1` 的一条。
+- **错误码**: `-801` 团队不存在、`-806` 日期不合法（格式或 start > end）
+
+### 8.6 厂商后台：设置云端功能授权 (Admin Set Feature Auth)
+- **URL**: `/api/admin/teams/{teamId}/feature-auth`
+- **Method**: `PUT`，需要 `Admin` 权限
+- **Body**: `{ "featureCode": "cloud_project|online_update", "enabled": true }`
+- **说明**: 按 `(team_id, feature_code)` upsert；客户端 bootstrap 读取时账号级配置优先。
+- **错误码**: `-801` 团队不存在、`-105` 未知功能代码
+
+
+## 9. 余额与支付（当前为模拟支付）
+
+> 金额单位统一为 **分**（`bigint`），展示时除以 100。
+> 本期为模拟支付：下单后调用 `mock-paid` 直接到账；真实支付宝当面付 / 微信 Native 接入时，
+> 只需把订单的 `qr_content` 换成渠道返回的 `code_url`、把 `mock-paid` 换成渠道回调验签，
+> 订单、流水、余额与幂等逻辑不变（回调建议先落 `payment_callback_log` 再入账）。
+
+### 9.1 创建充值订单
+- **URL**: `/api/bill/order`
+- **Method**: `POST`，`Authorization: Bearer {token}`
+- **Body**: `{ "amountCents": 10000, "channel": 9, "idemKey": "可选，客户端生成的幂等键" }`
+  - `channel`: 1 支付宝 / 2 微信 / 9 模拟
+  - `amountCents`: 1 ~ 10000000
+- **Response**: `data = { orderNo, amountCents, channel, status(0 待支付), qrContent, qrPngUrl, expireAt }`
+  - 同一 `idemKey` 重复下单返回原订单（不新建）
+- **错误码**: `-903` 金额不合法、`-904` 渠道不支持、`-104` 数据库错误
+
+### 9.2 查询订单（轮询）
+- **URL**: `/api/bill/order/{orderNo}`
+- **Method**: `GET`，`Authorization: Bearer {token}`
+- **Response**: `data = { orderNo, amountCents, channel, status, paid, createdAt, paidAt, balanceAfterCents? }`
+- **错误码**: `-901` 订单不存在或不属于当前用户
+
+### 9.3 余额流水
+- **URL**: `/api/bill/transactions?type=0&page=1&size=50`
+- **Method**: `GET`，`Authorization: Bearer {token}`
+- **Params**: `type`（0 全部 / 1 充值 / 2 消费 / 3 退款）、`page`、`size`（≤200）
+- **Response**: `data = { total, page, size, items[]{ id, type, amountCents, balanceAfterCents, remark, createdAt } }`
+
+### 9.4 模拟到账（仅模拟支付阶段）
+- **URL**: `/api/bill/order/{orderNo}/mock-paid`
+- **Method**: `POST`，`Authorization: Bearer {token}`
+- **说明**: 需要 `TestMode.Enable=true` 或订单 `channel=9`；**幂等**，重复调用不会重复加余额。
+  到账在同一条 SQL（CTE）内完成：订单置已支付 → 建余额行 → 加余额 → 记流水，并发安全。
+- **Response**: `data = { orderNo, paid: true, amountCents, balanceAfterCents }`
+- **错误码**: `-901` 订单不存在、`-902` 订单已关闭、`-905` 模拟支付未开启
+
+### 9.5 二维码占位图
+- **URL**: `/api/bill/qr/{orderNo}`
+- **Method**: `GET`（无需登录）
+- **Response**: `image/png`，240×240 占位图。真实接入后改为渲染渠道 `code_url` 的二维码。
+
+
+## 10. 厂商后台：角色 / 权限 / 权限组（RBAC）
+
+> 前缀 `/api/admin`，均需 `AuthFilter` + `AdminFilter`（`privilege` 的 `Admin` 位），非管理员返回 HTTP 403 / `-807`。
+> `role.code` 与 `permission.code` 创建后**不可修改**（服务端鉴权与客户端映射依赖 code）；
+> `permissionIds` 一旦出现在请求体里即为**整组替换**（传 `[]` 表示清空）。
+
+### 10.1 角色
+| 接口 | 说明 |
+|---|---|
+| `GET /api/admin/roles` | `data.roles[] = { id, code, name, scope(1 系统/2 团队), builtin, permissionIds[] }` |
+| `POST /api/admin/roles` | Body `{ code, name, scope? }`；重复 code → `-815` |
+| `PATCH /api/admin/roles/{id}` | Body `{ name?, permissionIds? }`，至少提供一个；不存在的权限 id → `-812` |
+| `DELETE /api/admin/roles/{id}` | 内置角色（team_admin/engineer/pm）→ `-816`；仍被 `team_member` 引用 → `-814` |
+
+### 10.2 权限
+| 接口 | 说明 |
+|---|---|
+| `GET /api/admin/permissions` | `data.permissions[] = { id, code, module, action }` |
+| `POST /api/admin/permissions` | Body `{ code, module, action }`；重复 code → `-815` |
+| `PATCH /api/admin/permissions/{id}` | Body `{ module?, action? }`，至少提供一个 |
+| `DELETE /api/admin/permissions/{id}` | 仍被角色或权限组引用 → `-814` |
+
+### 10.3 权限组
+| 接口 | 说明 |
+|---|---|
+| `GET /api/admin/permission-groups` | `data.groups[] = { id, name, permissionIds[] }` |
+| `POST /api/admin/permission-groups` | Body `{ name, permissionIds? }`；重名 → `-815` |
+| `PATCH /api/admin/permission-groups/{id}` | Body `{ name?, permissionIds? }` |
+| `DELETE /api/admin/permission-groups/{id}` | 同时清空组内 `group_permission` |
+
+
+## 11. 在线更新（安装包分发）
+
+> 客户端只有在 **已登录 + 团队已付费 + 已开通 online_update 授权** 时才能看到/下载安装包。
+> 安装包存放在 `custom_config.Installer.StoreDir`（默认 `./installers`），由本服务直出下载（前面可再挂 nginx）。
+> 上传接口需要 `multipart/form-data`，服务端已把请求体上限放宽到 2GB，超过 8MB 的部分落临时文件。
+
+### 11.1 检查更新
+- **URL**: `/api/update/check?currentVersion=11.7.120&platform=win32`
+- **Method**: `GET`，`Authorization: Bearer {token}`
+- **Response**（`hasUpdate=false` 时也返回 200）：
+```json
+{ "code": 0, "msg": "success", "data": {
+    "hasUpdate": true, "reason": "ok",
+    "currentVersion": "11.7.120", "latestVersion": "11.7.121",
+    "version": "11.7.121", "buildNo": 121,
+    "fileName": "UEAP_PRJ_11.7.121_Setup.exe", "sizeBytes": 123456789,
+    "sha256": "…", "notes": "…", "publishedAt": "2026-10-26 17:00:00",
+    "downloadUrl": "https://im.uesoft.com/api/update/download/11.7.121"
+} }
+```
+- `reason` 取值：`ok` / `not_paid` / `expired`（曾付费但已过期）/ `no_auth`（未开通云端更新授权）/
+  `no_package`（没有已发布安装包）/ `no_update`（已是最新）。除 `ok` 外一律 `hasUpdate=false`。
+- 版本比较按 `a.b.c` 数字逐段比较。
+
+### 11.2 下载安装包
+- **URL**: `/api/update/download/{version}`
+- **Method**: `GET`，`Authorization: Bearer {token}`
+- **Response**: 二进制流，`Content-Disposition: attachment; filename="…"`
+- **错误码**: `-808` 团队未付费、`-809` 未开通更新授权、`-817` 安装包不存在或未发布
+
+### 11.3 厂商后台：安装包管理
+| 接口 | 说明 |
+|---|---|
+| `POST /api/admin/installer/upload` | `multipart/form-data`：`version`(必填)、`buildNo`、`notes`、`file`(必填, 仅 `.exe`)；落盘并计算 sha256，状态为**草稿(0)** |
+| `POST /api/admin/installer/{id}/publish` | 发布：把该条置为已发布(1)，**其余已发布版本自动转为下线(2)**，保证同一时刻只有一个现行版本 |
+| `GET /api/admin/installer/list` | 列出全部安装包（含草稿/下线），字段：id/version/buildNo/fileName/sizeBytes/sha256/notes/status/createdAt/publishedAt |
+
+### 11.4 上传页
+- **URL**: `/admin/installer`（`GET`，无需登录即可打开页面，但页面内所有操作都要填厂商超管 token）
+- 页面提供：粘贴 token → 加载列表 → 选 `.exe` 上传 → 发布。仅作内部工具，未做额外的会话管理。

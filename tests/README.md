@@ -79,3 +79,18 @@ tests/
   3. 服务端回调 `/api/third/{platform}`，关联临时会话
   4. `GET /api/third/login/check` / `POST /api/third/bind` / `POST /api/third/register` 验证绑定与登录
   - TODO: 若后续需要在测试模式下端到端跑通，需在 `ThirdPartyLoginService` 引入 mock 支持(伪造 authorization_url + 可控 callback)。
+
+## 团队 / 余额 用例（需直连数据库）
+
+`test_team_bootstrap.py`、`test_billing.py`、`test_rbac_admin.py`、`test_update.py` 需要一个**指定权限的账号 + 专属团队**，
+而注册接口会联动 GitLab，本地/CI 未必具备。这两个文件改为直连数据库种入账号：
+
+```bash
+export UEADMINAPI_BASE_URL=http://127.0.0.1:6666
+export UEADMINAPI_TEST_DB_URL='postgresql://user:pass@127.0.0.1:5432/UEAdminAPI'
+cd tests && python -m pytest test_team_bootstrap.py test_billing.py test_rbac_admin.py test_update.py -q
+```
+
+- 未设置 `UEADMINAPI_TEST_DB_URL` 时，这两个文件的用例会自动 **skip**，不影响其余套件；
+- 需要本机有 `psql` 客户端；种子账号名形如 `pt_admin_<随机后缀>`，用例结束会清理；
+- 密码哈希按 `AuthService::CreatePasswordHash` 复刻（64 字节盐 + HMAC-SHA512）。

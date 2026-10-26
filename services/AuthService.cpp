@@ -17,6 +17,7 @@
 #include "services/MFAService.h"
 #include "services/GitlabService.h"
 #include "services/ThirdPartyLoginService.h"
+#include "services/TeamService.h"
 
 #include "models/UserFlashtoken.h"
 #include "models/User.h"
@@ -1059,6 +1060,27 @@ Task<HttpResult> AuthService::ExecuteRegistrationTransaction(
         co_return result;
     }
     
+    // 8. 开通个人团队（注册者即团队管理员，余额 0，付费期由厂商后台开通）
+    if (!Services::TeamService::ProvisionPersonalTeam(preparedUser.getValueOfId(),
+                                                      preparedUser.getValueOfName()))
+    {
+        LOG_ERROR << "开通个人团队失败, 回滚用户与 GitLab 账号";
+        if (!_gitlabService->deleteUser(gitlabUserId))
+        {
+            LOG_ERROR << "回滚时删除Gitlab用户失败";
+        }
+        try
+        {
+            mapperUsers.deleteOne(preparedUser);
+        }
+        catch (...)
+        {
+            LOG_ERROR << "回滚时删除先前插入的用户数据失败";
+        }
+        result.setResult(ApiErrorCode::ApiError_UserCreationFailure);
+        co_return result;
+    }
+
     // 成功
     result.setResult(ApiErrorCode::ApiError_Success, "创建用户成功");
     result.jsondata["userId"] = preparedUser.getValueOfId();

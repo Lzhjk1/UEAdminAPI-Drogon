@@ -196,3 +196,139 @@ def fresh_email_account(fresh_client: ApiClient, test_domain: str):
     yield account
 
     _delete_account(account)
+
+# ---------- 直连数据库的种子账号（团队 / 计费用例） ----------
+# 这些用例依赖一个已存在的团队与指定权限的账号，而注册接口会联动 GitLab，
+# 本地/CI 环境未必具备，因此改为直连数据库种入账号。
+# 需要设置 UEADMINAPI_TEST_DB_URL（如 postgresql://ueadmin:ueadmin@127.0.0.1:5432/UEAdminAPI）
+# 且运行环境有 psql 客户端；未设置时相关用例自动 skip。
+import hashlib
+import hmac
+import subprocess
+from types import SimpleNamespace
+
+
+def _db_url() -> str | None:
+    return os.environ.get("UEADMINAPI_TEST_DB_URL")
+
+
+def _require_db():
+    if not _db_url():
+        pytest.skip("未设置 UEADMINAPI_TEST_DB_URL，跳过需要直连数据库的用例")
+
+
+def _sql_lit(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _psql(sql: str) -> list[str]:
+    _require_db()
+    proc = subprocess.run(
+        ["psql", _db_url(), "-v", "ON_ERROR_STOP=1", "-tA", "-c", sql],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"psql 执行失败: {proc.stderr.strip()}")
+    return [line for line in proc.stdout.splitlines() if line != ""]
+
+
+def _password_hash(password: str) -> tuple[str, str]:
+    """与 AuthService::CreatePasswordHash 一致：64 字节随机盐 + HMAC-SHA512(密码)"""
+    salt = os.urandom(64)
+    digest = hmac.new(salt, password.encode(), hashlib.sha512).digest()
+    return digest.hex(), salt.hex()
+
+
+def _seed_user(name: str, password: str, privilege: int) -> int:
+    pw_hash, pw_salt = _password_hash(password)
+    rows = _psql(
+        'insert into "user"(name, password_salt, password_hash, privilege, nick_name, '
+        "telephone_number, email, is_male, create_at, must_change_pwd) values ("
+        f"{_sql_lit(name)}, decode({_sql_lit(pw_salt)}, 'hex'), decode({_sql_lit(pw_hash)}, 'hex'), "
+        f"{privilege}, {_sql_lit(name)}, '', {_sql_lit(name + '@example.com')}, true, now(), false) "
+        "returning id"
+    )
+    return int(rows[0])
+
+
+@pytest.fixture
+def seeded_org(test_domain: str):
+    """种入「厂商超管 + 团队管理员 + 一个专属团队」，用例结束清理。
+
+    返回 SimpleNamespace:
+      team_id / team_name
+      admin_name, admin_password, admin_id      (团队管理员, privilege=3)
+      vendor_name, vendor_password, vendor_id   (厂商超管, privilege=7)
+      member_name, member_password              (留给用例通过接口建号)
+    """
+    _require_db()
+    suffix = uuid.uuid4().hex[:8]
+    admin_name = f"pt_admin_{suffix}"
+    vendor_name = f"pt_vendor_{suffix}"
+    member_name = f"pt_member_{suffix}"
+    password = f"Pwd@{suffix}"
+    team_name = f"PT-{suffix}"
+
+    admin_id = _seed_user(admin_name, password, 3)
+    vendor_id = _seed_user(vendor_name, password, 7)
+    team_id = int(_psql(
+        f"insert into team(name, owner_user_id, status) values ({_sql_lit(team_name)}, {admin_id}, 1) "
+        "returning id"
+    )[0])
+    _psql(
+        "insert into team_member(team_id, user_id, role_id, status) "
+        f"select {team_id}, {admin_id}, id, 1 from role where code = 'team_admin'"
+    )
+    _psql(f"insert into user_balance(user_id) values ({admin_id}), ({vendor_id})")
+
+    org = SimpleNamespace(
+        team_id=team_id,
+        team_name=team_name,
+        admin_name=admin_name,
+        admin_password=password,
+        admin_id=admin_id,
+        vendor_name=vendor_name,
+        vendor_password=password,
+        vendor_id=vendor_id,
+        member_name=member_name,
+        member_password=password,
+    )
+    yield org
+
+    names = ", ".join(_sql_lit(n) for n in (admin_name, vendor_name, member_name))
+    user_filter = f'user_id in (select id from "user" where name in ({names}))'
+    for sql in (
+        f"delete from balance_txn where {user_filter}",
+        f"delete from payment_order where {user_filter}",
+        f"delete from user_balance where {user_filter}",
+        f"delete from team_member where {user_filter}",
+        f"delete from team_subscription where team_id = {team_id}",
+        f"delete from team_feature_auth where team_id = {team_id}",
+        f"delete from team where id = {team_id}",
+        f'delete from "user" where name in ({names})',
+    ):
+        try:
+            _psql(sql)
+        except Exception as e:  # 清理失败不阻断, 但留下线索
+            print(f"[WARN] 清理失败: {sql} -> {e}")
+
+
+@pytest.fixture
+def logged_client(base_url):
+    """独立 ApiClient 工厂: 用账号密码登录后返回已带 token 的 client"""
+    created: list[ApiClient] = []
+
+    def _login(username: str, password: str) -> ApiClient:
+        c = ApiClient(base_url)
+        c.login_pwd(username, password)
+        created.append(c)
+        return c
+
+    yield _login
+
+    for c in created:
+        try:
+            c.logout()
+        except Exception:
+            pass
+

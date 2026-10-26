@@ -240,3 +240,85 @@
 | | -104 | `ApiError_DatabaseError` | 数据库错误 |
 | | -105 | `ApiError_InvalidOperation` | 无效操作 |
 | | -106 | `ApiError_TooManyRequests` | 访问过于频繁，请稍后再试 |
+
+
+### 9. 账号中心 / 团队 / 授权模块 (-8xx)
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/me/bootstrap** (GET) | 0 | `ApiError_Success` | 返回余额/团队/付费期/授权 |
+| | -203 | `ApiError_TokenMissing` | 缺少 Authorization |
+| | -302 | `ApiError_UserNotFound` | 用户不存在 |
+| | -104 | `ApiError_DatabaseError` | 数据库错误 |
+| **/api/team** (GET) | 0 | `ApiError_Success` | 团队 + 成员列表 |
+| | -802 | `ApiError_NotTeamMember` | 用户不属于任何团队 |
+| | -801 | `ApiError_TeamNotFound` | 团队不存在 |
+| **/api/team/member** (POST) | 0 | `ApiError_Success` | `data.userId` |
+| | -102 | `ApiError_MissingRequiredArgs` | 用户名/密码缺失或密码不足 6 位 |
+| | -303 | `ApiError_UsernameAlreadyExists` | 用户名已存在 |
+| | -802 | `ApiError_NotTeamMember` | 调用者不属于任何团队 |
+| | -803 | `ApiError_NotTeamAdmin` | 只有团队管理员可以建号 |
+| | -805 | `ApiError_InvalidRoleCode` | 角色不存在或不允许分配（team_admin） |
+| | -804 | `ApiError_TeamMemberCreateFailure` | 创建失败（已回滚用户） |
+| **/api/admin/teams** (GET)<br>**/api/admin/teams/{id}/subscription** (PUT)<br>**/api/admin/teams/{id}/feature-auth** (PUT) | 0 | `ApiError_Success` | 厂商后台 |
+| | -807 | `ApiError_AdminPrivilegeRequired` | 需要管理员权限（HTTP 403） |
+| | -801 | `ApiError_TeamNotFound` | 团队不存在 |
+| | -806 | `ApiError_SubscriptionInvalid` | 付费起止日期不合法 |
+| | -105 | `ApiError_InvalidOperation` | 未知功能代码 |
+| | -104 | `ApiError_DatabaseError` | 数据库错误 |
+
+
+### 10. 余额与支付模块 (-9xx)
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/bill/order** (POST) | 0 | `ApiError_Success` | 返回订单与二维码地址 |
+| | -903 | `ApiError_AmountInvalid` | 金额不在 1 ~ 10000000 分 |
+| | -904 | `ApiError_PayChannelUnsupported` | 渠道不是 1/2/9 |
+| | -101 | `ApiError_InvalidJsonFormat` | 请求体非 JSON |
+| **/api/bill/order/{orderNo}** (GET) | 0 | `ApiError_Success` | 订单状态与余额 |
+| | -901 | `ApiError_OrderNotFound` | 订单不存在或不属于当前用户 |
+| **/api/bill/transactions** (GET) | 0 | `ApiError_Success` | 余额流水 |
+| | -104 | `ApiError_DatabaseError` | 数据库错误 |
+| **/api/bill/order/{orderNo}/mock-paid** (POST) | 0 | `ApiError_Success` | 已到账（重复调用幂等） |
+| | -901 | `ApiError_OrderNotFound` | 订单不存在 |
+| | -902 | `ApiError_OrderStateInvalid` | 订单已关闭 |
+| | -905 | `ApiError_MockPayDisabled` | 模拟支付未开启（非 9 渠道且 TestMode 关闭） |
+
+
+### 11. RBAC 模块 (-811 ~ -816)
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/admin/roles** (GET/POST/PATCH/DELETE) | 0 | `ApiError_Success` | 角色读写 |
+| | -811 | `ApiError_RoleNotFound` | 角色不存在 |
+| | -812 | `ApiError_PermissionNotFound` | 权限不存在（permissionIds 里有无效 id） |
+| | -814 | `ApiError_ResourceInUse` | 角色仍被团队成员使用 |
+| | -815 | `ApiError_CodeAlreadyExists` | 角色 code 已存在 |
+| | -816 | `ApiError_SystemRoleProtected` | 内置角色不允许删除 |
+| **/api/admin/permissions** (GET/POST/PATCH/DELETE) | -812 | `ApiError_PermissionNotFound` | 权限不存在 |
+| | -814 | `ApiError_ResourceInUse` | 权限仍被角色或权限组引用 |
+| | -815 | `ApiError_CodeAlreadyExists` | 权限 code 已存在 |
+| **/api/admin/permission-groups** (GET/POST/PATCH/DELETE) | -813 | `ApiError_PermissionGroupNotFound` | 权限组不存在 |
+| | -815 | `ApiError_CodeAlreadyExists` | 权限组名已存在 |
+| 以上全部 | -807 | `ApiError_AdminPrivilegeRequired` | 需要管理员权限（HTTP 403） |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少必填字段 / 字段类型不合法 |
+| | -104 | `ApiError_DatabaseError` | 数据库错误 |
+
+
+### 12. 在线更新模块
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/update/check** (GET) | 0 | `ApiError_Success` | 业务结果看 `data.reason` |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少 currentVersion |
+| **/api/update/download/{version}** (GET) | 0 | `ApiError_Success` | 返回文件流 |
+| | -808 | `ApiError_UserNotPaid` | 团队未付费或已过期 |
+| | -809 | `ApiError_FeatureNotAuthorized` | 未开通 online_update 授权 |
+| | -817 | `ApiError_InstallerNotFound` | 安装包不存在或未发布 |
+| | -103 | `ApiError_InternalError` | 安装包文件在磁盘上缺失 |
+| **/api/admin/installer/upload** (POST) | -102 | `ApiError_MissingRequiredArgs` | 缺少 version / file |
+| | -105 | `ApiError_InvalidOperation` | 非 multipart 或不是 .exe |
+| | -103 | `ApiError_InternalError` | 建目录/写文件失败 |
+| **/api/admin/installer/{id}/publish** (POST) | -817 | `ApiError_InstallerNotFound` | 安装包不存在 |
+| 以上后台接口 | -807 | `ApiError_AdminPrivilegeRequired` | 需要管理员权限（HTTP 403） |

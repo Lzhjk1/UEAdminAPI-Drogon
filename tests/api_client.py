@@ -240,6 +240,153 @@ class ApiClient:
         """登录完成页（客户端 loopback 收到通知后再跳到这里展示）。"""
         return self._raw_request("GET", "/login/done")
 
+    # ---------- 在线更新 ----------
+    def update_check(self, current_version: str, platform: str = "win32"):
+        return self._request("GET", "/api/update/check",
+                             params={"currentVersion": current_version, "platform": platform})
+
+    def update_download_raw(self, version: str):
+        return self._raw_request("GET", f"/api/update/download/{version}")
+
+    def admin_list_installers(self):
+        return self._request("GET", "/api/admin/installer/list")
+
+    def admin_publish_installer(self, installer_id: int):
+        return self._request("POST", f"/api/admin/installer/{installer_id}/publish")
+
+    def admin_upload_installer(self, version: str, file_bytes: bytes,
+                               file_name: str = "setup_fake.exe",
+                               notes: str = "", build_no: int | None = None):
+        data = {"version": version, "notes": notes}
+        if build_no is not None:
+            data["buildNo"] = str(build_no)
+        files = {"file": (file_name, file_bytes, "application/octet-stream")}
+        resp = self.session.post(f"{self.base_url}/api/admin/installer/upload",
+                                 data=data, files=files, headers=self._headers())
+        try:
+            body = resp.json()
+        except Exception:
+            raise ApiError(-1, f"非 JSON 响应: HTTP {resp.status_code} {resp.text[:200]}")
+        if body.get("code", 0) != 0:
+            raise ApiError(body.get("code", -1), body.get("msg", ""), body.get("data"))
+        return body
+
+    # ---------- 账号中心 / 团队 ----------
+    def bootstrap(self):
+        return self._request("GET", "/api/me/bootstrap")
+
+    def team_info(self):
+        return self._request("GET", "/api/team")
+
+    def create_team_member(self, user_name: str, password: str, role_code: str,
+                           nick_name: str | None = None):
+        body = {"userName": user_name, "password": password, "roleCode": role_code}
+        if nick_name is not None:
+            body["nickName"] = nick_name
+        return self._request("POST", "/api/team/member", json_body=body)
+
+    def admin_list_teams(self, paid: bool = False, expired: bool = False):
+        params = {}
+        if paid:
+            params["paid"] = "1"
+        if expired:
+            params["expired"] = "1"
+        return self._request("GET", "/api/admin/teams", params=params or None)
+
+    def admin_set_subscription(self, team_id: int, start_date: str, end_date: str,
+                               plan: str | None = None):
+        body = {"startDate": start_date, "endDate": end_date}
+        if plan is not None:
+            body["plan"] = plan
+        return self._request("PUT", f"/api/admin/teams/{team_id}/subscription", json_body=body)
+
+    def admin_set_feature_auth(self, team_id: int, feature_code: str, enabled: bool):
+        body = {"featureCode": feature_code, "enabled": enabled}
+        return self._request("PUT", f"/api/admin/teams/{team_id}/feature-auth", json_body=body)
+
+    # ---------- 厂商后台：RBAC ----------
+    def admin_list_roles(self):
+        return self._request("GET", "/api/admin/roles")
+
+    def admin_create_role(self, code: str, name: str, scope: int | None = None):
+        body = {"code": code, "name": name}
+        if scope is not None:
+            body["scope"] = scope
+        return self._request("POST", "/api/admin/roles", json_body=body)
+
+    def admin_update_role(self, role_id: int, name: str | None = None,
+                          permission_ids: list[int] | None = None):
+        body = {}
+        if name is not None:
+            body["name"] = name
+        if permission_ids is not None:
+            body["permissionIds"] = permission_ids
+        return self._request("PATCH", f"/api/admin/roles/{role_id}", json_body=body)
+
+    def admin_delete_role(self, role_id: int):
+        return self._request("DELETE", f"/api/admin/roles/{role_id}")
+
+    def admin_list_permissions(self):
+        return self._request("GET", "/api/admin/permissions")
+
+    def admin_create_permission(self, code: str, module: str, action: str):
+        return self._request("POST", "/api/admin/permissions",
+                             json_body={"code": code, "module": module, "action": action})
+
+    def admin_update_permission(self, permission_id: int, module: str | None = None,
+                                action: str | None = None):
+        body = {}
+        if module is not None:
+            body["module"] = module
+        if action is not None:
+            body["action"] = action
+        return self._request("PATCH", f"/api/admin/permissions/{permission_id}", json_body=body)
+
+    def admin_delete_permission(self, permission_id: int):
+        return self._request("DELETE", f"/api/admin/permissions/{permission_id}")
+
+    def admin_list_permission_groups(self):
+        return self._request("GET", "/api/admin/permission-groups")
+
+    def admin_create_permission_group(self, name: str, permission_ids: list[int] | None = None):
+        body = {"name": name}
+        if permission_ids is not None:
+            body["permissionIds"] = permission_ids
+        return self._request("POST", "/api/admin/permission-groups", json_body=body)
+
+    def admin_update_permission_group(self, group_id: int, name: str | None = None,
+                                      permission_ids: list[int] | None = None):
+        body = {}
+        if name is not None:
+            body["name"] = name
+        if permission_ids is not None:
+            body["permissionIds"] = permission_ids
+        return self._request("PATCH", f"/api/admin/permission-groups/{group_id}", json_body=body)
+
+    def admin_delete_permission_group(self, group_id: int):
+        return self._request("DELETE", f"/api/admin/permission-groups/{group_id}")
+
+    # ---------- 余额 / 支付 ----------
+    def create_recharge_order(self, amount_cents: int, channel: int = 9,
+                              idem_key: str | None = None):
+        body = {"amountCents": amount_cents, "channel": channel}
+        if idem_key is not None:
+            body["idemKey"] = idem_key
+        return self._request("POST", "/api/bill/order", json_body=body)
+
+    def get_recharge_order(self, order_no: str):
+        return self._request("GET", f"/api/bill/order/{order_no}")
+
+    def mock_pay_order(self, order_no: str):
+        return self._request("POST", f"/api/bill/order/{order_no}/mock-paid")
+
+    def list_transactions(self, type: int = 0, page: int = 1, size: int = 50):
+        return self._request("GET", "/api/bill/transactions",
+                             params={"type": type, "page": page, "size": size})
+
+    def qr_raw(self, order_no: str):
+        return self._raw_request("GET", f"/api/bill/qr/{order_no}")
+
     # ---------- 内部工具 ----------
     def _set_login(self, body):
         data = body.get("data") or {}

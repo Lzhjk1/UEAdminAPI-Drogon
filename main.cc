@@ -51,6 +51,10 @@ int main() {
     #endif
 
     HttpAppFramework &app = drogon::app();
+
+    // 安装包上传：总上限 2GB；超过内存阈值时由 drogon 落临时文件，避免大包占用内存
+    app.setClientMaxBodySize(2ULL * 1024 * 1024 * 1024);
+    app.setClientMaxMemoryBodySize(8 * 1024 * 1024);
     
     // 查找config.yaml文件（最多向上一级找三层）
     std::string config_path = "";
