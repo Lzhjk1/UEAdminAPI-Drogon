@@ -1,0 +1,53 @@
+name: DB Schema
+
+# 只做两件事：在空库上按顺序应用迁移（验证 SQL），以及在配置了 drogon_ctl 的镜像里
+# 检查 models/ 是否与库结构一致。空库验证是硬性要求；模型一致性检查在模型尚未重新
+# 生成前会失败，因此先以手动触发为主。
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'db/**'
+      - 'models/**'
+
+jobs:
+  apply-migrations:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ueadmin
+          POSTGRES_PASSWORD: ueadmin
+          POSTGRES_DB: ueadmin_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ueadmin -d ueadmin_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply migrations on empty database
+        env:
+          DATABASE_URL: postgresql://ueadmin@127.0.0.1:5432/ueadmin_ci
+          PGPASSWORD: ueadmin
+        run: |
+          chmod +x db/apply.sh
+          ./db/apply.sh
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c '\dt'
+          # 二次执行必须全部跳过，验证幂等
+          ./db/apply.sh
+
+      # TODO(模型一致性)：在装有 drogon_ctl 的构建镜像里执行
+      #   tools/regen_models.ps1 等价步骤后 git diff --exit-code models/
+      # 需要先按新表重新生成并提交 models/，再打开此步骤。

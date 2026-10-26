@@ -573,3 +573,6 @@ FodyWeavers.xsd
 *.tlog
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij+all,visualstudio,visualstudiocode,cmake,c,c++
+
+# 上传的安装包（本地/CI 产物，不入库）
+installers/

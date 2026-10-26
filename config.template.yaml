@@ -61,6 +61,10 @@ custom_config:
       ClientId: [这里填微信 ClientId]
       ClientSecret: [这里填微信 ClientSecret]
 
+  # 安装包存储（在线更新）
+  Installer:
+    StoreDir: "./installers"     # 安装包落盘目录（生产建议挂到独立磁盘卷）
+
   # 测试模式配置 (自动化测试用, 生产环境务必保持 Enable: false)
   TestMode:
     Enable: false          # 测试模式总开关

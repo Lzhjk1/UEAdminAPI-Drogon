@@ -1,0 +1,4 @@
+# 迁移脚本与测试在 WSL/Linux 下直接执行，检出时必须保持 LF
+*.sh  text eol=lf
+*.sql text eol=lf
+*.py  text eol=lf
