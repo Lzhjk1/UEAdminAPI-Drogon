@@ -6,6 +6,7 @@
 
 #include <drogon/MultiPart.h>
 
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -45,6 +46,56 @@ int ParseId(const std::string &value)
     {
         return 0;
     }
+}
+
+// 从安装包文件名解析版本号与构建号：
+//   UEAP_PRJ_11.7.120_Setup.Win32.build_202610271350.exe
+// buildNo 返回 0 表示没解析出来（build_no 是 32 位整数，12 位时间戳放不下）。
+bool ParseInstallerFileName(const std::string &fileName, std::string &version, int &buildNo)
+{
+    std::string name = fileName;
+    const auto slash = name.find_last_of("/\\");
+    if (slash != std::string::npos)
+    {
+        name = name.substr(slash + 1);
+    }
+
+    auto pos = name.find("UEAP_PRJ_");
+    if (pos == std::string::npos)
+    {
+        return false;
+    }
+    pos += 9;
+
+    std::string ver;
+    while (pos < name.size() &&
+           (std::isdigit(static_cast<unsigned char>(name[pos])) || name[pos] == '.'))
+    {
+        ver += name[pos++];
+    }
+    if (ver.empty() || ver.find('.') == std::string::npos || ver.front() == '.' ||
+        ver.back() == '.' || ver.find("..") != std::string::npos)
+    {
+        return false;
+    }
+    version = ver;
+
+    buildNo = 0;
+    auto build = name.find("build_", pos);
+    if (build != std::string::npos)
+    {
+        build += 6;
+        std::string num;
+        while (build < name.size() && std::isdigit(static_cast<unsigned char>(name[build])))
+        {
+            num += name[build++];
+        }
+        if (!num.empty() && num.size() <= 9)
+        {
+            buildNo = std::stoi(num);
+        }
+    }
+    return true;
 }
 
 } // namespace
@@ -92,12 +143,6 @@ Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
 
     const auto &params = parser.getParameters();
     const auto versionIt = params.find("version");
-    if (versionIt == params.end() || versionIt->second.empty())
-    {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少 version");
-        co_return JsonResponse(result);
-    }
-    const std::string version = versionIt->second;
     const std::string notes = params.count("notes") ? params.at("notes") : "";
     const std::string minVersion = params.count("minVersion") ? params.at("minVersion") : "";
     int buildNo = 0;
@@ -113,6 +158,32 @@ Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
         co_return JsonResponse(result);
     }
     const auto &file = files[0];
+
+    // 版本号没填时按打包命名解析，覆盖直接调接口、不经过两个上传界面的调用方
+    std::string version = (versionIt == params.end()) ? std::string() : versionIt->second;
+    if (version.empty() || buildNo == 0)
+    {
+        std::string parsedVersion;
+        int parsedBuildNo = 0;
+        if (ParseInstallerFileName(file.getFileName(), parsedVersion, parsedBuildNo))
+        {
+            if (version.empty())
+            {
+                version = parsedVersion;
+            }
+            if (buildNo == 0)
+            {
+                buildNo = parsedBuildNo;
+            }
+        }
+    }
+    if (version.empty())
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs,
+                         "缺少 version（文件名不符合 UEAP_PRJ_<版本>_Setup... 约定）");
+        co_return JsonResponse(result);
+    }
+
     co_return JsonResponse(UpdateService::AdminUploadInstaller(
         version, notes, buildNo, minVersion, file.getFileName(), file.fileContent()));
 }

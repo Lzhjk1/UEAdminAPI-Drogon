@@ -120,6 +120,18 @@ async function loadList() {
   }
 }
 
+// 选中安装包后按打包命名预填版本号：
+//   UEAP_PRJ_11.7.120_Setup.Win32.build_202610271350.exe
+// buildNo 是 32 位整数，12 位时间戳放不下，只有位数够短时才填。
+document.getElementById('file').addEventListener('change', () => {
+  const f = document.getElementById('file').files[0];
+  if (!f) return;
+  const vm = /UEAP_PRJ_(\d+(?:\.\d+)+)_/i.exec(f.name);
+  if (vm) document.getElementById('version').value = vm[1];
+  const bm = /build_(\d{1,9})(?:\.|$)/i.exec(f.name);
+  if (bm) document.getElementById('buildNo').value = bm[1];
+});
+
 async function upload() {
   const version = document.getElementById('version').value.trim();
   const fileInput = document.getElementById('file');

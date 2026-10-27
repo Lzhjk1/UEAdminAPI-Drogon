@@ -271,11 +271,13 @@ class ApiClient:
         return self._request("PATCH", f"/api/admin/installer/{installer_id}",
                              json_body=body)
 
-    def admin_upload_installer(self, version: str, file_bytes: bytes,
+    def admin_upload_installer(self, version: str | None, file_bytes: bytes,
                                file_name: str = "setup_fake.exe",
                                notes: str = "", build_no: int | None = None,
                                min_version: str | None = None):
-        data = {"version": version, "notes": notes}
+        data = {"notes": notes}
+        if version is not None:
+            data["version"] = version
         if build_no is not None:
             data["buildNo"] = str(build_no)
         if min_version is not None:

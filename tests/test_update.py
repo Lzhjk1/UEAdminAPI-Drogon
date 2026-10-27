@@ -120,6 +120,25 @@ def test_upload_requires_admin_and_exe(seeded_org, logged_client):
     assert bad_ext.value.code == -105
 
 
+def test_upload_derives_version_from_file_name(seeded_org, logged_client):
+    vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)
+
+    uploaded = vendor.admin_upload_installer(
+        None, FAKE_EXE,
+        file_name="UEAP_PRJ_11.7.980_Setup.Win32.build_202610271350.exe")["data"]
+    assert uploaded["version"] == "11.7.980"
+
+    listed = vendor.admin_list_installers()["data"]["installers"]
+    item = next(x for x in listed if x["id"] == uploaded["id"])
+    # build_no 是 32 位整数，12 位时间戳放不下，保持 0
+    assert item["buildNo"] == 0
+
+    # 文件名不符合约定且没填 version 时仍报缺少参数
+    with pytest.raises(ApiError) as ex:
+        vendor.admin_upload_installer(None, FAKE_EXE, file_name="setup_fake.exe")
+    assert ex.value.code == -102
+
+
 def test_publish_keeps_single_active_version(seeded_org, logged_client):
     admin = logged_client(seeded_org.admin_name, seeded_org.admin_password)
     vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)

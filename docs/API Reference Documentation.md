@@ -1081,12 +1081,15 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 11.3 厂商后台：安装包管理
 | 接口 | 说明 |
 |---|---|
-| `POST /api/admin/installer/upload` | `multipart/form-data`：`version`(必填)、`buildNo`、`notes`、`minVersion`、`file`(必填, 仅 `.exe`)；落盘并计算 sha256，状态为**草稿(0)**；版本号重复 → `-815` |
+| `POST /api/admin/installer/upload` | `multipart/form-data`：`version`(可空)、`buildNo`(可空)、`notes`、`minVersion`、`file`(必填, 仅 `.exe`)；落盘并计算 sha256，状态为**草稿(0)**；版本号重复 → `-815` |
 | `PATCH /api/admin/installer/{id}` | 编辑版本信息：Body `{ "version": "...", "buildNo": 0, "notes": "", "minVersion": "" }`（四项整体覆盖，`version` 必填）。只改库里的元数据，磁盘文件与 `file_path` 不动，下载仍按该记录取文件 |
 | `POST /api/admin/installer/{id}/publish` | 发布：把该条置为已发布(1)，**其余已发布版本自动转为下线(2)**，保证同一时刻只有一个现行版本 |
 | `POST /api/admin/installer/{id}/offline` | 下线：状态置为 2（记录保留，不再对外提供更新） |
 | `GET /api/admin/installer/list` | 列出全部安装包（含草稿/下线），字段：id/version/buildNo/fileName/sizeBytes/sha256/notes/minVersion/status/createdAt/publishedAt |
 - 状态：`0` 草稿 / `1` 已发布 / `2` 下线。
+- `version` 缺省时按文件名解析：`UEAP_PRJ_11.7.120_Setup.Win32.build_202610271350.exe`
+  → `11.7.120`；`buildNo` 缺省时同样取 `build_` 后的数字，但 `build_no` 是 32 位整数，
+  超过 9 位（如 12 位时间戳）不自动填、保持 0。文件名不符合该约定且未填 `version` → `-102`。
 - 编辑时的错误码：`-102` 版本号为空或超长、`-105` 构建号为负、`-815` 版本号已存在、`-817` 安装包不存在。
 
 ### 11.4 上传页
