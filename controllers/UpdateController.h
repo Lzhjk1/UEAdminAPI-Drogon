@@ -13,6 +13,10 @@ public:
     ADD_METHOD_TO(UpdateController::download, "/api/update/download/{1}", Get, "AuthFilter");
 
     ADD_METHOD_TO(UpdateController::upload, "/api/admin/installer/upload", Post, "AuthFilter", "AdminFilter");
+    // 分片上传（断点续传）：init -> chunk* -> complete
+    ADD_METHOD_TO(UpdateController::uploadInit, "/api/admin/installer/upload/init", Post, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(UpdateController::uploadChunk, "/api/admin/installer/upload/{1}/chunk", Post, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(UpdateController::uploadComplete, "/api/admin/installer/upload/{1}/complete", Post, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::publish, "/api/admin/installer/{1}/publish", Post, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::offline, "/api/admin/installer/{1}/offline", Post, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::update, "/api/admin/installer/{1}", Patch, "AuthFilter", "AdminFilter");
@@ -25,6 +29,9 @@ public:
     Task<HttpResponsePtr> check(HttpRequestPtr req);
     Task<HttpResponsePtr> download(HttpRequestPtr req, std::string version);
     Task<HttpResponsePtr> upload(HttpRequestPtr req);
+    Task<HttpResponsePtr> uploadInit(HttpRequestPtr req);
+    Task<HttpResponsePtr> uploadChunk(HttpRequestPtr req, std::string uploadId);
+    Task<HttpResponsePtr> uploadComplete(HttpRequestPtr req, std::string uploadId);
     Task<HttpResponsePtr> publish(HttpRequestPtr req, std::string installerId);
     Task<HttpResponsePtr> offline(HttpRequestPtr req, std::string installerId);
     Task<HttpResponsePtr> update(HttpRequestPtr req, std::string installerId);

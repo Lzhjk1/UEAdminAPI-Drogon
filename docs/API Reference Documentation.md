@@ -1062,7 +1062,7 @@ GitLab 相关接口目前使用独立的响应格式：
 { "code": 0, "msg": "success", "data": {
     "hasUpdate": true, "reason": "ok",
     "currentVersion": "11.7.120", "latestVersion": "11.7.121",
-    "version": "11.7.121", "buildNo": 121,
+    "version": "11.7.121", "buildNo": 202610271350,
     "fileName": "UEAP_PRJ_11.7.121_Setup.exe", "sizeBytes": 123456789,
     "sha256": "…", "notes": "…", "publishedAt": "2026-10-26 17:00:00",
     "downloadUrl": "https://im.uesoft.com/api/update/download/11.7.121"
@@ -1085,13 +1085,118 @@ GitLab 相关接口目前使用独立的响应格式：
 | `PATCH /api/admin/installer/{id}` | 编辑版本信息：Body `{ "version": "...", "buildNo": 0, "notes": "", "minVersion": "" }`（四项整体覆盖，`version` 必填）。只改库里的元数据，磁盘文件与 `file_path` 不动，下载仍按该记录取文件 |
 | `POST /api/admin/installer/{id}/publish` | 发布：把该条置为已发布(1)，**其余已发布版本自动转为下线(2)**，保证同一时刻只有一个现行版本 |
 | `POST /api/admin/installer/{id}/offline` | 下线：状态置为 2（记录保留，不再对外提供更新） |
-| `GET /api/admin/installer/list` | 列出全部安装包（含草稿/下线），字段：id/version/buildNo/fileName/sizeBytes/sha256/notes/minVersion/status/createdAt/publishedAt |
+| `GET /api/admin/installer/list` | 列出全部安装包（含草稿/下线），字段：id/version/buildNo(64 位)/fileName/sizeBytes/sha256/notes/minVersion/status/createdAt/publishedAt |
 - 状态：`0` 草稿 / `1` 已发布 / `2` 下线。
-- `version` 缺省时按文件名解析：`UEAP_PRJ_11.7.120_Setup.Win32.build_202610271350.exe`
-  → `11.7.120`；`buildNo` 缺省时同样取 `build_` 后的数字，但 `build_no` 是 32 位整数，
-  超过 9 位（如 12 位时间戳）不自动填、保持 0。文件名不符合该约定且未填 `version` → `-102`。
+- `buildNo` 为 64 位整数；上传/编辑接口既接受 JSON number，也接受数字字符串。
+- `version` 缺省时按文件名解析：`UEAP_PRJ_11.7.120_Setup.Win32.build-202610271350.exe`
+  → `11.7.120`；`buildNo` 缺省时取 `build-` / `build_` 后的数字。`build_no` 已改为 `bigint`
+  （迁移 `0006_installer_build_no_bigint.sql`），12 位时间戳无需截断，完整保存与返回。
+  文件名不符合版本约定且未填 `version` → `-102`。
 - 编辑时的错误码：`-102` 版本号为空或超长、`-105` 构建号为负、`-815` 版本号已存在、`-817` 安装包不存在。
 
-### 11.4 上传页
+### 11.4 分片上传（断点续传）
+
+> 登录器新客户端使用本协议；旧的 `POST /api/admin/installer/upload`（multipart）保留兼容。
+> 会话表 `installer_upload_session` 由迁移 `0007_installer_upload_session.sql` 创建；
+> 临时文件在 `custom_config.Installer.UploadTempDir`（默认 `./uploads/installer-tmp`）。
+
+**1）初始化会话**
+- **URL**: `POST /api/admin/installer/upload/init`
+- **Body**:
+```json
+{
+  "version": "11.7.121",
+  "buildNo": "202610271350",
+  "notes": "",
+  "minVersion": "11.7.120",
+  "fileName": "UEAP_PRJ_11.7.121_Setup.Win32.build-202610271350.exe",
+  "fileSize": 524288000,
+  "fileSha256": "…64 hex…"
+}
+```
+- **Response**: `data = { uploadId, offset, chunkSize, resumed, alreadyUploaded? }`
+- 行为：
+  - 同一 `version` 已存在且 sha256 相同 → `alreadyUploaded=true`，客户端直接当成功；
+  - 同一管理员、同一 `fileSha256 + fileSize` 有未完成会话 → 返回原 `uploadId` 与已上传 `offset`；
+  - 否则新建会话并返回 `offset=0`。
+- 限制：单文件 ≤ 8GB；只接受 `.exe`；`fileSha256` 必须是 64 位十六进制。
+- 错误：`-102` 参数缺失/版本超长、`-105` 大小/后缀/hash 不合法、`-815` 同版本已存在但 hash 不同。
+
+**2）上传分片**
+- **URL**: `POST /api/admin/installer/upload/{uploadId}/chunk?offset=N`
+- **Body**: 原始二进制（`Content-Type: application/octet-stream`），单次 ≤ 8MB（客户端用 4MB）
+- **Response**: `data = { offset }`，表示服务端当前已写入字节数。
+- `offset` 必须等于服务端当前临时文件大小；不一致时不写入，直接返回真实 `offset` 让客户端重同步
+  （用于“服务端已写入但响应丢失”的重试场景）。
+- 错误：`-105` 会话不存在/已完成/分片越界、`-103` 写临时文件失败。
+
+**3）完成**
+- **URL**: `POST /api/admin/installer/upload/{uploadId}/complete`
+- 校验临时文件大小与 sha256；一致后移动到 `Installer.StoreDir/<version>/<fileName>`，
+  写入 `installer_version` 草稿（status=0），并将会话置为已完成（保留 7 天用于重复 complete 的幂等返回）。
+- sha256 不一致 → 删除临时文件与会话，返回 `-105`，客户端需从 0 重传。
+- 重复调用已完成会话 → 直接返回已有安装包信息。
+- 错误：`-105` 未传完/校验失败/会话不存在、`-815` 同版本已被其它文件占用、`-103`/`-104` 落盘或数据库失败。
+
+**清理**：每次 init 时清理 `updated_at` 超过 7 天的会话与临时文件（含已完成会话）。
+
+> 注意：`main.cc` 的 `setClientMaxBodySize / setClientMaxMemoryBodySize` 必须在 `loadConfigFile` 之后设置；
+> 否则配置默认的 1MB 上限会让分片/大请求在 90% 左右被断开（客户端表现为错误码 12031）。
+
+### 11.5 上传页
 - **URL**: `/admin/installer`（`GET`，无需登录即可打开页面，但页面内所有操作都要填厂商超管 token）
 - 页面提供：粘贴 token → 加载列表 → 选 `.exe` 上传 → 发布。仅作内部工具，未做额外的会话管理。
+
+## 12. 用户意见反馈
+
+> 登录器「我的 → 意见反馈」使用。提交需要登录态；管理接口额外要求厂商超管（`AuthFilter + AdminFilter`）。
+> 截图存放在 `custom_config.Feedback.StoreDir`（默认 `./uploads/feedback`），一条反馈最多 5 张，
+> 库里 `user_feedback_image(feedback_id, seq, image_name, image_mime)` 保存每张的文件名。
+> 建表迁移：`0005_user_feedback.sql` + `0008_feedback_multi_image.sql`（旧单图会回填为 `seq=0`）。
+
+### 12.1 提交反馈
+- **URL**: `/api/feedback`
+- **Method**: `POST`，`Authorization: Bearer {token}`
+- **Body**:
+```json
+{
+  "category": 1,
+  "content": "问题描述",
+  "contact": "a@b.com",
+  "appVersion": "11.7.120",
+  "osInfo": "Windows 10/11 (x64)",
+  "images": [
+    { "mime": "image/png", "base64": "iVBORw0KGgo..." },
+    { "mime": "image/jpeg", "base64": "/9j/4AAQSkZJRg..." }
+  ]
+}
+```
+- `category`：`0` 功能建议 / `1` 问题报错 / `2` 其他（缺省 0，越界按 2 处理）。
+- `content` 必填（去空白后非空、≤ 20000 字节）；`contact` ≤ 200 字节；`appVersion/osInfo` ≤ 200 字节。
+- `images` 可空，最多 5 张；每张只接受 `image/png` / `image/jpeg` / `image/bmp`，单张 ≤ 12MB、
+  合计 ≤ 24MB，并校验文件头（PNG/JPEG/BMP）与格式一致。
+- 兼容旧客户端：没有 `images` 数组时仍可传单张 `imageMime + imageBase64`。
+- **Response**: `data = { feedbackId, categoryName, imageCount }`
+- **错误码**：`-102` 内容为空 / `-105` 截图数量、格式或大小不合法 / `-104` 数据库或落盘失败。
+
+### 12.2 反馈列表（厂商）
+- **URL**: `/api/admin/feedback/list?status=-1&page=1&size=50`
+- `status`：`-1` 全部（默认）/ `0` 待处理 / `1` 已处理；`size` 取值 1~200。
+- **Response**: `data = { total, page, size, items[] }`，按 `id` 倒序。
+- `items[]` 字段：`id/userId/userName/category/categoryName/content/contact/appVersion/osInfo/hasImage/imageCount/imageMime/status/createdAt/handledAt`。
+- `imageCount` 为该反馈的截图张数（0~5）；`imageMime` 是第一张的 MIME。
+- `userName` 是提交时的快照，用户改名/注销后仍能看出提交人。
+
+### 12.3 读取截图（厂商）
+- **URL**: `/api/admin/feedback/{id}/image?index=N`
+- `index` 从 0 开始，取值 0~4；缺省为 0。
+- **Response**: `data = { mime, base64, index }`
+- **错误码**：`-105` 该反馈没有截图或序号不合法 / `-819` 反馈不存在 / `-103` 截图文件缺失。
+
+### 12.4 标记已处理（厂商）
+- **URL**: `/api/admin/feedback/{id}/handle`
+- **Method**: `POST`
+- 置 `status = 1`，同时记录 `handled_at = now()`、`handled_by = 当前管理员`。
+- **错误码**：`-819` 反馈不存在。
+
+> 登录器里的「导出 Markdown」在客户端本地完成（含截图下载到 `<文件名>_images/`），不新增服务端接口。

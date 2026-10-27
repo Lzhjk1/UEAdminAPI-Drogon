@@ -64,6 +64,11 @@ custom_config:
   # 安装包存储（在线更新）
   Installer:
     StoreDir: "./installers"     # 安装包落盘目录（生产建议挂到独立磁盘卷）
+    UploadTempDir: "./uploads/installer-tmp"   # 分片上传临时文件目录，需可写
+
+  # 意见反馈截图存储（登录器「我的 → 意见反馈」）
+  Feedback:
+    StoreDir: "./uploads/feedback"   # 截图落盘目录，需可写
 
   # 测试模式配置 (自动化测试用, 生产环境务必保持 Enable: false)
   TestMode:

@@ -134,11 +134,11 @@ class InstallerVersion
 
     /**  For column build_no  */
     ///Get the value of the column build_no, returns the default value if the column is null
-    const int32_t &getValueOfBuildNo() const noexcept;
+    const int64_t &getValueOfBuildNo() const noexcept;
     ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
-    const std::shared_ptr<int32_t> &getBuildNo() const noexcept;
+    const std::shared_ptr<int64_t> &getBuildNo() const noexcept;
     ///Set the value of the column build_no
-    void setBuildNo(const int32_t &pBuildNo) noexcept;
+    void setBuildNo(const int64_t &pBuildNo) noexcept;
     void setBuildNoToNull() noexcept;
 
     /**  For column file_name  */
@@ -249,7 +249,7 @@ class InstallerVersion
     void updateId(const uint64_t id);
     std::shared_ptr<int32_t> id_;
     std::shared_ptr<std::string> version_;
-    std::shared_ptr<int32_t> buildNo_;
+    std::shared_ptr<int64_t> buildNo_;
     std::shared_ptr<std::string> fileName_;
     std::shared_ptr<std::string> filePath_;
     std::shared_ptr<int64_t> sizeBytes_;

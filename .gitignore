@@ -576,3 +576,9 @@ FodyWeavers.xsd
 
 # 上传的安装包（本地/CI 产物，不入库）
 installers/
+
+# 意见反馈截图（运行期用户上传，不入库）
+uploads/feedback/
+
+# 安装包分片上传临时文件
+uploads/installer-tmp/

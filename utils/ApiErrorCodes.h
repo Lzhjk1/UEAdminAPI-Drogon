@@ -79,6 +79,7 @@
     X(ApiError_SystemRoleProtected, -816, "系统内置角色不允许该操作 ") \
     X(ApiError_InstallerNotFound, -817, "安装包不存在或未发布 ") \
     X(ApiError_TeamOwnerProtected, -818, "团队创建者不能被停用或降级 ") \
+    X(ApiError_FeedbackNotFound, -819, "反馈不存在 ") \
     /* --- Billing / Payment Errors (-9xx) --- */ \
     X(ApiError_OrderNotFound, -901, "订单不存在 ") \
     X(ApiError_OrderStateInvalid, -902, "订单状态不允许该操作 ") \

@@ -351,3 +351,31 @@
 
 > `/api/update/check` 的业务拒绝不占用错误码：团队停用返回 `data.reason = team_disabled`，
 > 未付费 `not_paid` / `expired`，未授权 `no_auth`，无安装包 `no_package`，已最新 `no_update`。
+
+## 用户意见反馈
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/feedback** (POST) | -102 | `ApiError_MissingRequiredArgs` | 内容为空 |
+| | -105 | `ApiError_InvalidOperation` | 截图数量/总大小/MIME/文件头不合法，或联系信息过长 |
+| | -104 | `ApiError_DatabaseError` | 数据库错误 |
+| **/api/admin/feedback/list** (GET) | -807 | `ApiError_AdminPrivilegeRequired` | 需要厂商超级管理员 |
+| **/api/admin/feedback/{id}/image** (GET) | -105 | `ApiError_InvalidOperation` | 该反馈没有截图或 index 不合法 |
+| | -819 | `ApiError_FeedbackNotFound` | 反馈不存在 |
+| **/api/admin/feedback/{id}/handle** (POST) | -819 | `ApiError_FeedbackNotFound` | 反馈不存在 |
+
+> `-819 ApiError_FeedbackNotFound` 为本轮新增（`utils/ApiErrorCodes.h`）。
+
+## 安装包分片上传（断点续传）
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/admin/installer/upload/init** (POST) | -102 | `ApiError_MissingRequiredArgs` | version/fileName 缺失或版本超长 |
+| | -105 | `ApiError_InvalidOperation` | 大小/后缀/sha256 不合法，或构建号为负 |
+| | -815 | `ApiError_CodeAlreadyExists` | 同版本已存在但文件 sha256 不同 |
+| **/api/admin/installer/upload/{id}/chunk** (POST) | -105 | `ApiError_InvalidOperation` | 会话不存在/已完成、分片越界 |
+| | -103 | `ApiError_InternalError` | 写临时文件失败 |
+| **/api/admin/installer/upload/{id}/complete** (POST) | -105 | `ApiError_InvalidOperation` | 未传完、sha256 不一致、会话不存在 |
+| | -815 | `ApiError_CodeAlreadyExists` | 同版本号已被其它文件占用 |
+| | -103 / -104 | `ApiError_InternalError` / `ApiError_DatabaseError` | 落盘或数据库失败 |
+| 以上接口 | -807 | `ApiError_AdminPrivilegeRequired` | 需要厂商超级管理员 |

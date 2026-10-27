@@ -48,10 +48,51 @@ int ParseId(const std::string &value)
     }
 }
 
+long long ParseInt64(const std::string &value, long long fallback)
+{
+    try
+    {
+        return std::stoll(value);
+    }
+    catch (...)
+    {
+        return fallback;
+    }
+}
+
+constexpr size_t kMaxChunkBytes = 8 * 1024 * 1024;
+
+std::string JsonString(const Json::Value &json, const char *key)
+{
+    if (json.isMember(key) && json[key].isString())
+    {
+        return json[key].asString();
+    }
+    return std::string();
+}
+
+int64_t JsonInt64(const Json::Value &json, const char *key, int64_t fallback)
+{
+    if (!json.isMember(key))
+    {
+        return fallback;
+    }
+    const auto &node = json[key];
+    if (node.isInt64())
+    {
+        return node.asInt64();
+    }
+    if (node.isString())
+    {
+        return ParseInt64(node.asString(), fallback);
+    }
+    return fallback;
+}
+
 // 从安装包文件名解析版本号与构建号：
 //   UEAP_PRJ_11.7.120_Setup.Win32.build_202610271350.exe
-// buildNo 返回 0 表示没解析出来（build_no 是 32 位整数，12 位时间戳放不下）。
-bool ParseInstallerFileName(const std::string &fileName, std::string &version, int &buildNo)
+// buildNo 返回 0 表示没解析出来；支持文件名里的 build- 与 build_ 两种分隔符。
+bool ParseInstallerFileName(const std::string &fileName, std::string &version, long long &buildNo)
 {
     std::string name = fileName;
     const auto slash = name.find_last_of("/\\");
@@ -60,28 +101,34 @@ bool ParseInstallerFileName(const std::string &fileName, std::string &version, i
         name = name.substr(slash + 1);
     }
 
+    bool found = false;
+
+    // 版本号：UEAP_PRJ_<major>.<minor>.<patch>_...
     auto pos = name.find("UEAP_PRJ_");
-    if (pos == std::string::npos)
+    if (pos != std::string::npos)
     {
-        return false;
+        pos += 9;
+        std::string ver;
+        while (pos < name.size() &&
+               (std::isdigit(static_cast<unsigned char>(name[pos])) || name[pos] == '.'))
+        {
+            ver += name[pos++];
+        }
+        if (!ver.empty() && ver.find('.') != std::string::npos && ver.front() != '.' &&
+            ver.back() != '.' && ver.find("..") == std::string::npos)
+        {
+            version = ver;
+            found = true;
+        }
     }
-    pos += 9;
 
-    std::string ver;
-    while (pos < name.size() &&
-           (std::isdigit(static_cast<unsigned char>(name[pos])) || name[pos] == '.'))
-    {
-        ver += name[pos++];
-    }
-    if (ver.empty() || ver.find('.') == std::string::npos || ver.front() == '.' ||
-        ver.back() == '.' || ver.find("..") != std::string::npos)
-    {
-        return false;
-    }
-    version = ver;
-
+    // 构建号：build_ / build- 后面的数字（yyyyMMddHHmm 共 12 位，bigint 放得下）
     buildNo = 0;
-    auto build = name.find("build_", pos);
+    auto build = name.find("build_");
+    if (build == std::string::npos)
+    {
+        build = name.find("build-");
+    }
     if (build != std::string::npos)
     {
         build += 6;
@@ -90,12 +137,20 @@ bool ParseInstallerFileName(const std::string &fileName, std::string &version, i
         {
             num += name[build++];
         }
-        if (!num.empty() && num.size() <= 9)
+        if (!num.empty() && num.size() <= 18)
         {
-            buildNo = std::stoi(num);
+            try
+            {
+                buildNo = std::stoll(num);
+                found = true;
+            }
+            catch (...)
+            {
+                buildNo = 0;
+            }
         }
     }
-    return true;
+    return found;
 }
 
 } // namespace
@@ -145,10 +200,10 @@ Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
     const auto versionIt = params.find("version");
     const std::string notes = params.count("notes") ? params.at("notes") : "";
     const std::string minVersion = params.count("minVersion") ? params.at("minVersion") : "";
-    int buildNo = 0;
+    long long buildNo = 0;
     if (params.count("buildNo"))
     {
-        buildNo = ParseId(params.at("buildNo"));
+        buildNo = ParseInt64(params.at("buildNo"), 0);
     }
 
     const auto &files = parser.getFiles();
@@ -164,7 +219,7 @@ Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
     if (version.empty() || buildNo == 0)
     {
         std::string parsedVersion;
-        int parsedBuildNo = 0;
+        long long parsedBuildNo = 0;
         if (ParseInstallerFileName(file.getFileName(), parsedVersion, parsedBuildNo))
         {
             if (version.empty())
@@ -186,6 +241,59 @@ Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
 
     co_return JsonResponse(UpdateService::AdminUploadInstaller(
         version, notes, buildNo, minVersion, file.getFileName(), file.fileContent()));
+}
+
+Task<HttpResponsePtr> UpdateController::uploadInit(HttpRequestPtr req)
+{
+    HttpResult result;
+    auto json = req->getJsonObject();
+    if (!json)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return JsonResponse(result);
+    }
+
+    const std::string version = JsonString(*json, "version");
+    const std::string notes = JsonString(*json, "notes");
+    const std::string minVersion = JsonString(*json, "minVersion");
+    const std::string fileName = JsonString(*json, "fileName");
+    const std::string fileSha256 = JsonString(*json, "fileSha256");
+    if (version.empty() || fileName.empty())
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少 version / fileName");
+        co_return JsonResponse(result);
+    }
+
+    co_return JsonResponse(UpdateService::AdminInitUpload(
+        CurrentUserId(req), version, JsonInt64(*json, "buildNo", 0), notes, minVersion,
+        fileName, JsonInt64(*json, "fileSize", 0), fileSha256));
+}
+
+Task<HttpResponsePtr> UpdateController::uploadChunk(HttpRequestPtr req, std::string uploadId)
+{
+    HttpResult result;
+    const int64_t offset = ParseInt64(req->getParameter("offset"), -1);
+    const auto body = req->getBody();
+    if (offset < 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少 offset");
+        co_return JsonResponse(result);
+    }
+    if (body.empty() || body.size() > kMaxChunkBytes)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "分片为空或过大");
+        co_return JsonResponse(result);
+    }
+
+    co_return JsonResponse(UpdateService::AdminUploadChunk(
+        CurrentUserId(req), uploadId, offset,
+        std::string_view(body.data(), body.size())));
+}
+
+Task<HttpResponsePtr> UpdateController::uploadComplete(HttpRequestPtr req, std::string uploadId)
+{
+    (void)req;
+    co_return JsonResponse(UpdateService::AdminCompleteUpload(CurrentUserId(req), uploadId));
 }
 
 Task<HttpResponsePtr> UpdateController::publish(HttpRequestPtr req, std::string installerId)
@@ -237,13 +345,14 @@ Task<HttpResponsePtr> UpdateController::update(HttpRequestPtr req, std::string i
     }
 
     const std::string version = (*reqJson)["version"].asString();
-    int buildNo = 0;
+    long long buildNo = 0;
     if (reqJson->isMember("buildNo"))
     {
         const auto &node = (*reqJson)["buildNo"];
         try
         {
-            buildNo = node.isInt() ? node.asInt() : std::stoi(node.asString());
+            buildNo = node.isInt64() ? node.asInt64()
+                     : (node.isString() ? std::stoll(node.asString()) : -1);
         }
         catch (...)
         {

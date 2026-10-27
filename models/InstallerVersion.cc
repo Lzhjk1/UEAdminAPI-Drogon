@@ -54,7 +54,7 @@ const std::string InstallerVersion::tableName = "\"installer_version\"";
 const std::vector<typename InstallerVersion::MetaData> InstallerVersion::metaData_={
 {"id","int32_t","integer",4,1,1,1},
 {"version","std::string","text",0,0,0,1},
-{"build_no","int32_t","integer",4,0,0,0},
+{"build_no","int64_t","bigint",8,0,0,0},
 {"file_name","std::string","text",0,0,0,1},
 {"file_path","std::string","text",0,0,0,1},
 {"size_bytes","int64_t","bigint",8,0,0,0},
@@ -93,7 +93,7 @@ InstallerVersion::InstallerVersion(const Row &r, const ssize_t indexOffset) noex
         if(!r["build_no"].isNull())
         {
 
-            buildNo_=std::make_shared<int32_t>(r["build_no"].as<int32_t>());
+            buildNo_=std::make_shared<int64_t>(r["build_no"].as<int64_t>());
 
         }
 
@@ -225,7 +225,7 @@ InstallerVersion::InstallerVersion(const Row &r, const ssize_t indexOffset) noex
         if(!r[index].isNull())
         {
 
-            buildNo_=std::make_shared<int32_t>(r[index].as<int32_t>());
+            buildNo_=std::make_shared<int64_t>(r[index].as<int64_t>());
 
         }
 
@@ -370,7 +370,7 @@ InstallerVersion::InstallerVersion(const Json::Value &pJson, const std::vector<s
         dirtyFlag_[2] = true;
         if(!pJson[pMasqueradingVector[2]].isNull())
         {
-            buildNo_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[2]].asInt64());
+            buildNo_=std::make_shared<int64_t>(pJson[pMasqueradingVector[2]].asInt64());
         }
     }
 
@@ -521,7 +521,7 @@ InstallerVersion::InstallerVersion(const Json::Value &pJson) noexcept(false)
         dirtyFlag_[2]=true;
         if(!pJson["build_no"].isNull())
         {
-            buildNo_=std::make_shared<int32_t>((int32_t)pJson["build_no"].asInt64());
+            buildNo_=std::make_shared<int64_t>(pJson["build_no"].asInt64());
         }
     }
 
@@ -677,7 +677,7 @@ void InstallerVersion::updateByMasqueradedJson(const Json::Value &pJson,
         dirtyFlag_[2] = true;
         if(!pJson[pMasqueradingVector[2]].isNull())
         {
-            buildNo_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[2]].asInt64());
+            buildNo_=std::make_shared<int64_t>(pJson[pMasqueradingVector[2]].asInt64());
         }
     }
 
@@ -827,7 +827,7 @@ void InstallerVersion::updateByJson(const Json::Value &pJson) noexcept(false)
         dirtyFlag_[2] = true;
         if(!pJson["build_no"].isNull())
         {
-            buildNo_=std::make_shared<int32_t>((int32_t)pJson["build_no"].asInt64());
+            buildNo_=std::make_shared<int64_t>(pJson["build_no"].asInt64());
         }
     }
 
@@ -954,7 +954,7 @@ void InstallerVersion::updateByJson(const Json::Value &pJson) noexcept(false)
 
 const int32_t &InstallerVersion::getValueOfId() const noexcept
 {
-    static const int32_t defaultValue = int32_t();
+    static const int64_t defaultValue = int64_t();
     if(id_)
         return *id_;
     return defaultValue;
@@ -996,20 +996,20 @@ void InstallerVersion::setVersion(std::string &&pVersion) noexcept
     dirtyFlag_[1] = true;
 }
 
-const int32_t &InstallerVersion::getValueOfBuildNo() const noexcept
+const int64_t &InstallerVersion::getValueOfBuildNo() const noexcept
 {
-    static const int32_t defaultValue = int32_t();
+    static const int64_t defaultValue = int64_t();
     if(buildNo_)
         return *buildNo_;
     return defaultValue;
 }
-const std::shared_ptr<int32_t> &InstallerVersion::getBuildNo() const noexcept
+const std::shared_ptr<int64_t> &InstallerVersion::getBuildNo() const noexcept
 {
     return buildNo_;
 }
-void InstallerVersion::setBuildNo(const int32_t &pBuildNo) noexcept
+void InstallerVersion::setBuildNo(const int64_t &pBuildNo) noexcept
 {
-    buildNo_ = std::make_shared<int32_t>(pBuildNo);
+    buildNo_ = std::make_shared<int64_t>(pBuildNo);
     dirtyFlag_[2] = true;
 }
 void InstallerVersion::setBuildNoToNull() noexcept
@@ -2531,7 +2531,7 @@ bool InstallerVersion::validJsonOfField(size_t index,
                 return true;
             }
 
-            if(!pJson.isInt())
+            if(!pJson.isInt64())
             {
                 err="Type error in the "+fieldName+" field";
                 return false;

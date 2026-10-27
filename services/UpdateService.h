@@ -19,10 +19,29 @@ public:
                                          const std::string &currentVersion,
                                          const std::string &platform);
 
-    // 厂商：上传安装包（草稿态）
+    // 厂商：分片上传（断点续传）——初始化会话，返回 uploadId / 已上传偏移 / 分片大小
+    static utils::HttpResult AdminInitUpload(int userId,
+                                             const std::string &version,
+                                             int64_t buildNo,
+                                             const std::string &notes,
+                                             const std::string &minVersion,
+                                             const std::string &fileName,
+                                             int64_t fileSize,
+                                             const std::string &fileSha256);
+
+    // 厂商：写一个分片（offset 必须等于服务端当前已上传字节数，或返回当前值让客户端重同步）
+    static utils::HttpResult AdminUploadChunk(int userId,
+                                              const std::string &uploadId,
+                                              int64_t offset,
+                                              std::string_view data);
+
+    // 厂商：完成上传——校验 sha256、移动文件、落 installer_version 草稿
+    static utils::HttpResult AdminCompleteUpload(int userId, const std::string &uploadId);
+
+    // 厂商：上传安装包（草稿态，旧的一体式 multipart 接口保留）
     static utils::HttpResult AdminUploadInstaller(const std::string &version,
                                                   const std::string &notes,
-                                                  int buildNo,
+                                                  int64_t buildNo,
                                                   const std::string &minVersion,
                                                   const std::string &fileName,
                                                   std::string_view content);
@@ -31,7 +50,7 @@ public:
     // 修改 version 只改库里记录，磁盘文件仍留在原版本目录下（下载按库里的 file_path 取）。
     static utils::HttpResult AdminUpdateInstaller(int installerId,
                                                   const std::string &version,
-                                                  int buildNo,
+                                                  int64_t buildNo,
                                                   const std::string &notes,
                                                   const std::string &minVersion);
 

@@ -52,10 +52,6 @@ int main() {
 
     HttpAppFramework &app = drogon::app();
 
-    // 安装包上传：总上限 2GB；超过内存阈值时由 drogon 落临时文件，避免大包占用内存
-    app.setClientMaxBodySize(2ULL * 1024 * 1024 * 1024);
-    app.setClientMaxMemoryBodySize(8 * 1024 * 1024);
-    
     // 查找config.yaml文件（最多向上一级找三层）
     std::string config_path = "";
     std::filesystem::path current_path = std::filesystem::current_path();
@@ -130,6 +126,11 @@ int main() {
     }
     
     app.loadConfigFile(config_path);
+
+    // 必须在 loadConfigFile 之后设置：配置文件里的默认上限（1MB）会覆盖之前的值。
+    // 安装包分片上传单请求最大 8MB，整包上限仍留 2GB 兼容旧 multipart 接口。
+    app.setClientMaxBodySize(2ULL * 1024 * 1024 * 1024);
+    app.setClientMaxMemoryBodySize(8 * 1024 * 1024);
     
     // app 启动后回调中初始化单例服务（消除竞态条件）
     app.registerBeginningAdvice([]{
