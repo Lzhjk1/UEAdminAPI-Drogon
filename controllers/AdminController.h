@@ -13,6 +13,13 @@ public:
     ADD_METHOD_TO(AdminController::setSubscription, "/api/admin/teams/{1}/subscription", Put, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(AdminController::setFeatureAuth, "/api/admin/teams/{1}/feature-auth", Put, "AuthFilter", "AdminFilter");
 
+    // 超级管理员：跨团队查看 / 修改
+    ADD_METHOD_TO(AdminController::getTeam, "/api/admin/teams/{1}", Get, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(AdminController::updateTeam, "/api/admin/teams/{1}", Patch, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(AdminController::updateMember, "/api/admin/teams/{1}/members/{2}", Patch, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(AdminController::listUsers, "/api/admin/users", Get, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(AdminController::setSystemRole, "/api/admin/users/{1}/system-roles", Post, "AuthFilter", "AdminFilter");
+
     // RBAC：角色 / 权限 / 权限组
     ADD_METHOD_TO(AdminController::listRoles, "/api/admin/roles", Get, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(AdminController::createRole, "/api/admin/roles", Post, "AuthFilter", "AdminFilter");
@@ -33,6 +40,12 @@ public:
     Task<HttpResponsePtr> listTeams(HttpRequestPtr req);
     Task<HttpResponsePtr> setSubscription(HttpRequestPtr req, std::string teamId);
     Task<HttpResponsePtr> setFeatureAuth(HttpRequestPtr req, std::string teamId);
+
+    Task<HttpResponsePtr> getTeam(HttpRequestPtr req, std::string teamId);
+    Task<HttpResponsePtr> updateTeam(HttpRequestPtr req, std::string teamId);
+    Task<HttpResponsePtr> updateMember(HttpRequestPtr req, std::string teamId, std::string userId);
+    Task<HttpResponsePtr> listUsers(HttpRequestPtr req);
+    Task<HttpResponsePtr> setSystemRole(HttpRequestPtr req, std::string userId);
 
     Task<HttpResponsePtr> listRoles(HttpRequestPtr req);
     Task<HttpResponsePtr> createRole(HttpRequestPtr req);

@@ -15,7 +15,7 @@ namespace Services {
 
 namespace {
 
-const char *kBuiltinRoleCodes[] = {"team_admin", "engineer", "pm"};
+const char *kBuiltinRoleCodes[] = {"super_admin", "team_admin", "engineer", "pm"};
 
 bool IsBuiltinRole(const std::string &code)
 {
@@ -220,13 +220,14 @@ HttpResult RbacService::DeleteRole(int roleId)
     auto db = drogon::app().getDbClient();
     try
     {
-        auto rows = db->execSqlSync("select code from role where id = $1", roleId);
+        auto rows = db->execSqlSync("select code, scope from role where id = $1", roleId);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_RoleNotFound);
             return result;
         }
-        if (IsBuiltinRole(rows[0]["code"].as<std::string>()))
+        // 系统角色（scope = 1）是厂商能力的载体，不允许通过普通 RBAC 删除
+        if (IsBuiltinRole(rows[0]["code"].as<std::string>()) || rows[0]["scope"].as<int>() == 1)
         {
             result.setResult(ApiErrorCode::ApiError_SystemRoleProtected);
             return result;

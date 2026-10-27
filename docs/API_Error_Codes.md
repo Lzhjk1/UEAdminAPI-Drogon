@@ -267,6 +267,26 @@
 | | -105 | `ApiError_InvalidOperation` | 未知功能代码 |
 | | -104 | `ApiError_DatabaseError` | 数据库错误 |
 
+### 9.1 超级管理员 / 跨团队 (-8xx)
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/admin/teams/{id}** (GET/PATCH) | 0 | `ApiError_Success` | 团队详情 / 改名与启停 |
+| | -801 | `ApiError_TeamNotFound` | 团队不存在 |
+| | -815 | `ApiError_CodeAlreadyExists` | 团队名已存在 |
+| | -105 | `ApiError_InvalidOperation` | status 不是 1/2 |
+| **/api/admin/teams/{id}/members/{userId}** (PATCH) | 0 | `ApiError_Success` | 修改成员角色 / 状态 |
+| | -802 | `ApiError_NotTeamMember` | 账号不在该团队 |
+| | -805 | `ApiError_InvalidRoleCode` | 角色不存在或不是团队角色 |
+| | -818 | `ApiError_TeamOwnerProtected` | 团队创建者不能被停用或降级 |
+| **/api/admin/users** (GET) | 0 | `ApiError_Success` | 账号检索 |
+| **/api/admin/users/{id}/system-roles** (POST) | 0 | `ApiError_Success` | 授予 / 回收 super_admin |
+| | -302 | `ApiError_UserNotFound` | 账号不存在 |
+| | -805 | `ApiError_InvalidRoleCode` | 目前只接受 super_admin |
+| | -102 | `ApiError_MissingRequiredArgs` | 缺少 roleCode / enabled |
+| 以上全部 | -807 | `ApiError_AdminPrivilegeRequired` | 需要 `Admin` 位或系统角色 `super_admin`（HTTP 403） |
+| 其中 system-roles | -807 | `ApiError_AdminPrivilegeRequired` | 授予/回收只认 `Admin` 位，角色持有者不能扩散 |
+
 
 ### 10. 余额与支付模块 (-9xx)
 
@@ -295,7 +315,7 @@
 | | -812 | `ApiError_PermissionNotFound` | 权限不存在（permissionIds 里有无效 id） |
 | | -814 | `ApiError_ResourceInUse` | 角色仍被团队成员使用 |
 | | -815 | `ApiError_CodeAlreadyExists` | 角色 code 已存在 |
-| | -816 | `ApiError_SystemRoleProtected` | 内置角色不允许删除 |
+| | -816 | `ApiError_SystemRoleProtected` | 内置角色或系统角色（scope=1）不允许删除 |
 | **/api/admin/permissions** (GET/POST/PATCH/DELETE) | -812 | `ApiError_PermissionNotFound` | 权限不存在 |
 | | -814 | `ApiError_ResourceInUse` | 权限仍被角色或权限组引用 |
 | | -815 | `ApiError_CodeAlreadyExists` | 权限 code 已存在 |
@@ -318,7 +338,16 @@
 | | -817 | `ApiError_InstallerNotFound` | 安装包不存在或未发布 |
 | | -103 | `ApiError_InternalError` | 安装包文件在磁盘上缺失 |
 | **/api/admin/installer/upload** (POST) | -102 | `ApiError_MissingRequiredArgs` | 缺少 version / file |
+| | -815 | `ApiError_CodeAlreadyExists` | 版本号已存在 |
 | | -105 | `ApiError_InvalidOperation` | 非 multipart 或不是 .exe |
 | | -103 | `ApiError_InternalError` | 建目录/写文件失败 |
+| **/api/admin/installer/{id}** (PATCH) | -102 | `ApiError_MissingRequiredArgs` | version 为空或超过 64 字符 |
+| | -105 | `ApiError_InvalidOperation` | 构建号为负数 |
+| | -815 | `ApiError_CodeAlreadyExists` | 版本号已存在 |
+| | -817 | `ApiError_InstallerNotFound` | 安装包不存在 |
+| **/api/admin/installer/{id}/offline** (POST) | -817 | `ApiError_InstallerNotFound` | 安装包不存在 |
 | **/api/admin/installer/{id}/publish** (POST) | -817 | `ApiError_InstallerNotFound` | 安装包不存在 |
 | 以上后台接口 | -807 | `ApiError_AdminPrivilegeRequired` | 需要管理员权限（HTTP 403） |
+
+> `/api/update/check` 的业务拒绝不占用错误码：团队停用返回 `data.reason = team_disabled`，
+> 未付费 `not_paid` / `expired`，未授权 `no_auth`，无安装包 `no_package`，已最新 `no_update`。

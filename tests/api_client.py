@@ -254,12 +254,32 @@ class ApiClient:
     def admin_publish_installer(self, installer_id: int):
         return self._request("POST", f"/api/admin/installer/{installer_id}/publish")
 
+    def admin_offline_installer(self, installer_id: int):
+        return self._request("POST", f"/api/admin/installer/{installer_id}/offline")
+
+    def admin_update_installer(self, installer_id: int, version: str,
+                               build_no: int | None = None,
+                               notes: str | None = None,
+                               min_version: str | None = None):
+        body = {"version": version}
+        if build_no is not None:
+            body["buildNo"] = build_no
+        if notes is not None:
+            body["notes"] = notes
+        if min_version is not None:
+            body["minVersion"] = min_version
+        return self._request("PATCH", f"/api/admin/installer/{installer_id}",
+                             json_body=body)
+
     def admin_upload_installer(self, version: str, file_bytes: bytes,
                                file_name: str = "setup_fake.exe",
-                               notes: str = "", build_no: int | None = None):
+                               notes: str = "", build_no: int | None = None,
+                               min_version: str | None = None):
         data = {"version": version, "notes": notes}
         if build_no is not None:
             data["buildNo"] = str(build_no)
+        if min_version is not None:
+            data["minVersion"] = min_version
         files = {"file": (file_name, file_bytes, "application/octet-stream")}
         resp = self.session.post(f"{self.base_url}/api/admin/installer/upload",
                                  data=data, files=files, headers=self._headers())
@@ -303,6 +323,39 @@ class ApiClient:
     def admin_set_feature_auth(self, team_id: int, feature_code: str, enabled: bool):
         body = {"featureCode": feature_code, "enabled": enabled}
         return self._request("PUT", f"/api/admin/teams/{team_id}/feature-auth", json_body=body)
+
+    # ---------- 厂商后台：超级管理员（跨团队） ----------
+    def admin_get_team(self, team_id: int):
+        return self._request("GET", f"/api/admin/teams/{team_id}")
+
+    def admin_update_team(self, team_id: int, name: str | None = None,
+                          status: int | None = None):
+        body = {}
+        if name is not None:
+            body["name"] = name
+        if status is not None:
+            body["status"] = status
+        return self._request("PATCH", f"/api/admin/teams/{team_id}", json_body=body)
+
+    def admin_update_member(self, team_id: int, user_id: int,
+                            role_code: str | None = None, status: int | None = None):
+        body = {}
+        if role_code is not None:
+            body["roleCode"] = role_code
+        if status is not None:
+            body["status"] = status
+        return self._request("PATCH", f"/api/admin/teams/{team_id}/members/{user_id}",
+                             json_body=body)
+
+    def admin_list_users(self, keyword: str = "", limit: int | None = None):
+        params = {"keyword": keyword}
+        if limit is not None:
+            params["limit"] = str(limit)
+        return self._request("GET", "/api/admin/users", params=params)
+
+    def admin_set_system_role(self, user_id: int, role_code: str, enabled: bool):
+        return self._request("POST", f"/api/admin/users/{user_id}/system-roles",
+                             json_body={"roleCode": role_code, "enabled": enabled})
 
     # ---------- 厂商后台：RBAC ----------
     def admin_list_roles(self):

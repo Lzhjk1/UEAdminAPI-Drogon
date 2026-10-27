@@ -298,6 +298,7 @@ def seeded_org(test_domain: str):
     names = ", ".join(_sql_lit(n) for n in (admin_name, vendor_name, member_name))
     user_filter = f'user_id in (select id from "user" where name in ({names}))'
     for sql in (
+        f"delete from user_system_role where {user_filter}",
         f"delete from balance_txn where {user_filter}",
         f"delete from payment_order where {user_filter}",
         f"delete from user_balance where {user_filter}",

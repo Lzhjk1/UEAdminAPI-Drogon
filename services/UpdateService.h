@@ -23,11 +23,23 @@ public:
     static utils::HttpResult AdminUploadInstaller(const std::string &version,
                                                   const std::string &notes,
                                                   int buildNo,
+                                                  const std::string &minVersion,
                                                   const std::string &fileName,
                                                   std::string_view content);
 
+    // 厂商：编辑安装包的版本信息（版本号 / 构建号 / 最低版本 / 备注）
+    // 修改 version 只改库里记录，磁盘文件仍留在原版本目录下（下载按库里的 file_path 取）。
+    static utils::HttpResult AdminUpdateInstaller(int installerId,
+                                                  const std::string &version,
+                                                  int buildNo,
+                                                  const std::string &notes,
+                                                  const std::string &minVersion);
+
     // 厂商：发布（同一时刻只保留一个已发布版本）
     static utils::HttpResult AdminPublishInstaller(int installerId);
+
+    // 厂商：下线（保留记录，不再对外提供更新）
+    static utils::HttpResult AdminOfflineInstaller(int installerId);
 
     // 厂商：安装包列表
     static utils::HttpResult AdminListInstallers();

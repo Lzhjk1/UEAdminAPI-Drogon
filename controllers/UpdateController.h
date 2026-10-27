@@ -14,6 +14,8 @@ public:
 
     ADD_METHOD_TO(UpdateController::upload, "/api/admin/installer/upload", Post, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::publish, "/api/admin/installer/{1}/publish", Post, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(UpdateController::offline, "/api/admin/installer/{1}/offline", Post, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(UpdateController::update, "/api/admin/installer/{1}", Patch, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::list, "/api/admin/installer/list", Get, "AuthFilter", "AdminFilter");
 
     // 极简上传页（页面本身不含数据，接口仍要求 Admin 权限）
@@ -24,6 +26,8 @@ public:
     Task<HttpResponsePtr> download(HttpRequestPtr req, std::string version);
     Task<HttpResponsePtr> upload(HttpRequestPtr req);
     Task<HttpResponsePtr> publish(HttpRequestPtr req, std::string installerId);
+    Task<HttpResponsePtr> offline(HttpRequestPtr req, std::string installerId);
+    Task<HttpResponsePtr> update(HttpRequestPtr req, std::string installerId);
     Task<HttpResponsePtr> list(HttpRequestPtr req);
     Task<HttpResponsePtr> adminPage(HttpRequestPtr req);
 };

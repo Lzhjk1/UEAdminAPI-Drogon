@@ -13,8 +13,10 @@ public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(TeamController::getTeam, "/api/team", Get, "AuthFilter");
     ADD_METHOD_TO(TeamController::createMember, "/api/team/member", Post, "AuthFilter");
+    ADD_METHOD_TO(TeamController::updateMemberRoles, "/api/team/member/{1}", Patch, "AuthFilter");
     METHOD_LIST_END
 
     Task<HttpResponsePtr> getTeam(HttpRequestPtr req);
     Task<HttpResponsePtr> createMember(HttpRequestPtr req);
+    Task<HttpResponsePtr> updateMemberRoles(HttpRequestPtr req, std::string userId);
 };

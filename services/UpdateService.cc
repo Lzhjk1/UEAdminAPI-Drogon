@@ -101,6 +101,7 @@ std::string ServerHost()
 struct AccessState
 {
     bool hasTeam = false;
+    bool teamActive = false;
     bool paid = false;
     bool everSubscribed = false;
     bool updateAuth = false;
@@ -110,7 +111,7 @@ AccessState QueryAccess(const std::shared_ptr<drogon::orm::DbClient> &db, int us
 {
     AccessState state;
     auto rows = db->execSqlSync(
-        "select t.id as team_id, "
+        "select t.id as team_id, t.status as team_status, "
         "       (s.end_date is not null and s.end_date >= current_date) as paid, "
         "       (s.end_date is not null) as ever_subscribed, "
         "       coalesce(uf.enabled, tf.enabled, false) as update_auth "
@@ -128,6 +129,7 @@ AccessState QueryAccess(const std::shared_ptr<drogon::orm::DbClient> &db, int us
         return state;
     }
     state.hasTeam = true;
+    state.teamActive = !rows[0]["team_status"].isNull() && rows[0]["team_status"].as<int>() == 1;
     state.paid = !rows[0]["paid"].isNull() && rows[0]["paid"].as<bool>();
     state.everSubscribed = !rows[0]["ever_subscribed"].isNull() && rows[0]["ever_subscribed"].as<bool>();
     state.updateAuth = !rows[0]["update_auth"].isNull() && rows[0]["update_auth"].as<bool>();
@@ -167,6 +169,12 @@ HttpResult UpdateService::CheckUpdate(int userId,
         {
             result.jsondata["reason"] = "not_paid";
             result.setResult(ApiErrorCode::ApiError_Success, "not in a team");
+            return result;
+        }
+        if (!access.teamActive)
+        {
+            result.jsondata["reason"] = "team_disabled";
+            result.setResult(ApiErrorCode::ApiError_Success, "team disabled");
             return result;
         }
         if (!access.paid)
@@ -218,6 +226,7 @@ HttpResult UpdateService::CheckUpdate(int userId,
 HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
                                                const std::string &notes,
                                                int buildNo,
+                                               const std::string &minVersion,
                                                const std::string &fileName,
                                                std::string_view content)
 {
@@ -250,6 +259,14 @@ HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
     auto db = drogon::app().getDbClient();
     try
     {
+        auto existRows = db->execSqlSync(
+            "select 1 from installer_version where version = $1", version);
+        if (!existRows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "该版本号已存在");
+            return result;
+        }
+
         const std::filesystem::path dir = std::filesystem::path(StoreDir()) / version;
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
@@ -273,11 +290,11 @@ HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
 
         const std::string sha = Sha256Hex(content);
         auto rows = db->execSqlSync(
-            "insert into installer_version (version, build_no, file_name, file_path, size_bytes, sha256, notes, status) "
-            "values ($1, $2::int, $3, $4, $5::bigint, $6, $7, 0) "
+            "insert into installer_version (version, build_no, file_name, file_path, size_bytes, sha256, notes, min_version, status) "
+            "values ($1, $2::int, $3, $4, $5::bigint, $6, $7, $8, 0) "
             "returning id",
             version, buildNo, safeName, target.string(),
-            static_cast<int64_t>(content.size()), sha, notes);
+            static_cast<int64_t>(content.size()), sha, notes, minVersion);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_DatabaseError);
@@ -289,6 +306,7 @@ HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
         result.jsondata["fileName"] = safeName;
         result.jsondata["sizeBytes"] = static_cast<Json::Int64>(content.size());
         result.jsondata["sha256"] = sha;
+        result.jsondata["minVersion"] = minVersion;
         result.jsondata["status"] = 0;
         result.setResult(ApiErrorCode::ApiError_Success, "上传成功，待发布");
     }
@@ -333,6 +351,103 @@ HttpResult UpdateService::AdminPublishInstaller(int installerId)
     return result;
 }
 
+HttpResult UpdateService::AdminUpdateInstaller(int installerId,
+                                               const std::string &version,
+                                               int buildNo,
+                                               const std::string &notes,
+                                               const std::string &minVersion)
+{
+    HttpResult result;
+    if (version.empty())
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "版本号不能为空");
+        return result;
+    }
+    if (version.size() > 64 || minVersion.size() > 64)
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "版本号/最低版本长度不能超过 64");
+        return result;
+    }
+    if (buildNo < 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "构建号不能为负数");
+        return result;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select id, version from installer_version where id = $1", installerId);
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+            return result;
+        }
+
+        if (version != rows[0]["version"].as<std::string>())
+        {
+            auto dupRows = db->execSqlSync(
+                "select 1 from installer_version where version = $1 and id <> $2",
+                version, installerId);
+            if (!dupRows.empty())
+            {
+                result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "该版本号已存在");
+                return result;
+            }
+        }
+
+        // 只改元数据：磁盘文件与 file_path 保持不动，下载时仍按这条记录取文件
+        db->execSqlSync(
+            "update installer_version set version = $2, build_no = $3::int, "
+            "       notes = $4, min_version = $5 where id = $1",
+            installerId, version, buildNo, notes, minVersion);
+
+        result.jsondata["id"] = installerId;
+        result.jsondata["version"] = version;
+        result.jsondata["buildNo"] = buildNo;
+        result.jsondata["notes"] = notes;
+        result.jsondata["minVersion"] = minVersion;
+        result.setResult(ApiErrorCode::ApiError_Success, "安装包信息已更新");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminUpdateInstaller 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult UpdateService::AdminOfflineInstaller(int installerId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select id, version, status from installer_version where id = $1", installerId);
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+            return result;
+        }
+
+        db->execSqlSync(
+            "update installer_version set status = 2 where id = $1", installerId);
+
+        result.jsondata["id"] = installerId;
+        result.jsondata["version"] = rows[0]["version"].as<std::string>();
+        result.jsondata["status"] = 2;
+        result.setResult(ApiErrorCode::ApiError_Success, "已下线");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminOfflineInstaller 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
 HttpResult UpdateService::AdminListInstallers()
 {
     HttpResult result;
@@ -340,7 +455,7 @@ HttpResult UpdateService::AdminListInstallers()
     try
     {
         auto rows = db->execSqlSync(
-            "select id, version, build_no, file_name, size_bytes, sha256, notes, status, "
+            "select id, version, build_no, file_name, size_bytes, sha256, notes, min_version, status, "
             "       to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at, "
             "       to_char(published_at, 'YYYY-MM-DD HH24:MI:SS') as published_at "
             "from installer_version order by id desc");
@@ -357,6 +472,7 @@ HttpResult UpdateService::AdminListInstallers()
                 r["size_bytes"].isNull() ? 0 : static_cast<Json::Int64>(r["size_bytes"].as<int64_t>());
             item["sha256"] = r["sha256"].as<std::string>();
             item["notes"] = r["notes"].isNull() ? "" : r["notes"].as<std::string>();
+            item["minVersion"] = r["min_version"].isNull() ? "" : r["min_version"].as<std::string>();
             item["status"] = r["status"].as<int>();
             item["createdAt"] = r["created_at"].isNull() ? "" : r["created_at"].as<std::string>();
             item["publishedAt"] = r["published_at"].isNull() ? "" : r["published_at"].as<std::string>();

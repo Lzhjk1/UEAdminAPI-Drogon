@@ -32,11 +32,19 @@ void AdminFilter::doFilter(const HttpRequestPtr &req,
     try
     {
         auto db = drogon::app().getDbClient();
-        auto rows = db->execSqlSync("select privilege from \"user\" where id = $1", userId);
-        if (!rows.empty() && !rows[0]["privilege"].isNull())
+        // 厂商身份有两条来源：
+        //   1) user.privilege 的 Admin 位 —— DB 级兜底，任何情况下都能进后台；
+        //   2) 系统角色 super_admin（user_system_role）—— RBAC 里可见、可授予/回收。
+        auto rows = db->execSqlSync(
+            "select (coalesce(u.privilege, 0) & $2::int) <> 0 as bit_admin, "
+            "       exists(select 1 from user_system_role usr "
+            "              join role r on r.id = usr.role_id "
+            "              where usr.user_id = u.id and r.code = 'super_admin') as role_admin "
+            "from \"user\" u where u.id = $1",
+            userId, static_cast<int>(UserPrivileges::Admin));
+        if (!rows.empty())
         {
-            int privilege = rows[0]["privilege"].as<int>();
-            isAdmin = (privilege & static_cast<int>(UserPrivileges::Admin)) != 0;
+            isAdmin = rows[0]["bit_admin"].as<bool>() || rows[0]["role_admin"].as<bool>();
         }
     }
     catch (const drogon::orm::DrogonDbException &e)

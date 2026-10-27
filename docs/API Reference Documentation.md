@@ -833,7 +833,8 @@ GitLab 相关接口目前使用独立的响应格式：
 ## 8. 账号中心 / 团队 / 授权（阶段 1）
 
 > 登录后客户端只调 `bootstrap` 一个接口即可拿到余额、团队、付费期、角色与云端功能授权；
-> 团队管理由团队管理员在客户端内完成；付费期与功能授权由厂商超管（`privilege` 的 `Admin` 位）在后台设置。
+> 团队管理由团队管理员在客户端内完成；付费期与功能授权由厂商超管在后台设置。
+> 厂商超管的判据有两条（满足其一即可）：`privilege` 的 `Admin` 位，或系统角色 `super_admin`（见 8.7–8.11）。
 >
 > 说明：`POST /api/team/member` 目前只要求登录（`AuthFilter`），未强制 ActionToken —— 团队管理员未必绑定 MFA。
 > 后续接入时在路由上补 `ActionTokenMiddleware` 并在 `services/ActionTokenService.cpp` 登记同样路由。
@@ -847,8 +848,9 @@ GitLab 相关接口目前使用独立的响应格式：
 {
   "code": 0, "msg": "success",
   "data": {
-    "userId": 12, "privilege": 3, "mustChangePwd": false, "balanceCents": 0,
-    "team": { "id": 5, "name": "Team-5-acme", "roleCode": "team_admin" },
+    "userId": 12, "privilege": 3, "isSuperAdmin": false,
+    "mustChangePwd": false, "balanceCents": 0,
+    "team": { "id": 5, "name": "Team-5-acme", "status": 1, "roleCode": "team_admin" },
     "subscription": { "startDate": "2026-10-26", "endDate": "2027-10-26", "active": true },
     "featureAuth": { "cloud_project": true, "online_update": false },
     "latestVersion": ""
@@ -857,6 +859,8 @@ GitLab 相关接口目前使用独立的响应格式：
 ```
 - 无团队时 `team` 字段缺失；无付费记录时 `startDate`/`endDate` 为空串、`active=false`；
   功能授权缺失视为关闭（账号级 `user_feature_auth` 覆盖团队级 `team_feature_auth`）。
+- `team.status`：1 正常 / 2 停用；团队停用时 `featureAuth` 一律为 `false`（在线更新检查返回 `reason=team_disabled`）。
+- `isSuperAdmin`：`privilege` 的 `Admin` 位或系统角色 `super_admin` 任一成立即为 `true`。
 
 ### 8.2 我的团队 (Get Team)
 - **URL**: `/api/team`
@@ -893,6 +897,77 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Body**: `{ "featureCode": "cloud_project|online_update", "enabled": true }`
 - **说明**: 按 `(team_id, feature_code)` upsert；客户端 bootstrap 读取时账号级配置优先。
 - **错误码**: `-801` 团队不存在、`-105` 未知功能代码
+
+### 8.7 厂商后台：团队详情 (Admin Get Team)
+- **URL**: `/api/admin/teams/{teamId}`
+- **Method**: `GET`，需要 `Admin` 权限（`Admin` 位或系统角色 `super_admin`）
+- **Response**:
+```json
+{
+  "code": 0, "msg": "success",
+  "data": {
+    "team": {
+      "id": 5, "name": "Team-5-acme", "status": 1,
+      "ownerUserId": 12, "ownerName": "acme", "createdAt": "2026-10-26"
+    },
+    "subscription": { "startDate": "2026-10-26", "endDate": "2027-10-26", "active": true },
+    "featureAuth": { "cloud_project": true, "online_update": true },
+    "members": [
+      { "userId": 12, "userName": "acme", "nickName": "acme", "roleCode": "team_admin",
+        "roleName": "团队管理员", "status": 1, "mustChangePwd": false,
+        "createdAt": "2026-10-26 10:00:00" }
+    ],
+    "memberCount": 1
+  }
+}
+```
+- 与 8.2 的区别：可指定任意团队，且额外返回创建者与团队状态。
+- **错误码**: `-801` 团队不存在
+
+### 8.8 厂商后台：团队改名 / 启停 (Admin Update Team)
+- **URL**: `/api/admin/teams/{teamId}`
+- **Method**: `PATCH`，需要 `Admin` 权限
+- **Body**: `{ "name": "新团队名", "status": 1 }`（两个字段都可选，至少给一个；`status` 只能是 1/2）
+- **说明**: 团队名全局唯一；停用后该团队的云端授权、在线更新检查与团队建号都会被拒绝。
+- **错误码**: `-801` 团队不存在、`-815` 团队名已存在、`-105` 状态不合法、`-102` 未提供任何字段
+
+### 8.9 厂商后台：修改成员角色 / 状态 (Admin Update Member)
+- **URL**: `/api/admin/teams/{teamId}/members/{userId}`
+- **Method**: `PATCH`，需要 `Admin` 权限
+- **Body**: `{ "roleCode": "engineer|pm|team_admin|...", "status": 1 }`（两个字段都可选，至少给一个）
+- **说明**:
+  - `roleCode` 只接受团队角色（`role.scope = 2`），系统角色不能挂到团队成员位；
+  - 团队创建者（`team.owner_user_id`）不允许被停用或降级为 `team_admin` 之外的角色，
+    以保证团队始终有可管理的管理员（需换人时先转移团队所有权）。
+- **Response**: `data = { member{...同 8.2 members 元素} }`
+- **错误码**: `-801` 团队不存在、`-802` 账号不在该团队、`-805` 角色不存在或不可分配、
+  `-818` 团队创建者不能被停用或降级、`-105` 状态不合法
+
+### 8.10 厂商后台：账号检索 (Admin List Users)
+- **URL**: `/api/admin/users?keyword={用户名或昵称}&limit=50`
+- **Method**: `GET`，需要 `Admin` 权限
+- **Response**:
+```json
+{
+  "code": 0, "msg": "success",
+  "data": { "users": [
+    { "userId": 12, "userName": "acme", "nickName": "acme", "status": 1,
+      "teamId": 5, "teamName": "Team-5-acme", "roleCode": "team_admin", "isSuperAdmin": false }
+  ] }
+}
+```
+- `keyword` 为空返回前 `limit` 个账号（`limit` 上限 200）。
+
+### 8.11 厂商后台：授予 / 回收系统角色 (Admin Set System Role)
+- **URL**: `/api/admin/users/{userId}/system-roles`
+- **Method**: `POST`，调用者必须持有 **`Admin` 位**（仅有 `super_admin` 角色不够）
+- **Body**: `{ "roleCode": "super_admin", "enabled": true }`
+- **说明**: `super_admin` 是 `role.scope = 1` 的系统角色，经 `user_system_role` 直接挂到账号上，
+  不占用团队里的唯一角色位；授予后该账号可调用 8.4–8.10 的全部接口。
+  授予权只认 `Admin` 位，避免拿到角色的账号自行扩散；回填逻辑在迁移 `0003_super_admin.sql`。
+- **Response**: `data = { userId, roleCode, enabled }`
+- **错误码**: `-807` 调用者没有 `Admin` 位、`-101` 账号不存在、`-805` 角色不存在（目前只接受 `super_admin`）、
+  `-102` 缺少 roleCode / enabled
 
 
 ## 9. 余额与支付（当前为模拟支付）
@@ -940,7 +1015,8 @@ GitLab 相关接口目前使用独立的响应格式：
 
 ## 10. 厂商后台：角色 / 权限 / 权限组（RBAC）
 
-> 前缀 `/api/admin`，均需 `AuthFilter` + `AdminFilter`（`privilege` 的 `Admin` 位），非管理员返回 HTTP 403 / `-807`。
+> 前缀 `/api/admin`，均需 `AuthFilter` + `AdminFilter`（`privilege` 的 `Admin` 位或系统角色 `super_admin`），
+> 非管理员返回 HTTP 403 / `-807`。
 > `role.code` 与 `permission.code` 创建后**不可修改**（服务端鉴权与客户端映射依赖 code）；
 > `permissionIds` 一旦出现在请求体里即为**整组替换**（传 `[]` 表示清空）。
 
@@ -950,7 +1026,10 @@ GitLab 相关接口目前使用独立的响应格式：
 | `GET /api/admin/roles` | `data.roles[] = { id, code, name, scope(1 系统/2 团队), builtin, permissionIds[] }` |
 | `POST /api/admin/roles` | Body `{ code, name, scope? }`；重复 code → `-815` |
 | `PATCH /api/admin/roles/{id}` | Body `{ name?, permissionIds? }`，至少提供一个；不存在的权限 id → `-812` |
-| `DELETE /api/admin/roles/{id}` | 内置角色（team_admin/engineer/pm）→ `-816`；仍被 `team_member` 引用 → `-814` |
+| `DELETE /api/admin/roles/{id}` | 内置角色（super_admin/team_admin/engineer/pm）或 `scope=1` 的系统角色 → `-816`；仍被 `team_member` 引用 → `-814` |
+
+- `super_admin`（超级管理员）是预置的系统角色：`scope=1`、`builtin=true`、默认拥有全部已登记权限，
+  通过 8.11 授予账号后即可跨团队查看/修改数据；它由 `0003_super_admin.sql` 种入，不随普通 RBAC CRUD 删除。
 
 ### 10.2 权限
 | 接口 | 说明 |
@@ -1002,9 +1081,13 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 11.3 厂商后台：安装包管理
 | 接口 | 说明 |
 |---|---|
-| `POST /api/admin/installer/upload` | `multipart/form-data`：`version`(必填)、`buildNo`、`notes`、`file`(必填, 仅 `.exe`)；落盘并计算 sha256，状态为**草稿(0)** |
+| `POST /api/admin/installer/upload` | `multipart/form-data`：`version`(必填)、`buildNo`、`notes`、`minVersion`、`file`(必填, 仅 `.exe`)；落盘并计算 sha256，状态为**草稿(0)**；版本号重复 → `-815` |
+| `PATCH /api/admin/installer/{id}` | 编辑版本信息：Body `{ "version": "...", "buildNo": 0, "notes": "", "minVersion": "" }`（四项整体覆盖，`version` 必填）。只改库里的元数据，磁盘文件与 `file_path` 不动，下载仍按该记录取文件 |
 | `POST /api/admin/installer/{id}/publish` | 发布：把该条置为已发布(1)，**其余已发布版本自动转为下线(2)**，保证同一时刻只有一个现行版本 |
-| `GET /api/admin/installer/list` | 列出全部安装包（含草稿/下线），字段：id/version/buildNo/fileName/sizeBytes/sha256/notes/status/createdAt/publishedAt |
+| `POST /api/admin/installer/{id}/offline` | 下线：状态置为 2（记录保留，不再对外提供更新） |
+| `GET /api/admin/installer/list` | 列出全部安装包（含草稿/下线），字段：id/version/buildNo/fileName/sizeBytes/sha256/notes/minVersion/status/createdAt/publishedAt |
+- 状态：`0` 草稿 / `1` 已发布 / `2` 下线。
+- 编辑时的错误码：`-102` 版本号为空或超长、`-105` 构建号为负、`-815` 版本号已存在、`-817` 安装包不存在。
 
 ### 11.4 上传页
 - **URL**: `/admin/installer`（`GET`，无需登录即可打开页面，但页面内所有操作都要填厂商超管 token）

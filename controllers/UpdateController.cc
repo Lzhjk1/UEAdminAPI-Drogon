@@ -99,6 +99,7 @@ Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
     }
     const std::string version = versionIt->second;
     const std::string notes = params.count("notes") ? params.at("notes") : "";
+    const std::string minVersion = params.count("minVersion") ? params.at("minVersion") : "";
     int buildNo = 0;
     if (params.count("buildNo"))
     {
@@ -113,7 +114,7 @@ Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
     }
     const auto &file = files[0];
     co_return JsonResponse(UpdateService::AdminUploadInstaller(
-        version, notes, buildNo, file.getFileName(), file.fileContent()));
+        version, notes, buildNo, minVersion, file.getFileName(), file.fileContent()));
 }
 
 Task<HttpResponsePtr> UpdateController::publish(HttpRequestPtr req, std::string installerId)
@@ -127,6 +128,66 @@ Task<HttpResponsePtr> UpdateController::publish(HttpRequestPtr req, std::string 
         co_return JsonResponse(result);
     }
     co_return JsonResponse(UpdateService::AdminPublishInstaller(id));
+}
+
+Task<HttpResponsePtr> UpdateController::offline(HttpRequestPtr req, std::string installerId)
+{
+    (void)req;
+    HttpResult result;
+    const int id = ParseId(installerId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+        co_return JsonResponse(result);
+    }
+    co_return JsonResponse(UpdateService::AdminOfflineInstaller(id));
+}
+
+Task<HttpResponsePtr> UpdateController::update(HttpRequestPtr req, std::string installerId)
+{
+    HttpResult result;
+    const int id = ParseId(installerId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+        co_return JsonResponse(result);
+    }
+
+    auto reqJson = req->getJsonObject();
+    if (!reqJson)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return JsonResponse(result);
+    }
+    if (!reqJson->isMember("version") || !(*reqJson)["version"].isString())
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少 version");
+        co_return JsonResponse(result);
+    }
+
+    const std::string version = (*reqJson)["version"].asString();
+    int buildNo = 0;
+    if (reqJson->isMember("buildNo"))
+    {
+        const auto &node = (*reqJson)["buildNo"];
+        try
+        {
+            buildNo = node.isInt() ? node.asInt() : std::stoi(node.asString());
+        }
+        catch (...)
+        {
+            buildNo = -1; // 交给服务层报「构建号不合法」
+        }
+    }
+    const std::string notes =
+        (reqJson->isMember("notes") && (*reqJson)["notes"].isString())
+            ? (*reqJson)["notes"].asString() : "";
+    const std::string minVersion =
+        (reqJson->isMember("minVersion") && (*reqJson)["minVersion"].isString())
+            ? (*reqJson)["minVersion"].asString() : "";
+
+    co_return JsonResponse(UpdateService::AdminUpdateInstaller(
+        id, version, buildNo, notes, minVersion));
 }
 
 Task<HttpResponsePtr> UpdateController::list(HttpRequestPtr req)

@@ -184,6 +184,172 @@ Task<HttpResponsePtr> AdminController::setFeatureAuth(HttpRequestPtr req, std::s
     co_return resp;
 }
 
+// ---------------- 超级管理员：跨团队查看 / 修改 ----------------
+Task<HttpResponsePtr> AdminController::getTeam(HttpRequestPtr req, std::string teamId)
+{
+    (void)req;
+    HttpResult result;
+    const int id = ParseTeamId(teamId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_TeamNotFound);
+        co_return Respond(result);
+    }
+    co_return Respond(TeamService::AdminGetTeam(id));
+}
+
+Task<HttpResponsePtr> AdminController::updateTeam(HttpRequestPtr req, std::string teamId)
+{
+    HttpResult result;
+    const int id = ParseTeamId(teamId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_TeamNotFound);
+        co_return Respond(result);
+    }
+
+    auto reqJson = req->getJsonObject();
+    if (!reqJson)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return Respond(result);
+    }
+
+    std::string name;
+    if (reqJson->isMember("name") && (*reqJson)["name"].isString())
+    {
+        name = (*reqJson)["name"].asString();
+    }
+
+    int status = 0;
+    if (reqJson->isMember("status"))
+    {
+        try
+        {
+            const auto &node = (*reqJson)["status"];
+            status = node.isInt() ? node.asInt() : std::stoi(node.asString());
+        }
+        catch (...)
+        {
+            status = -1; // 交给服务层统一报「状态不合法」
+        }
+    }
+
+    co_return Respond(TeamService::AdminUpdateTeam(CurrentUserId(req), id, name, status));
+}
+
+Task<HttpResponsePtr> AdminController::updateMember(HttpRequestPtr req,
+                                                    std::string teamId,
+                                                    std::string userId)
+{
+    HttpResult result;
+    const int id = ParseTeamId(teamId);
+    const int memberId = ParseTeamId(userId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_TeamNotFound);
+        co_return Respond(result);
+    }
+    if (memberId <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_UserNotFound);
+        co_return Respond(result);
+    }
+
+    auto reqJson = req->getJsonObject();
+    if (!reqJson)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return Respond(result);
+    }
+
+    std::string roleCode;
+    if (reqJson->isMember("roleCode") && (*reqJson)["roleCode"].isString())
+    {
+        roleCode = (*reqJson)["roleCode"].asString();
+    }
+
+    int status = 0;
+    if (reqJson->isMember("status"))
+    {
+        try
+        {
+            const auto &node = (*reqJson)["status"];
+            status = node.isInt() ? node.asInt() : std::stoi(node.asString());
+        }
+        catch (...)
+        {
+            status = -1;
+        }
+    }
+
+    co_return Respond(TeamService::AdminUpdateMember(CurrentUserId(req), id, memberId,
+                                                     roleCode, status));
+}
+
+Task<HttpResponsePtr> AdminController::listUsers(HttpRequestPtr req)
+{
+    const std::string keyword = req->getParameter("keyword");
+    int limit = 50;
+    if (!req->getParameter("limit").empty())
+    {
+        try
+        {
+            limit = std::stoi(req->getParameter("limit"));
+        }
+        catch (...)
+        {
+            limit = 50;
+        }
+    }
+    co_return Respond(TeamService::AdminListUsers(keyword, limit));
+}
+
+Task<HttpResponsePtr> AdminController::setSystemRole(HttpRequestPtr req, std::string userId)
+{
+    HttpResult result;
+    const int targetId = ParseTeamId(userId);
+    if (targetId <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_UserNotFound);
+        co_return Respond(result);
+    }
+
+    auto reqJson = req->getJsonObject();
+    if (!reqJson)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return Respond(result);
+    }
+
+    if (!reqJson->isMember("roleCode") || !reqJson->isMember("enabled") ||
+        !(*reqJson)["roleCode"].isString())
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少 roleCode / enabled");
+        co_return Respond(result);
+    }
+
+    const std::string roleCode = (*reqJson)["roleCode"].asString();
+    bool enabled = false;
+    const auto &enabledNode = (*reqJson)["enabled"];
+    if (enabledNode.isBool())
+    {
+        enabled = enabledNode.asBool();
+    }
+    else if (enabledNode.isString())
+    {
+        const std::string raw = enabledNode.asString();
+        enabled = (raw == "true" || raw == "1");
+    }
+    else if (enabledNode.isInt())
+    {
+        enabled = enabledNode.asInt() != 0;
+    }
+
+    co_return Respond(TeamService::AdminSetSystemRole(CurrentUserId(req), targetId,
+                                                      roleCode, enabled));
+}
+
 // ---------------- RBAC：角色 ----------------
 Task<HttpResponsePtr> AdminController::listRoles(HttpRequestPtr req)
 {

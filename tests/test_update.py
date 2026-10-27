@@ -140,6 +140,62 @@ def test_publish_keeps_single_active_version(seeded_org, logged_client):
     assert data["version"] == "11.7.901"
 
 
+def test_edit_installer_metadata_and_download(seeded_org, logged_client):
+    admin = logged_client(seeded_org.admin_name, seeded_org.admin_password)
+    vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)
+    _make_paid_with_update_auth(vendor, seeded_org)
+
+    item = vendor.admin_upload_installer("11.7.950", FAKE_EXE, notes="旧备注",
+                                         build_no=950, min_version="11.7.100")["data"]
+    assert item["minVersion"] == "11.7.100"
+
+    vendor.admin_update_installer(item["id"], "11.7.951", build_no=951,
+                                  notes="新备注", min_version="11.7.200")
+
+    row = {i["id"]: i for i in vendor.admin_list_installers()["data"]["installers"]}[item["id"]]
+    assert row["version"] == "11.7.951"
+    assert row["buildNo"] == 951
+    assert row["notes"] == "新备注"
+    assert row["minVersion"] == "11.7.200"
+
+    # 改版本号只动元数据：磁盘文件仍可下载（按库里 file_path 取）
+    vendor.admin_publish_installer(item["id"])
+    data = admin.update_check("11.7.100")["data"]
+    assert data["version"] == "11.7.951"
+    resp = admin.update_download_raw("11.7.951")
+    assert resp.status_code == 200
+    assert resp.content == FAKE_EXE
+
+    # 版本号不能撞车
+    other = vendor.admin_upload_installer("11.7.952", FAKE_EXE)["data"]
+    with pytest.raises(ApiError) as dup:
+        vendor.admin_update_installer(other["id"], "11.7.951", notes="")
+    assert dup.value.code == -815
+
+    # 团队管理员不能编辑
+    with pytest.raises(ApiError) as denied:
+        admin.admin_update_installer(other["id"], "11.7.953", notes="")
+    assert denied.value.code == -807
+
+
+def test_offline_installer_stops_update(seeded_org, logged_client):
+    admin = logged_client(seeded_org.admin_name, seeded_org.admin_password)
+    vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)
+    _make_paid_with_update_auth(vendor, seeded_org)
+
+    item = vendor.admin_upload_installer("11.7.960", FAKE_EXE)["data"]
+    vendor.admin_publish_installer(item["id"])
+    assert admin.update_check("11.7.100")["data"]["hasUpdate"] is True
+
+    vendor.admin_offline_installer(item["id"])
+    row = {i["id"]: i for i in vendor.admin_list_installers()["data"]["installers"]}[item["id"]]
+    assert row["status"] == 2
+
+    data = admin.update_check("11.7.100")["data"]
+    assert data["hasUpdate"] is False
+    assert data["reason"] == "no_package"
+
+
 def test_download_requires_paid(seeded_org, logged_client):
     admin = logged_client(seeded_org.admin_name, seeded_org.admin_password)
     vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)
