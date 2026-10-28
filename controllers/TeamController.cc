@@ -40,6 +40,23 @@ std::vector<std::string> ReadRoleCodes(const Json::Value &json)
     return codes;
 }
 
+// 系统角色（scope=1）数组；缺省表示老客户端，不改系统角色
+std::vector<std::string> ReadSystemRoleCodes(const Json::Value &json)
+{
+    std::vector<std::string> codes;
+    if (json.isMember("systemRoleCodes") && json["systemRoleCodes"].isArray())
+    {
+        for (const auto &v : json["systemRoleCodes"])
+        {
+            if (v.isString() && !v.asString().empty())
+            {
+                codes.push_back(v.asString());
+            }
+        }
+    }
+    return codes;
+}
+
 } // namespace
 
 Task<HttpResponsePtr> TeamController::getTeam(HttpRequestPtr req)
@@ -84,6 +101,7 @@ Task<HttpResponsePtr> TeamController::createMember(HttpRequestPtr req)
         resp->setStatusCode(k200OK);
         co_return resp;
     }
+    const std::vector<std::string> systemRoleCodes = ReadSystemRoleCodes(*reqJson);
 
     auto missings = pm.checkRequiredParams();
     if (!missings.empty())
@@ -109,6 +127,7 @@ Task<HttpResponsePtr> TeamController::createMember(HttpRequestPtr req)
                                        pm.getParam("userName"),
                                        pm.getParam("password"),
                                        roleCodes,
+                                       systemRoleCodes,
                                        pm.getParam("nickName"));
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
@@ -144,9 +163,11 @@ Task<HttpResponsePtr> TeamController::updateMemberRoles(HttpRequestPtr req, std:
     const std::vector<std::string> roleCodes = ReadRoleCodes(*reqJson);
     if (roleCodes.empty())
     {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "至少保留一个角色");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "至少保留一个团队角色");
         co_return HttpResponse::newHttpJsonResponse(result.toJson());
     }
+    const bool updateSystemRoles = reqJson->isMember("systemRoleCodes");
+    const std::vector<std::string> systemRoleCodes = ReadSystemRoleCodes(*reqJson);
 
     int operatorUserId = -1;
     auto attributes = req->getAttributes();
@@ -155,7 +176,8 @@ Task<HttpResponsePtr> TeamController::updateMemberRoles(HttpRequestPtr req, std:
         operatorUserId = attributes->get<int>("userId");
     }
 
-    result = TeamService::UpdateMemberRoles(operatorUserId, memberUserId, roleCodes);
+    result = TeamService::UpdateMemberRoles(operatorUserId, memberUserId, roleCodes,
+                                            systemRoleCodes, updateSystemRoles);
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;

@@ -24,13 +24,16 @@ public:
                                           const std::string &userName,
                                           const std::string &password,
                                           const std::vector<std::string> &roleCodes,
+                                          const std::vector<std::string> &systemRoleCodes,
                                           const std::string &nickName);
 
     // 团队管理员改成员角色（替换式）。团队所有者必须保留 team_admin；
     // 授予 team_admin 同样仅限厂商超管/团队所有者。
     static utils::HttpResult UpdateMemberRoles(int operatorUserId,
                                                int memberUserId,
-                                               const std::vector<std::string> &roleCodes);
+                                               const std::vector<std::string> &roleCodes,
+                                               const std::vector<std::string> &systemRoleCodes,
+                                               bool updateSystemRoles);
 
     // 注册成功后开通个人团队（该用户为团队管理员）。失败返回 false，由调用方回滚。
     static bool ProvisionPersonalTeam(int userId, const std::string &userName);

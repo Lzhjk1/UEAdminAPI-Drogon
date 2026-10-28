@@ -865,18 +865,47 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 8.2 我的团队 (Get Team)
 - **URL**: `/api/team`
 - **Method**: `GET`，`Authorization: Bearer {token}`
-- **Response**: `data = { team{id,name,roleCode}, subscription{startDate,endDate,active}, members[] }`，
-  `members[]` 元素：`userId, userName, nickName, roleCode, roleName, status(1 正常/2 停用), mustChangePwd, createdAt`
+- **Response**: `data = { team{id,name,roleCode}, subscription{startDate,endDate,active}, canGrantTeamAdmin, canGrantSuperAdmin, isVendor, members[] }`，
+  `members[]` 元素：`userId, userName, nickName, roleCode, roleName, roles[]{code,name}, status(1 正常/2 停用), mustChangePwd, createdAt`
+- `canGrantTeamAdmin`：当前账号能否授予团队管理员（厂商超管或团队所有者）。
+- `canGrantSuperAdmin`：仅厂商团队（`team.is_vendor=true`，当前为优易公司）且当前账号是超管时为 true；
+  其他团队恒为 false，客户端据此隐藏「超级管理员」选项。
+- `roles` 是成员的全部角色；厂商团队会把系统角色 `super_admin` 一并返回，显示为「超级管理员」。
 - **错误码**: `-802` 用户不属于任何团队
 
 ### 8.3 团队管理员新建成员 (Create Member)
 - **URL**: `/api/team/member`
 - **Method**: `POST`，`Authorization: Bearer {token}`
-- **Body**: `{ "userName": "...", "password": "...", "roleCode": "engineer|pm", "nickName": "..." }`
+- **Body**:
+```json
+{
+  "userName": "acme",
+  "password": "initial-password",
+  "roleCodes": ["engineer", "pm"],
+  "systemRoleCodes": ["super_admin"],
+  "nickName": "Acme"
+}
+```
+- `roleCodes`：`scope=2` 的团队角色，至少一个；`team_admin` 仅厂商超管/团队所有者可授予。
+- `systemRoleCodes`：可选，目前只支持 `super_admin`；**仅厂商团队 + 当前操作者是超管**可传。
+  老客户端不传该字段时保持普通成员。
 - **说明**: 仅团队管理员可调用；新账号 `must_change_pwd=true`（首次登录强制改密），并自动加入调用者所在团队、余额 0。
-  不允许分配 `team_admin`（防止越权扩权）。
 - **Response**: `data = { userId }`
-- **错误码**: `-102` 参数缺失/密码过短、`-303` 用户名已存在、`-802` 不在团队、`-803` 非团队管理员、`-805` 角色不允许、`-804` 创建失败
+- **错误码**: `-102` 参数缺失/密码过短/团队角色为空、`-303` 用户名已存在、`-802` 不在团队、
+  `-803` 非团队管理员、`-805` 角色不允许、`-807` 非厂商团队或非超管配置超管、`-804` 创建失败
+
+#### 8.3.1 修改成员角色 (Update Member Roles)
+- **URL**: `/api/team/member/{userId}`
+- **Method**: `PATCH`，`Authorization: Bearer {token}`
+- **Body**: `{ "roleCodes": ["engineer","pm"], "systemRoleCodes": ["super_admin"] }`
+- **说明**:
+  - `roleCodes` 为替换式团队角色，至少一个；团队所有者必须保留 `team_admin`。
+  - `systemRoleCodes` 显式出现时才会改系统角色：传 `["super_admin"]` 授予，传 `[]` 回收；
+    不传该字段表示老客户端，系统角色保持不动。
+  - 超级管理员授予/回收会同时更新 `user.privilege` 的 Admin 位与 `user_system_role`；
+    **仅厂商团队（`team.is_vendor=true`）且当前操作者是超管**可以操作，其他团队返回 `-807`。
+- **错误码**: `-102` 团队角色为空、`-803` 非团队管理员、`-805` 未知角色、`-807` 非厂商团队/非超管、
+  `-818` 团队创建者不能被降级。
 
 ### 8.4 厂商后台：团队列表 (Admin List Teams)
 - **URL**: `/api/admin/teams?paid=1&expired=1`

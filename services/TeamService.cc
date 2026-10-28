@@ -51,6 +51,55 @@ bool IsSuperAdmin(const std::shared_ptr<drogon::orm::DbClient> &db, int userId)
     return !rows.empty() && rows[0]["is_super_admin"].as<bool>();
 }
 
+bool ResolveSuperAdminRoleId(const std::shared_ptr<drogon::orm::DbClient> &db, int &roleId)
+{
+    roleId = 0;
+    auto rows = db->execSqlSync(
+        "select id from role where code = 'super_admin' and scope = 1");
+    if (rows.empty())
+    {
+        return false;
+    }
+    roleId = rows[0]["id"].as<int>();
+    return true;
+}
+
+// 授予/回收超级管理员：同时改 privilege 的 Admin 位与 user_system_role，
+// 与 IsSuperAdmin / /oauth2/introspect 的口径保持一致。
+bool SetUserSuperAdmin(const std::shared_ptr<drogon::orm::DbClient> &db,
+                       int userId,
+                       bool grant,
+                       std::string &err)
+{
+    int roleId = 0;
+    if (!ResolveSuperAdminRoleId(db, roleId))
+    {
+        err = "缺少 super_admin 系统角色，请先执行迁移";
+        return false;
+    }
+
+    if (grant)
+    {
+        db->execSqlSync(
+            "update \"user\" set privilege = (coalesce(privilege, 0) | $2::int) where id = $1",
+            userId, static_cast<int>(UserPrivileges::Admin));
+        db->execSqlSync(
+            "insert into user_system_role (user_id, role_id) values ($1, $2) "
+            "on conflict do nothing",
+            userId, roleId);
+    }
+    else
+    {
+        db->execSqlSync(
+            "update \"user\" set privilege = (coalesce(privilege, 0) & ~($2::int)) where id = $1",
+            userId, static_cast<int>(UserPrivileges::Admin));
+        db->execSqlSync(
+            "delete from user_system_role where user_id = $1 and role_id = $2",
+            userId, roleId);
+    }
+    return true;
+}
+
 // 谁能把别人设成团队管理员：厂商超管，或该团队的 owner
 bool CanGrantTeamAdmin(const std::shared_ptr<drogon::orm::DbClient> &db, int operatorUserId, int teamId)
 {
@@ -156,7 +205,9 @@ Json::Value LoadFeatureAuth(const std::shared_ptr<drogon::orm::DbClient> &db, in
     return auth;
 }
 
-Json::Value LoadTeamMembers(const std::shared_ptr<drogon::orm::DbClient> &db, int teamId)
+Json::Value LoadTeamMembers(const std::shared_ptr<drogon::orm::DbClient> &db,
+                            int teamId,
+                            bool isVendor)
 {
     auto rows = db->execSqlSync(
         "select tm.id as member_id, u.id, u.name, u.nick_name, r.code as role_code, r.name as role_name, "
@@ -187,6 +238,25 @@ Json::Value LoadTeamMembers(const std::shared_ptr<drogon::orm::DbClient> &db, in
         rolesByMember[rr["member_id"].as<int>()].append(role);
     }
 
+    // 厂商团队把系统角色 super_admin 也显示出来（privilege Admin 位或 user_system_role 都算）
+    std::map<int, bool> superAdmins;
+    if (isVendor)
+    {
+        auto adminRows = db->execSqlSync(
+            "select u.id, "
+            "       ((coalesce(u.privilege, 0) & $2::int) <> 0 "
+            "        or exists(select 1 from user_system_role usr "
+            "                   join role sr on sr.id = usr.role_id "
+            "                   where usr.user_id = u.id and sr.code = 'super_admin')) as is_super_admin "
+            "from \"user\" u "
+            "where u.id in (select tm.user_id from team_member tm where tm.team_id = $1)",
+            teamId, static_cast<int>(UserPrivileges::Admin));
+        for (const auto &row : adminRows)
+        {
+            superAdmins[row["id"].as<int>()] = row["is_super_admin"].as<bool>();
+        }
+    }
+
     Json::Value members(Json::arrayValue);
     for (const auto &r : rows)
     {
@@ -201,10 +271,25 @@ Json::Value LoadTeamMembers(const std::shared_ptr<drogon::orm::DbClient> &db, in
         m["createdAt"] = r["created_at"].as<std::string>();
 
         const int memberId = r["member_id"].as<int>();
+        const int userId = r["id"].as<int>();
+
+        Json::Value roles(Json::arrayValue);
+        auto superIt = superAdmins.find(userId);
+        if (superIt != superAdmins.end() && superIt->second)
+        {
+            Json::Value role;
+            role["code"] = "super_admin";
+            role["name"] = "超级管理员";
+            roles.append(role);
+        }
+
         auto it = rolesByMember.find(memberId);
         if (it != rolesByMember.end())
         {
-            m["roles"] = it->second;
+            for (const auto &role : it->second)
+            {
+                roles.append(role);
+            }
         }
         else
         {
@@ -212,8 +297,9 @@ Json::Value LoadTeamMembers(const std::shared_ptr<drogon::orm::DbClient> &db, in
             Json::Value role;
             role["code"] = r["role_code"].as<std::string>();
             role["name"] = r["role_name"].as<std::string>();
-            m["roles"].append(role);
+            roles.append(role);
         }
+        m["roles"] = roles;
         members.append(m);
     }
     return members;
@@ -338,7 +424,7 @@ HttpResult TeamService::GetTeam(int userId)
         }
 
         auto teamRows = db->execSqlSync(
-            "select id, name, status, owner_user_id from team where id = $1", teamId);
+            "select id, name, status, owner_user_id, is_vendor from team where id = $1", teamId);
         if (teamRows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_TeamNotFound);
@@ -351,11 +437,14 @@ HttpResult TeamService::GetTeam(int userId)
         result.jsondata["team"]["roleCode"] = roleCode;
         result.jsondata["team"]["ownerUserId"] =
             teamRows[0]["owner_user_id"].isNull() ? 0 : teamRows[0]["owner_user_id"].as<int>();
-        // 客户端据此决定是否把「团队管理员」作为可勾选角色
+        const bool isVendor = teamRows[0]["is_vendor"].as<bool>();
+        result.jsondata["isVendor"] = isVendor;
+        // 客户端据此决定是否把「团队管理员」/「超级管理员」作为可勾选角色
         result.jsondata["canGrantTeamAdmin"] = CanGrantTeamAdmin(db, userId, teamId);
+        result.jsondata["canGrantSuperAdmin"] = isVendor && IsSuperAdmin(db, userId);
 
         result.jsondata["subscription"] = LoadSubscription(db, teamId);
-        result.jsondata["members"] = LoadTeamMembers(db, teamId);
+        result.jsondata["members"] = LoadTeamMembers(db, teamId, isVendor);
 
         result.setResult(ApiErrorCode::ApiError_Success, "success");
     }
@@ -371,6 +460,7 @@ HttpResult TeamService::CreateMember(int operatorUserId,
                                      const std::string &userName,
                                      const std::string &password,
                                      const std::vector<std::string> &roleCodes,
+                                     const std::vector<std::string> &systemRoleCodes,
                                      const std::string &nickName)
 {
     HttpResult result;
@@ -381,7 +471,7 @@ HttpResult TeamService::CreateMember(int operatorUserId,
     }
     if (roleCodes.empty())
     {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "至少选择一个角色");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "至少选择一个团队角色");
         return result;
     }
 
@@ -401,11 +491,37 @@ HttpResult TeamService::CreateMember(int operatorUserId,
             return result;
         }
 
-        auto teamRows = db->execSqlSync("select status from team where id = $1", teamId);
+        auto teamRows = db->execSqlSync("select status, is_vendor from team where id = $1", teamId);
         if (teamRows.empty() || teamRows[0]["status"].as<int>() != 1)
         {
             result.setResult(ApiErrorCode::ApiError_InvalidOperation, "团队已停用，不能新建成员");
             return result;
+        }
+        const bool isVendor = teamRows[0]["is_vendor"].as<bool>();
+
+        const bool grantSuper = !systemRoleCodes.empty();
+        if (grantSuper)
+        {
+            for (const auto &code : systemRoleCodes)
+            {
+                if (code != "super_admin")
+                {
+                    result.setResult(ApiErrorCode::ApiError_InvalidRoleCode, "不支持的系统角色");
+                    return result;
+                }
+            }
+            if (!isVendor)
+            {
+                result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
+                                 "只有厂商团队可以配置超级管理员");
+                return result;
+            }
+            if (!IsSuperAdmin(db, operatorUserId))
+            {
+                result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
+                                 "只有超级管理员可以授予超级管理员");
+                return result;
+            }
         }
 
         std::vector<int> roleIds;
@@ -447,6 +563,26 @@ HttpResult TeamService::CreateMember(int operatorUserId,
         mapperUser.insert(newUser);
 
         const int newUserId = newUser.getValueOfId();
+
+        // 先授予系统角色（失败时还没有 team_member 关联，删用户更容易回滚）
+        if (grantSuper)
+        {
+            std::string saErr;
+            if (!SetUserSuperAdmin(db, newUserId, true, saErr))
+            {
+                LOG_ERROR << "CreateMember 授予超级管理员失败: " << saErr;
+                try
+                {
+                    mapperUser.deleteOne(newUser);
+                }
+                catch (...)
+                {
+                }
+                result.setResult(ApiErrorCode::ApiError_InternalError, saErr);
+                return result;
+            }
+        }
+
         try
         {
             db->execSqlSync("update \"user\" set must_change_pwd = true where id = $1", newUserId);
@@ -493,12 +629,14 @@ HttpResult TeamService::CreateMember(int operatorUserId,
 
 HttpResult TeamService::UpdateMemberRoles(int operatorUserId,
                                           int memberUserId,
-                                          const std::vector<std::string> &roleCodes)
+                                          const std::vector<std::string> &roleCodes,
+                                          const std::vector<std::string> &systemRoleCodes,
+                                          bool updateSystemRoles)
 {
     HttpResult result;
     if (roleCodes.empty())
     {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "至少保留一个角色");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "至少保留一个团队角色");
         return result;
     }
 
@@ -543,14 +681,50 @@ HttpResult TeamService::UpdateMemberRoles(int operatorUserId,
             return result;
         }
 
-        // 所有者必须保留 team_admin：否则团队会失去唯一的管理员
-        auto teamRows = db->execSqlSync("select owner_user_id from team where id = $1", teamId);
+        auto teamRows = db->execSqlSync(
+            "select owner_user_id, is_vendor from team where id = $1", teamId);
         const bool isOwner = !teamRows.empty() && !teamRows[0]["owner_user_id"].isNull() &&
                              teamRows[0]["owner_user_id"].as<int>() == memberUserId;
         if (isOwner && !grantAdmin)
         {
             result.setResult(ApiErrorCode::ApiError_TeamOwnerProtected);
             return result;
+        }
+
+        // systemRoleCodes 缺省表示老客户端：不改系统角色；显式空数组在厂商团队表示回收超管，
+        // 在非厂商团队则是无操作（新客户端对所有团队都会带这个字段）。
+        bool grantSuper = false;
+        bool changeSystemRole = false;
+        if (updateSystemRoles)
+        {
+            for (const auto &code : systemRoleCodes)
+            {
+                if (code != "super_admin")
+                {
+                    result.setResult(ApiErrorCode::ApiError_InvalidRoleCode, "不支持的系统角色");
+                    return result;
+                }
+            }
+            grantSuper = std::find(systemRoleCodes.begin(), systemRoleCodes.end(), "super_admin") !=
+                         systemRoleCodes.end();
+            const bool isVendor = !teamRows.empty() && teamRows[0]["is_vendor"].as<bool>();
+            if (grantSuper && !isVendor)
+            {
+                result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
+                                 "只有厂商团队可以配置超级管理员");
+                return result;
+            }
+            if (isVendor)
+            {
+                const bool targetIsSuper = IsSuperAdmin(db, memberUserId);
+                changeSystemRole = (grantSuper != targetIsSuper);
+                if (changeSystemRole && !IsSuperAdmin(db, operatorUserId))
+                {
+                    result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
+                                     "只有超级管理员可以配置超级管理员");
+                    return result;
+                }
+            }
         }
 
         // 只做差集增删（不是先清空再插入）：中途失败也不会把成员已有角色清空
@@ -580,10 +754,27 @@ HttpResult TeamService::UpdateMemberRoles(int operatorUserId,
         }
         db->execSqlSync("update team_member set role_id = $2 where id = $1", memberId, roleIds[0]);
 
+        if (changeSystemRole)
+        {
+            std::string saErr;
+            if (!SetUserSuperAdmin(db, memberUserId, grantSuper, saErr))
+            {
+                result.setResult(ApiErrorCode::ApiError_InternalError, saErr);
+                return result;
+            }
+        }
+
         Json::Value roles(Json::arrayValue);
         for (const auto &code : roleCodes)
         {
             roles.append(code);
+        }
+        if (updateSystemRoles)
+        {
+            for (const auto &code : systemRoleCodes)
+            {
+                roles.append(code);
+            }
         }
         result.jsondata["roles"] = roles;
         result.setResult(ApiErrorCode::ApiError_Success, "角色已更新");
@@ -807,7 +998,7 @@ HttpResult TeamService::AdminGetTeam(int teamId)
     try
     {
         auto teamRows = db->execSqlSync(
-            "select t.id, t.name, t.status, t.owner_user_id, u.name as owner_name, "
+            "select t.id, t.name, t.status, t.owner_user_id, t.is_vendor, u.name as owner_name, "
             "       to_char(t.created_at, 'YYYY-MM-DD') as created_at "
             "from team t join \"user\" u on u.id = t.owner_user_id "
             "where t.id = $1",
@@ -825,10 +1016,12 @@ HttpResult TeamService::AdminGetTeam(int teamId)
         result.jsondata["team"]["ownerUserId"] = row["owner_user_id"].as<int>();
         result.jsondata["team"]["ownerName"] = row["owner_name"].as<std::string>();
         result.jsondata["team"]["createdAt"] = row["created_at"].as<std::string>();
+        const bool isVendor = row["is_vendor"].as<bool>();
+        result.jsondata["team"]["isVendor"] = isVendor;
 
         result.jsondata["subscription"] = LoadSubscription(db, teamId);
         result.jsondata["featureAuth"] = LoadFeatureAuth(db, teamId);
-        result.jsondata["members"] = LoadTeamMembers(db, teamId);
+        result.jsondata["members"] = LoadTeamMembers(db, teamId, isVendor);
         result.jsondata["memberCount"] = static_cast<Json::UInt>(result.jsondata["members"].size());
 
         result.setResult(ApiErrorCode::ApiError_Success, "success");
@@ -977,7 +1170,9 @@ HttpResult TeamService::AdminUpdateMember(int adminUserId,
                 teamId, memberUserId, status);
         }
 
-        Json::Value members = LoadTeamMembers(db, teamId);
+        auto vendorRows = db->execSqlSync("select is_vendor from team where id = $1", teamId);
+        const bool isVendor = !vendorRows.empty() && vendorRows[0]["is_vendor"].as<bool>();
+        Json::Value members = LoadTeamMembers(db, teamId, isVendor);
         for (const auto &m : members)
         {
             if (m["userId"].asInt() == memberUserId)
