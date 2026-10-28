@@ -349,6 +349,7 @@ HttpResult UpdateService::CheckUpdate(int userId,
 
         auto latestRows = db->execSqlSync(
             "select id, version, build_no, file_name, size_bytes, sha256, notes, "
+            "       coalesce(min_version, '') as min_version, "
             "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
             "from installer_version where status = 1 order by id desc limit 1");
 
@@ -400,6 +401,15 @@ HttpResult UpdateService::CheckUpdate(int userId,
         }
 
         const auto &row = latestRows[0];
+        // 最低版本：客户端太旧就不给这一版，必须先升到中间版本再继续
+        const std::string minVersion = row["min_version"].as<std::string>();
+        if (!minVersion.empty() && VersionGreater(minVersion, currentVersion))
+        {
+            result.jsondata["reason"] = "below_min_version";
+            result.jsondata["minVersion"] = minVersion;
+            result.setResult(ApiErrorCode::ApiError_Success, "current version is below minVersion");
+            return result;
+        }
         result.jsondata["hasUpdate"] = true;
         result.jsondata["reason"] = "ok";
         result.jsondata["version"] = latestVersion;
@@ -1107,6 +1117,66 @@ HttpResult UpdateService::AdminOfflineInstaller(int installerId)
         LOG_ERROR << "AdminOfflineInstaller 失败: " << e.base().what();
         result.setResult(ApiErrorCode::ApiError_DatabaseError);
     }
+    return result;
+}
+
+HttpResult UpdateService::AdminDeleteInstaller(int installerId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    std::string filePath;
+    std::string version;
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select version, status, coalesce(file_path, '') as file_path "
+            "from installer_version where id = $1",
+            installerId);
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+            return result;
+        }
+        version = rows[0]["version"].as<std::string>();
+        filePath = rows[0]["file_path"].as<std::string>();
+
+        // 已发布的版本先下线再删，避免正在检查更新的客户端拿到一个不存在的下载
+        if (rows[0]["status"].as<int>() == 1)
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "已发布的版本请先下线再删除");
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminDeleteInstaller 查询失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+
+    try
+    {
+        // 先删库记录：删不掉就保留文件，避免出现"文件没了记录还在"
+        db->execSqlSync("delete from installer_version where id = $1", installerId);
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminDeleteInstaller 删除记录失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+
+    std::error_code ec;
+    if (!filePath.empty())
+    {
+        std::filesystem::remove(filePath, ec);
+    }
+    const std::filesystem::path dir = std::filesystem::path(StoreDir()) / version;
+    std::filesystem::remove_all(dir, ec);
+
+    result.jsondata["id"] = installerId;
+    result.jsondata["version"] = version;
+    result.setResult(ApiErrorCode::ApiError_Success, "安装包已删除");
     return result;
 }
 

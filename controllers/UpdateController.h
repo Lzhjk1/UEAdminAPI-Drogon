@@ -19,6 +19,7 @@ public:
     ADD_METHOD_TO(UpdateController::uploadComplete, "/api/admin/installer/upload/{1}/complete", Post, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::publish, "/api/admin/installer/{1}/publish", Post, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::offline, "/api/admin/installer/{1}/offline", Post, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(UpdateController::remove, "/api/admin/installer/{1}", Delete, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::update, "/api/admin/installer/{1}", Patch, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::list, "/api/admin/installer/list", Get, "AuthFilter", "AdminFilter");
 
@@ -34,6 +35,7 @@ public:
     Task<HttpResponsePtr> uploadComplete(HttpRequestPtr req, std::string uploadId);
     Task<HttpResponsePtr> publish(HttpRequestPtr req, std::string installerId);
     Task<HttpResponsePtr> offline(HttpRequestPtr req, std::string installerId);
+    Task<HttpResponsePtr> remove(HttpRequestPtr req, std::string installerId);
     Task<HttpResponsePtr> update(HttpRequestPtr req, std::string installerId);
     Task<HttpResponsePtr> list(HttpRequestPtr req);
     Task<HttpResponsePtr> adminPage(HttpRequestPtr req);

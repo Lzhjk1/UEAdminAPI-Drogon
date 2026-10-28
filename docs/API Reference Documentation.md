@@ -1100,8 +1100,11 @@ GitLab 相关接口目前使用独立的响应格式：
 } }
 ```
 - `reason` 取值：`ok` / `not_paid` / `expired`（曾付费但已过期）/ `no_auth`（未开通云端更新授权）/
-  `no_package`（没有已发布安装包）/ `no_update`（已是最新）。除 `ok` 外一律 `hasUpdate=false`。
+  `no_package`（没有已发布安装包）/ `no_update`（已是最新）/ `below_min_version`（低于该包的最低版本要求）。
+  除 `ok` 外一律 `hasUpdate=false`；`below_min_version` 时额外返回 `minVersion`。
 - 版本比较按 `a.b.c` 数字逐段比较。
+- **最低版本**：已发布包若配了 `minVersion`，客户端 `currentVersion` 低于它时不返回本更新，
+  必须先升级到中间版本；留空表示不限。
 
 ### 11.2 下载安装包
 - **URL**: `/api/update/download/{version}`
@@ -1116,6 +1119,7 @@ GitLab 相关接口目前使用独立的响应格式：
 | `PATCH /api/admin/installer/{id}` | 编辑版本信息：Body `{ "version": "...", "buildNo": 0, "notes": "", "minVersion": "" }`（四项整体覆盖，`version` 必填）。只改库里的元数据，磁盘文件与 `file_path` 不动，下载仍按该记录取文件 |
 | `POST /api/admin/installer/{id}/publish` | 发布：把该条置为已发布(1)，**其余已发布版本自动转为下线(2)**，保证同一时刻只有一个现行版本 |
 | `POST /api/admin/installer/{id}/offline` | 下线：状态置为 2（记录保留，不再对外提供更新） |
+| `DELETE /api/admin/installer/{id}` | 删除安装包：删库记录 + 磁盘文件/版本目录（不可恢复）。已发布(状态 1)时返回 `-8xx` 要求先下线；重复删除 → `-806` |
 | `GET /api/admin/installer/list` | 列出全部安装包（含草稿/下线），字段：id/version/buildNo(64 位)/fileName/sizeBytes/sha256/notes/minVersion/status/createdAt/publishedAt |
 - 状态：`0` 草稿 / `1` 已发布 / `2` 下线。
 - `buildNo` 为 64 位整数；上传/编辑接口既接受 JSON number，也接受数字字符串。

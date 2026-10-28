@@ -322,6 +322,19 @@ Task<HttpResponsePtr> UpdateController::offline(HttpRequestPtr req, std::string 
     co_return JsonResponse(UpdateService::AdminOfflineInstaller(id));
 }
 
+Task<HttpResponsePtr> UpdateController::remove(HttpRequestPtr req, std::string installerId)
+{
+    (void)req;
+    HttpResult result;
+    const int id = ParseId(installerId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+        co_return JsonResponse(result);
+    }
+    co_return JsonResponse(UpdateService::AdminDeleteInstaller(id));
+}
+
 Task<HttpResponsePtr> UpdateController::update(HttpRequestPtr req, std::string installerId)
 {
     HttpResult result;

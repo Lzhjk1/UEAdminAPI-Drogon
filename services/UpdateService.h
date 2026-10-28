@@ -60,6 +60,9 @@ public:
     // 厂商：下线（保留记录，不再对外提供更新）
     static utils::HttpResult AdminOfflineInstaller(int installerId);
 
+    // 厂商：删除安装包（仅限已下线；删库记录 + 磁盘文件/目录，不可恢复）
+    static utils::HttpResult AdminDeleteInstaller(int installerId);
+
     // 厂商：安装包列表
     static utils::HttpResult AdminListInstallers();
 
