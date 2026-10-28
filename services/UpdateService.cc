@@ -64,6 +64,65 @@ bool VersionGreater(const std::string &lhs, const std::string &rhs)
     return ParseVersion(lhs) > ParseVersion(rhs);
 }
 
+// patch 段是 8 位日期（YYYYMMDD）的版本，形如 11.7.20261020
+bool ParseDatePatch(const std::string &version, int &dateValue)
+{
+    const std::vector<int> parts = ParseVersion(version);
+    if (parts.size() < 3)
+    {
+        return false;
+    }
+    const int patch = parts[2];
+    if (patch < 19700101 || patch > 21001231)
+    {
+        return false;
+    }
+    const int month = (patch / 100) % 100;
+    const int day = patch % 100;
+    if (month < 1 || month > 12 || day < 1 || day > 31)
+    {
+        return false;
+    }
+    dateValue = patch;
+    return true;
+}
+
+// 发包日期（YYYYMMDD）：优先用发布时间，取不到再用 buildNo 前 8 位
+int PackageDateValue(const std::string &publishedAt, long long buildNo)
+{
+    int year = 0, month = 0, day = 0;
+    if (publishedAt.size() >= 10 &&
+        std::sscanf(publishedAt.c_str(), "%d-%d-%d", &year, &month, &day) == 3 &&
+        year > 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31)
+    {
+        return year * 10000 + month * 100 + day;
+    }
+    if (buildNo >= 197001010000LL)
+    {
+        return static_cast<int>(buildNo / 10000);
+    }
+    return 0;
+}
+
+// 兼容旧编号：老安装的 patch 是构建日期（11.7.20261020），新包改用递增序号（11.7.122），
+// 数字段比较会认为"日期 > 序号"。这种情况下改按"安装日期 vs 发包日期"判断。
+bool VersionNewerByBuildDate(const std::string &latestVersion, const std::string &currentVersion,
+                             const std::string &latestPublishedAt, long long latestBuildNo)
+{
+    int currentDate = 0;
+    int latestDate = 0;
+    if (!ParseDatePatch(currentVersion, currentDate))
+    {
+        return false;
+    }
+    if (ParseDatePatch(latestVersion, latestDate))
+    {
+        return false; // 两边都是日期式，交给普通比较
+    }
+    const int packageDate = PackageDateValue(latestPublishedAt, latestBuildNo);
+    return packageDate > currentDate;
+}
+
 std::string Sha256Hex(std::string_view data)
 {
     unsigned char digest[SHA256_DIGEST_LENGTH];
@@ -394,7 +453,12 @@ HttpResult UpdateService::CheckUpdate(int userId,
             result.setResult(ApiErrorCode::ApiError_Success, "no installer released");
             return result;
         }
-        if (!VersionGreater(latestVersion, currentVersion))
+        const long long latestBuildNo =
+            latestRows[0]["build_no"].isNull() ? 0 : latestRows[0]["build_no"].as<int64_t>();
+        const std::string latestPublishedAt =
+            latestRows[0]["published_at"].isNull() ? "" : latestRows[0]["published_at"].as<std::string>();
+        if (!VersionGreater(latestVersion, currentVersion) &&
+            !VersionNewerByBuildDate(latestVersion, currentVersion, latestPublishedAt, latestBuildNo))
         {
             result.setResult(ApiErrorCode::ApiError_Success, "already latest");
             return result;
