@@ -317,8 +317,8 @@ HttpResult FeedbackService::AdminList(int status, int page, int size)
             "       coalesce((select image_mime from user_feedback_image i "
             "                 where i.feedback_id = f.id order by seq limit 1), '') as image_mime, "
             "       f.status, "
-            "       to_char(f.created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at, "
-            "       coalesce(to_char(f.handled_at, 'YYYY-MM-DD HH24:MI:SS'), '') as handled_at "
+            "       to_char(f.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
+            "       coalesce(to_char(f.handled_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS'), '') as handled_at "
             "from user_feedback f "
             "where ($1::int < 0 or f.status = $1::int) "
             "order by f.id desc limit $2::int offset $3::int",

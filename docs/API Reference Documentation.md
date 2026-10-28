@@ -8,6 +8,8 @@
 - **协议**: HTTP/HTTPS
 - **数据格式**: JSON
 - **字符编码**: UTF-8
+- **时间字段**: 形如 `2026-10-28 10:33:03`，字符串不带时区后缀，内容已经是**北京时间（Asia/Shanghai）**。
+  服务端库里是 `timestamptz`（UTC 存储），查询时用 `AT TIME ZONE 'Asia/Shanghai'` 转换后返回，客户端不要再二次加减时区。
 
 ### 1.2 认证方式 (Authentication)
 大多数接口需要鉴权，鉴权方式为在 HTTP Header 中添加 `Authorization` 字段。

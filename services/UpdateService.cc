@@ -349,7 +349,7 @@ HttpResult UpdateService::CheckUpdate(int userId,
 
         auto latestRows = db->execSqlSync(
             "select id, version, build_no, file_name, size_bytes, sha256, notes, "
-            "       to_char(published_at, 'YYYY-MM-DD HH24:MI:SS') as published_at "
+            "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
             "from installer_version where status = 1 order by id desc limit 1");
 
         std::string latestVersion;
@@ -1118,8 +1118,8 @@ HttpResult UpdateService::AdminListInstallers()
     {
         auto rows = db->execSqlSync(
             "select id, version, build_no, file_name, size_bytes, sha256, notes, min_version, status, "
-            "       to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at, "
-            "       to_char(published_at, 'YYYY-MM-DD HH24:MI:SS') as published_at "
+            "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
+            "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
             "from installer_version order by id desc");
 
         Json::Value items(Json::arrayValue);

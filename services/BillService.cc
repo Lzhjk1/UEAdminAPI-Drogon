@@ -83,7 +83,7 @@ HttpResult BillService::CreateOrder(int userId, int64_t amountCents, int channel
         {
             auto exist = db->execSqlSync(
                 "select order_no, amount_cents, channel::int as channel, status::int as status, "
-                "       to_char(expire_at, 'YYYY-MM-DD HH24:MI:SS') as expire_at "
+                "       to_char(expire_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as expire_at "
                 "from payment_order where user_id = $1 and idem_key = $2",
                 userId, idemKey);
             if (!exist.empty())
@@ -108,7 +108,7 @@ HttpResult BillService::CreateOrder(int userId, int64_t amountCents, int channel
         auto rows = db->execSqlSync(
             "insert into payment_order (order_no, user_id, amount_cents, channel, status, qr_content, idem_key, expire_at) "
             "values ($1, $2, $3, $4::int, 0, $5, $6, now() + ($7::int * interval '1 minute')) "
-            "returning to_char(expire_at, 'YYYY-MM-DD HH24:MI:SS') as expire_at",
+            "returning to_char(expire_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as expire_at",
             orderNo, userId, amountCents, channel, qrContent, idemValue, std::to_string(kOrderExpireMinutes));
 
         result.jsondata["orderNo"] = orderNo;
@@ -136,8 +136,8 @@ HttpResult BillService::GetOrder(int userId, const std::string &orderNo)
     {
         auto rows = db->execSqlSync(
             "select order_no, amount_cents, channel::int as channel, status::int as status, "
-            "       to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at, "
-            "       to_char(paid_at, 'YYYY-MM-DD HH24:MI:SS') as paid_at "
+            "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
+            "       to_char(paid_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as paid_at "
             "from payment_order where order_no = $1 and user_id = $2",
             orderNo, userId);
         if (rows.empty())
@@ -196,7 +196,7 @@ HttpResult BillService::ListTransactions(int userId, int type, int page, int siz
 
         auto rows = db->execSqlSync(
             "select id, type::int as type, amount_cents, balance_after, remark, "
-            "       to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at "
+            "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at "
             "from balance_txn where user_id = $1 and ($2::int = 0 or type::int = $2::int) "
             "order by id desc limit $3::int offset $4::int",
             userId, type, size, (page - 1) * size);

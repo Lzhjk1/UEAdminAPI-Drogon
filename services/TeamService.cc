@@ -212,7 +212,7 @@ Json::Value LoadTeamMembers(const std::shared_ptr<drogon::orm::DbClient> &db,
     auto rows = db->execSqlSync(
         "select tm.id as member_id, u.id, u.name, u.nick_name, r.code as role_code, r.name as role_name, "
         "       tm.status, u.must_change_pwd, "
-        "       to_char(tm.created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at "
+        "       to_char(tm.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at "
         "from team_member tm "
         "join \"user\" u on u.id = tm.user_id "
         "join role r on r.id = tm.role_id "
@@ -850,7 +850,7 @@ HttpResult TeamService::AdminListTeams(bool paidOnly, bool expiredOnly)
         }
 
         auto rows = db->execSqlSync(
-            "select t.id, t.name, t.status, to_char(t.created_at, 'YYYY-MM-DD') as created_at, "
+            "select t.id, t.name, t.status, to_char(t.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') as created_at, "
             "       to_char(s.start_date, 'YYYY-MM-DD') as sub_start, "
             "       to_char(s.end_date, 'YYYY-MM-DD') as sub_end, "
             "       (s.end_date is not null and s.end_date >= current_date) as paid, "
@@ -999,7 +999,7 @@ HttpResult TeamService::AdminGetTeam(int teamId)
     {
         auto teamRows = db->execSqlSync(
             "select t.id, t.name, t.status, t.owner_user_id, t.is_vendor, u.name as owner_name, "
-            "       to_char(t.created_at, 'YYYY-MM-DD') as created_at "
+            "       to_char(t.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') as created_at "
             "from team t join \"user\" u on u.id = t.owner_user_id "
             "where t.id = $1",
             teamId);
