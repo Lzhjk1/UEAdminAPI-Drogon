@@ -292,11 +292,13 @@
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
-| **/api/bill/order** (POST) | 0 | `ApiError_Success` | 返回订单与二维码地址 |
+| **/api/bill/order** (POST) | 0 | `ApiError_Success` | 返回订单、二维码地址或支付宝收银台 `payUrl` |
 | | -903 | `ApiError_AmountInvalid` | 金额不在 1 ~ 10000000 分 |
 | | -904 | `ApiError_PayChannelUnsupported` | 渠道不是 1/2/9 |
+| | -906 | `ApiError_PayProviderError` | 渠道未配置或渠道下单失败（信息含原因） |
+| | -902 | `ApiError_OrderStateInvalid` | 幂等键对应订单已关闭/已过期，需重新下单 |
 | | -101 | `ApiError_InvalidJsonFormat` | 请求体非 JSON |
-| **/api/bill/order/{orderNo}** (GET) | 0 | `ApiError_Success` | 订单状态与余额 |
+| **/api/bill/order/{orderNo}** (GET) | 0 | `ApiError_Success` | 订单状态与余额；待支付时会向渠道主动查单（4 秒节流） |
 | | -901 | `ApiError_OrderNotFound` | 订单不存在或不属于当前用户 |
 | **/api/bill/transactions** (GET) | 0 | `ApiError_Success` | 余额流水 |
 | | -104 | `ApiError_DatabaseError` | 数据库错误 |
@@ -304,6 +306,21 @@
 | | -901 | `ApiError_OrderNotFound` | 订单不存在 |
 | | -902 | `ApiError_OrderStateInvalid` | 订单已关闭 |
 | | -905 | `ApiError_MockPayDisabled` | 模拟支付未开启（非 9 渠道且 TestMode 关闭） |
+| **/api/bill/order/{orderNo}/refund** (POST) | 0 | `ApiError_Success` | 退款申请已提交 |
+| | -901 | `ApiError_OrderNotFound` | 订单不存在或不属于当前用户 |
+| | -913 | `ApiError_RefundNotAllowed` | 未支付/超期/已有有效退款申请 |
+| | -911 | `ApiError_BalanceInsufficient` | 余额不足以整单退款 |
+| **/api/bill/orders** (GET) | 0 | `ApiError_Success` | 已支付订单 + 最近一条退款申请 |
+| **/api/admin/refunds** (GET) 及 `/{id}`、`approve`、`reject`、`sync`、`rollback` | 0 | `ApiError_Success` | 仅超级管理员（`SuperAdminFilter`） |
+| | -807 | `ApiError_AdminPrivilegeRequired` | 非超级管理员（HTTP 403） |
+| | -909 | `ApiError_RefundNotFound` | 退款申请不存在 |
+| | -910 | `ApiError_RefundStateInvalid` | 当前状态不允许该操作 |
+| | -911 | `ApiError_BalanceInsufficient` | 用户余额不足，无法整单退款 |
+| | -912 | `ApiError_RefundProviderError` | 渠道退款失败（已自动冲正余额） |
+| **/api/bill/notify/alipay** (POST) | 200 | - | 验签通过返回纯文本 `success`，否则 `failure`（支付宝会重试） |
+| **/api/bill/notify/wechat** (POST) | 200 | - | 验签/解密/入账成功返回 `{"code":"SUCCESS"}`，失败 400 + `FAIL`（微信会重试） |
+
+> `-906` 为本轮支付接入新增；回调验签失败不返回业务错误码，只落 `payment_callback_log` 并按渠道要求返回 `failure` / `FAIL`。
 
 
 ### 11. RBAC 模块 (-811 ~ -816)

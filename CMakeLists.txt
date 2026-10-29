@@ -32,7 +32,9 @@ add_executable(${PROJECT_NAME} main.cc)
 # 查找依赖
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp CONFIG REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE Drogon::Drogon jwt-cpp::jwt-cpp)
+find_package(ZLIB REQUIRED)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE Drogon::Drogon jwt-cpp::jwt-cpp ZLIB::ZLIB OpenSSL::Crypto)
 
 # 检查C++标准
 if (CMAKE_CXX_STANDARD LESS 17)
@@ -51,6 +53,7 @@ aux_source_directory(plugins PLUGIN_SRC)
 aux_source_directory(models MODEL_SRC)
 aux_source_directory(utils UTILS_SRC)
 aux_source_directory(utils/MFA MFA_SRC)
+aux_source_directory(utils/qrcode QRCODE_SRC)
 
 # 收集对应目录下的头文件（只包含源文件目录下的.h和.hpp）
 file(GLOB CTL_HDRS "controllers/*.h" "controllers/*.hpp")
@@ -60,6 +63,7 @@ file(GLOB PLUGIN_HDRS "plugins/*.h" "plugins/*.hpp")
 file(GLOB MODEL_HDRS "models/*.h" "models/*.hpp")
 file(GLOB UTILS_HDRS "utils/*.h" "utils/*.hpp")
 file(GLOB MFA_HDRS "utils/MFA/*.h" "utils/MFA/*.hpp")
+file(GLOB QRCODE_HDRS "utils/qrcode/*.h" "utils/qrcode/*.hpp")
 file(GLOB ROOT_HDRS "*.h" "*.hpp")  # 根目录下的头文件（如main.h等）
 
 # 源文件分组（头文件会自动加入对应分组，与源文件放在一起）
@@ -70,6 +74,7 @@ source_group("plugins" FILES ${PLUGIN_SRC} ${PLUGIN_HDRS})
 source_group("models" FILES ${MODEL_SRC} ${MODEL_HDRS})
 source_group("utils" FILES ${UTILS_SRC} ${UTILS_HDRS})
 source_group("utils/MFA" FILES ${MFA_SRC} ${MFA_HDRS})
+source_group("utils/qrcode" FILES ${QRCODE_SRC} ${QRCODE_HDRS})
 source_group("" FILES main.cc ${ROOT_HDRS})  # 根目录文件（主文件+根目录头文件）
 
 # 禁用picojson
@@ -94,6 +99,7 @@ target_sources(${PROJECT_NAME}
                ${MODEL_SRC} ${MODEL_HDRS}
                ${UTILS_SRC} ${UTILS_HDRS}
                ${MFA_SRC} ${MFA_HDRS}
+               ${QRCODE_SRC} ${QRCODE_HDRS}
                main.cc ${ROOT_HDRS})
 
 # 动态加载视图（按需启用）

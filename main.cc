@@ -17,6 +17,7 @@
 #include "services/SystemService.h"
 #include "services/ActionTokenService.h"
 #include "utils/TestModeConfig.h"
+#include "utils/PaymentConfig.h"
 
 #include "controllers/OAuth2Controller.h"
 
@@ -137,6 +138,8 @@ int main() {
         LOG_INFO << "启动成功, 开始初始化插件与服务";
         // 初始化测试模式配置 (最先初始化, 以便后续服务读取)
         TestModeConfig::Init(drogon::app().getCustomConfig());
+        // 初始化支付渠道配置（支付宝 / 微信支付），凭据缺失时渠道不可用
+        UEAdminAPI::Services::PaymentConfig::Init(drogon::app().getCustomConfig());
         // 初始化单例服务
         auto smtpPlugin = drogon::app().getPlugin<SMTPMail>();
         AuthService::Init(drogon::app().getCustomConfig());

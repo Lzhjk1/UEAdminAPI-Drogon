@@ -85,7 +85,14 @@
     X(ApiError_OrderStateInvalid, -902, "订单状态不允许该操作 ") \
     X(ApiError_AmountInvalid, -903, "金额不合法 ") \
     X(ApiError_PayChannelUnsupported, -904, "不支持的支付渠道 ") \
-    X(ApiError_MockPayDisabled, -905, "模拟支付未开启 ")
+    X(ApiError_MockPayDisabled, -905, "模拟支付未开启 ") \
+    X(ApiError_PayProviderError, -906, "支付渠道下单失败 ") \
+    /* --- Refund Errors (-91x) --- */ \
+    X(ApiError_RefundNotFound, -909, "退款申请不存在 ") \
+    X(ApiError_RefundStateInvalid, -910, "退款状态不允许该操作 ") \
+    X(ApiError_BalanceInsufficient, -911, "余额不足，无法退款 ") \
+    X(ApiError_RefundProviderError, -912, "渠道退款失败 ") \
+    X(ApiError_RefundNotAllowed, -913, "该订单不符合退款条件 ")
 
 namespace UEAdminAPI {
 

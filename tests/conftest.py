@@ -300,6 +300,7 @@ def seeded_org(test_domain: str):
     for sql in (
         f"delete from user_system_role where {user_filter}",
         f"delete from balance_txn where {user_filter}",
+        f"delete from payment_refund where {user_filter}",
         f"delete from payment_order where {user_filter}",
         f"delete from user_balance where {user_filter}",
         f"delete from team_member where {user_filter}",

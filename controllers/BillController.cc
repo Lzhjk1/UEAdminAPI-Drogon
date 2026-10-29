@@ -7,6 +7,7 @@
 #include <drogon/utils/Utilities.h>
 
 #include <cstdlib>
+#include <map>
 #include <string>
 
 using namespace drogon;
@@ -49,7 +50,17 @@ int ToInt(const std::string &value, int fallback)
     }
 }
 
-// 240x240 的二维码占位图（模拟支付阶段使用；真实接入后改由支付渠道返回的 code_url 渲染）
+std::map<std::string, std::string> RequestHeaders(const HttpRequestPtr &req)
+{
+    std::map<std::string, std::string> headers;
+    for (const auto &[key, value] : req->headers())
+    {
+        headers[key] = value;
+    }
+    return headers;
+}
+
+// 240x240 的二维码占位图（模拟支付 / 订单尚未生成渠道二维码时使用）
 const char *kQrPlaceholderBase64 =
     "iVBORw0KGgoAAAANSUhEUgAAAPAAAADwCAAAAAAbPrZOAAABzElEQVR42u3bQRLCMAgAwP7/03p3xikkoYa43Fq1sHooKfF6/VlcwMDAwMDAwMDAwMDAwMDAwMBHgq/B+HadVedn6wEGBgYGBu4EDt/MP95/9/ns67P1AAMDAwMDdwbf3dijgEhjUF0PMDAwMDDw6eAsKJoXGBgYGBgYON94jMKBgYGBgYGB8wVGrxc9v+3kARgYGBgYuBC8ckNYBNhuJx4wMDAwMHABeNVCfbZhqcgLDAwMDAzcBVw96B49nvqRgIGBgYGBNwevHnBnF/KvwgAGBgYGBt4dHP0CupwHBgYGBgY+ERwtYLTA2bzAwMDAwMAdwR0H3dG8wMDAwMDAu4OzCVYdV+UFBgYGBgY+EXzXMFQPuh//oxYwMDAwMPAD4O4DcGBgYGBg4M7g6AV/Negu25gGDAwMDAy8ETibMLtQr84LDAwMDAzcEXwNRqYBiDQcFQN2YGBgYGDgLuDRQmejcsAODAwMDAzcDRxtNHYcgAMDAwMDA/87OFpw1YAdGBgYGBgY+H6hP/uAABgYGBgY+ETw7IP4JwbdW00egIGBgYGBF4BHN6ZlG4aVG8CBgYGBgYG7g08OYGBgYGBgYGBgYGBgYGBgYOD28QYxpCa/Y/xS5gAAAABJRU5ErkJggg==";
 
@@ -96,13 +107,22 @@ Task<HttpResponsePtr> BillController::createOrder(HttpRequestPtr req)
 
     const std::string idemKey = (*reqJson)["idemKey"].asString();
 
-    result = BillService::CreateOrder(CurrentUserId(req), amountCents, channel, idemKey);
+    result = co_await BillService::CreateOrder(CurrentUserId(req), amountCents, channel, idemKey);
     co_return JsonResponse(result);
 }
 
 Task<HttpResponsePtr> BillController::getOrder(HttpRequestPtr req, std::string orderNo)
 {
-    UEAdminAPI::utils::HttpResult result = BillService::GetOrder(CurrentUserId(req), orderNo);
+    UEAdminAPI::utils::HttpResult result = co_await BillService::GetOrder(CurrentUserId(req), orderNo);
+    co_return JsonResponse(result);
+}
+
+Task<HttpResponsePtr> BillController::listOrders(HttpRequestPtr req)
+{
+    const int page = ToInt(req->getParameter("page"), 1);
+    const int size = ToInt(req->getParameter("size"), 20);
+
+    UEAdminAPI::utils::HttpResult result = BillService::ListOrders(CurrentUserId(req), page, size);
     co_return JsonResponse(result);
 }
 
@@ -124,11 +144,41 @@ Task<HttpResponsePtr> BillController::listTransactions(HttpRequestPtr req)
 
 Task<HttpResponsePtr> BillController::qrPlaceholder(HttpRequestPtr req, std::string orderNo)
 {
-    (void)orderNo;
-    const std::string bytes = drogon::utils::base64Decode(kQrPlaceholderBase64);
+    (void)req;
+    std::string png;
+    if (!BillService::GetQrPng(orderNo, png))
+    {
+        png = drogon::utils::base64Decode(kQrPlaceholderBase64);
+    }
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     resp->setContentTypeCode(CT_IMAGE_PNG);
-    resp->setBody(bytes);
+    resp->addHeader("Cache-Control", "no-store");
+    resp->setBody(std::move(png));
+    co_return resp;
+}
+
+Task<HttpResponsePtr> BillController::alipayNotify(HttpRequestPtr req)
+{
+    const std::string body(req->body().data(), req->body().size());
+    const NotifyReply reply = BillService::HandleAlipayNotify(body, RequestHeaders(req));
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->setContentTypeString("text/plain;charset=utf-8");
+    resp->setBody(reply.ok ? "success" : "failure");
+    co_return resp;
+}
+
+Task<HttpResponsePtr> BillController::wechatNotify(HttpRequestPtr req)
+{
+    const std::string body(req->body().data(), req->body().size());
+    const NotifyReply reply = BillService::HandleWechatNotify(body, RequestHeaders(req));
+
+    Json::Value json;
+    json["code"] = reply.ok ? "SUCCESS" : "FAIL";
+    json["message"] = reply.message;
+    auto resp = HttpResponse::newHttpJsonResponse(json);
+    resp->setStatusCode(reply.ok ? k200OK : k400BadRequest);
     co_return resp;
 }

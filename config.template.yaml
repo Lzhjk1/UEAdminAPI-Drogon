@@ -52,6 +52,37 @@ custom_config:
   # 服务器域名
   ServerHost: "[这里填服务器域名]"
 
+  # 支付渠道（支付宝 / 微信支付）
+  # Enabled 为总开关；任一渠道凭据不完整时该渠道下单返回 -906，不会退回模拟支付。
+  # 真实渠道的回调地址默认取 ServerHost + 下列路径，也可用 NotifyUrl 单独覆盖。
+  Payment:
+    Enabled: false
+    Alipay:
+      Enabled: false
+      AppId: ""                       # 开放平台应用 APPID
+      Gateway: "https://openapi.alipay.com/gateway.do"
+      Mode: "page"                    # page=电脑网站支付（浏览器收银台）；qr=订单码/当面付（应用内二维码）
+      ProductCode: ""                 # 留空自动：page=FAST_INSTANT_TRADE_PAY；qr=QR_CODE_OFFLINE
+      ReturnUrl: ""                   # 可选，支付完成后浏览器跳回的地址
+      PrivateKeyPath: ""              # 应用私钥文件（与 PrivateKeyPem 二选一）
+      PrivateKeyPem: ""               # 应用私钥 PEM 内容（PKCS#1 / PKCS#8）
+      PublicKeyPath: ""               # 支付宝公钥文件（不是应用公钥）
+      PublicKeyPem: ""                # 支付宝公钥 PEM / 纯 Base64
+      NotifyUrl: ""                   # 留空 = ServerHost + /api/bill/notify/alipay
+    WeChat:
+      Enabled: false
+      MchId: ""                       # 微信支付商户号
+      AppId: ""                       # 与商户号绑定的服务号/小程序 APPID
+      SerialNo: ""                    # 商户 API 证书序列号
+      PrivateKeyPath: ""              # apiclient_key.pem
+      PrivateKeyPem: ""               # 商户私钥 PEM 内容（与 PrivateKeyPath 二选一）
+      ApiV3Key: ""                    # APIv3 密钥（32 位）
+      PublicKeyId: ""                 # 微信支付公钥 ID（PUB_KEY_ID_ 开头）
+      PublicKeyPath: ""               # pub_key.pem
+      PublicKeyPem: ""                # 微信支付公钥 PEM 内容（与 PublicKeyPath 二选一）
+      NotifyUrl: ""                   # 留空 = ServerHost + /api/bill/notify/wechat
+      ApiBase: "https://api.mch.weixin.qq.com"
+
   # 第三方登录平台配置
   ThirdPartyPlatformInfo:
     QQ:

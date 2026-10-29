@@ -1058,14 +1058,16 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Body**: `{ "amountCents": 10000, "channel": 9, "idemKey": "可选，客户端生成的幂等键" }`
   - `channel`: 1 支付宝 / 2 微信 / 9 模拟
   - `amountCents`: 1 ~ 10000000
-- **Response**: `data = { orderNo, amountCents, channel, status(0 待支付), qrContent, qrPngUrl, expireAt }`
-  - 同一 `idemKey` 重复下单返回原订单（不新建）
-- **错误码**: `-903` 金额不合法、`-904` 渠道不支持、`-104` 数据库错误
+- **Response**: `data = { orderNo, amountCents, channel, status(0 待支付), qrContent, payUrl, qrPngUrl, expireAt }`
+  - 支付宝电脑网站支付返回 `payUrl`（收银台地址）；微信/订单码返回 `qrContent`（二维码串）
+  - 同一 `idemKey` 重复下单返回原订单（不新建）；订单关闭/过期返回 `-902`
+- **错误码**: `-903` 金额不合法、`-904` 渠道不支持、`-906` 渠道未配置或下单失败、`-104` 数据库错误
 
 ### 9.2 查询订单（轮询）
 - **URL**: `/api/bill/order/{orderNo}`
 - **Method**: `GET`，`Authorization: Bearer {token}`
-- **Response**: `data = { orderNo, amountCents, channel, status, paid, createdAt, paidAt, balanceAfterCents? }`
+- **Response**: `data = { orderNo, amountCents, channel, status, paid, createdAt, paidAt, qrContent, payUrl, qrPngUrl, balanceAfterCents?, refund? }`
+  - 待支付时会向渠道主动查单（同一订单 4 秒最多一次）；`refund` 为最近一条退款申请
 - **错误码**: `-901` 订单不存在或不属于当前用户
 
 ### 9.3 余额流水
@@ -1082,10 +1084,34 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Response**: `data = { orderNo, paid: true, amountCents, balanceAfterCents }`
 - **错误码**: `-901` 订单不存在、`-902` 订单已关闭、`-905` 模拟支付未开启
 
-### 9.5 二维码占位图
+### 9.5 二维码
 - **URL**: `/api/bill/qr/{orderNo}`
 - **Method**: `GET`（无需登录）
-- **Response**: `image/png`，240×240 占位图。真实接入后改为渲染渠道 `code_url` 的二维码。
+- **Response**: `image/png`。按订单 `qr_content` 实时渲染；模拟订单/无二维码时返回占位图。
+
+### 9.6 用户申请退款
+- **URL**: `/api/bill/order/{orderNo}/refund`
+- **Method**: `POST`，`Authorization: Bearer {token}`
+- **Body**: `{ "reason": "可选，≤200 字" }`
+- **规则**: 仅订单本人；订单已支付且未超过 365 天；整单全额；当前余额 ≥ 订单金额；同一订单同时只能有一条有效申请。
+- **错误码**: `-901` 订单不存在、`-913` 不符合退款条件/已有申请、`-911` 余额不足
+
+### 9.7 我的已支付订单
+- **URL**: `/api/bill/orders?page=1&size=20`
+- **Method**: `GET`，`Authorization: Bearer {token}`
+- **Response**: `data = { total, page, size, items[]{ orderNo, amountCents, channel, paidAt, refund? } }`
+
+### 9.8 超管退款管理（仅超级管理员）
+> 以下接口均需 `AuthFilter` + `SuperAdminFilter`；非超管返回 HTTP 403 / `-807`。
+
+| 接口 | Method | 说明 |
+| :--- | :--- | :--- |
+| `/api/admin/refunds?status=-1&keyword=&page=1&size=50` | GET | 列表；status：-1 全部 / 0 待审核 / 1 退款中 / 2 已退款 / 3 已驳回 / 4 退款失败；keyword 匹配订单号/退款单号/用户名/邮箱 |
+| `/api/admin/refunds/{id}` | GET | 详情 |
+| `/api/admin/refunds/{id}/approve` | POST | 通过：扣减余额 → 调用渠道退款 → 已退款/退款中；失败自动冲正并返回 `-912` |
+| `/api/admin/refunds/{id}/reject` | POST | 驳回（仅待审核/退款失败），body `{ "remark": "原因" }` |
+| `/api/admin/refunds/{id}/sync` | POST | 查询渠道退款结果：成功→已退款；处理中→保持；失败→冲正余额 |
+| `/api/admin/refunds/{id}/rollback` | POST | 仅退款中：手动回滚余额并标记失败（渠道卡单兜底） |
 
 
 ## 10. 厂商后台：角色 / 权限 / 权限组（RBAC）
