@@ -83,6 +83,73 @@ public:
                                                 int targetUserId,
                                                 const std::string &roleCode,
                                                 bool enabled);
+
+    // ------------------------------------------------------------ 厂商团队管理员（跨团队）
+    // 操作者必须是「厂商团队的团队管理员」或超级管理员；服务层内部校验。
+
+    // 树形团队管理：全部团队（含成员数、是否厂商/个人团队）
+    static utils::HttpResult VendorListTeams(int operatorUserId);
+
+    // 任意团队详情（团队资料 + 付费期 + 成员）
+    static utils::HttpResult VendorGetTeam(int operatorUserId, int teamId);
+
+    // 在指定团队新增成员
+    static utils::HttpResult VendorCreateMember(int operatorUserId,
+                                                int teamId,
+                                                const std::string &userName,
+                                                const std::string &password,
+                                                const std::vector<std::string> &roleCodes,
+                                                const std::vector<std::string> &systemRoleCodes,
+                                                const std::string &nickName);
+
+    // 修改指定团队成员的团队角色 / 系统角色（替换式）
+    static utils::HttpResult VendorUpdateMemberRoles(int operatorUserId,
+                                                     int teamId,
+                                                     int memberUserId,
+                                                     const std::vector<std::string> &roleCodes,
+                                                     const std::vector<std::string> &systemRoleCodes,
+                                                     bool updateSystemRoles);
+
+    // 把成员移出团队：落回其个人团队（不存在则创建），角色重置为团队管理员
+    static utils::HttpResult VendorRemoveMember(int operatorUserId, int teamId, int memberUserId);
+
+    // 本团队管理员移除成员（与上一接口共用同一套保护规则）
+    static utils::HttpResult RemoveMember(int operatorUserId, int memberUserId);
+
+    // 跨团队移动：把 userIds 从一个团队移到指定团队，角色统一替换为 roleCodes
+    static utils::HttpResult VendorMoveMembers(int operatorUserId,
+                                               int teamId,
+                                               const std::vector<int> &userIds,
+                                               const std::vector<std::string> &roleCodes);
+
+    // 可移动用户检索：不在 excludeTeamId 的用户（按用户名/昵称模糊匹配）
+    static utils::HttpResult VendorListCandidates(int operatorUserId,
+                                                  const std::string &keyword,
+                                                  int excludeTeamId,
+                                                  int limit);
+
+    // 团队管理员改自己所在团队的名称
+    static utils::HttpResult RenameTeam(int operatorUserId, const std::string &name);
+
+    // 在指定团队建号（权限由调用方校验；授予 team_admin / super_admin 的规则在内）
+    static utils::HttpResult CreateMemberInTeam(int operatorUserId,
+                                                int teamId,
+                                                const std::string &userName,
+                                                const std::string &password,
+                                                const std::vector<std::string> &roleCodes,
+                                                const std::vector<std::string> &systemRoleCodes,
+                                                const std::string &nickName);
+
+    // 修改指定团队成员的团队角色（权限由调用方校验）
+    static utils::HttpResult UpdateMemberRolesInTeam(int operatorUserId,
+                                                     int teamId,
+                                                     int memberUserId,
+                                                     const std::vector<std::string> &roleCodes,
+                                                     const std::vector<std::string> &systemRoleCodes,
+                                                     bool updateSystemRoles);
+
+    // 从指定团队移除成员（权限由调用方校验；owner/自己/最后管理员等保护在内）
+    static utils::HttpResult RemoveMemberInTeam(int operatorUserId, int teamId, int memberUserId);
 };
 
 } // namespace Services

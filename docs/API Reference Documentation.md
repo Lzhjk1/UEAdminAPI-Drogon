@@ -1001,6 +1001,50 @@ GitLab 相关接口目前使用独立的响应格式：
   `-102` 缺少 roleCode / enabled
 
 
+### 8.12 团队管理员改团队名 (Rename Team)
+- **URL**: `/api/team`
+- **Method**: `PATCH`，`Authorization: Bearer {token}`
+- **Body**: `{ "name": "新团队名" }`（去首尾空格，1~64 字符，全局唯一）
+- **说明**: 只允许改**自己所在团队**，且调用者必须是该团队的 `team_admin`；厂商管理员也不能改其他团队名。
+  个人团队（`team.is_personal=true`）改名后仍按标记识别，不影响「移除成员后回到个人团队」。
+- **Response**: `data = { teamId, name }`
+- **错误码**: `-102` 名称为空/超长、`-802` 不在团队、`-803` 非团队管理员、`-815` 名称已存在
+
+### 8.13 移除团队成员 (Remove Member)
+- **URL**: `/api/team/member/{userId}`
+- **Method**: `DELETE`，`Authorization: Bearer {token}`
+- **说明**: 只允许本团队 `team_admin`；成员不会被删号，而是移回其个人团队
+  （`team.is_personal=true`，不存在则创建，角色重置为 `team_admin`）。
+  团队创建者、调用者自己、团队最后一个有效管理员不能移除；目标是 `super_admin` 时仅超管可操作。
+- **Response**: `data = { userId, teamId, teamName }`（`teamId/teamName` 为落回的个人团队）
+- **错误码**: `-105` 个人团队/移除自己、`-802` 非本团队成员、`-803` 非团队管理员或最后一个管理员、
+  `-807` 非超管移除超管、`-818` 团队创建者不能移除
+
+### 8.14 厂商团队管理员：跨团队管理 (Vendor)
+> 前缀 `/api/vendor`，只挂 `AuthFilter`；**服务层**校验调用者是「厂商团队的 `team_admin`」或超级管理员
+> （`privilege` 的 `Admin` 位 / 系统角色 `super_admin`，与 `AdminFilter` 口径一致）。
+> 非厂商团队的普通 `team_admin` 调用一律返回 `-807`。
+> 只有厂商团队可以授予/回收 `super_admin`；授予 `team_admin` 仍要求调用者是超管或目标团队创建者。
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/vendor/teams` | `data = { ownTeamId, teams[]{ id, name, status, isVendor, isPersonal, ownerUserId, memberCount, createdAt } }`，厂商团队排最前 |
+| `GET /api/vendor/teams/{teamId}` | 与 8.7 相同的团队详情（`team{...,isVendor,isPersonal}` + `subscription` + `members[]`） |
+| `POST /api/vendor/teams/{teamId}/members` | 在指定团队建号，Body 同 8.3（`userName/password/roleCodes/systemRoleCodes?/nickName?`） |
+| `PATCH /api/vendor/teams/{teamId}/members/{userId}` | 修改指定团队成员角色，Body 同 8.3.1 |
+| `DELETE /api/vendor/teams/{teamId}/members/{userId}` | 同 8.13 的保护规则，移回个人团队 |
+| `POST /api/vendor/teams/{teamId}/members/move-in` | 跨团队移动：Body `{ "userIds": [1,2], "roleCodes": ["engineer"] }` |
+| `GET /api/vendor/users?keyword=&excludeTeamId=&limit=` | 可移动用户检索：返回不在 `excludeTeamId` 的用户及其当前团队/角色 |
+
+- **移动规则**：目标团队必须正常且不是个人团队；被移动者不能是当前团队的创建者（个人团队除外）；
+  目标是 `super_admin` 时仅超管可移动；移入后 `team_member.team_id` 直接改到目标团队，
+  `team_member_role` 整体替换为 `roleCodes`（至少一个）。
+- **移动响应**：`data = { moved, failed, results[]{ userId, userName, ok, message } }`，逐行返回结果，单人失败不影响其他人。
+- **注意**：移入/移除会改变该用户实际生效的团队订阅与功能授权（`team_subscription` / `team_feature_auth`），
+  客户端在操作前应提示。
+- **错误码**: `-102` 未选用户/角色为空、`-105` 个人团队或团队已停用、`-801` 团队不存在、
+  `-803` 非厂商管理员或试图授予团队管理员、`-805` 未知角色、`-807` 非超管操作超管
+
 ## 9. 余额与支付（当前为模拟支付）
 
 > 金额单位统一为 **分**（`bigint`），展示时除以 100。

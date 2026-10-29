@@ -333,3 +333,106 @@ def logged_client(base_url):
         except Exception:
             pass
 
+
+@pytest.fixture
+def seeded_vendor_org(test_domain: str):
+    """种入「厂商团队 + 普通团队 + 个人团队」，用于跨团队管理用例。
+
+    返回 SimpleNamespace:
+      vendor_name/password/id     厂商超管（privilege=7，同时是厂商团队 team_admin）
+      vendor_team_id/name         team.is_vendor=true
+      admin_name/password/id      普通团队 team_admin
+      team_id/name                普通团队
+      eng_name/password/id        普通团队工程师（只读）
+      mover_name/password/id      个人团队（is_personal=true）所有者，供移动用例
+      mover_team_id               个人团队
+    """
+    _require_db()
+    suffix = uuid.uuid4().hex[:8]
+    password = f"Pwd@{suffix}"
+    vendor_name = f"vt_vendor_{suffix}"
+    admin_name = f"vt_admin_{suffix}"
+    eng_name = f"vt_eng_{suffix}"
+    mover_name = f"vt_mover_{suffix}"
+    vendor_team_name = f"VT-VENDOR-{suffix}"
+    team_name = f"VT-TEAM-{suffix}"
+    personal_team_name = f"VT-PERSONAL-{suffix}"
+
+    vendor_id = _seed_user(vendor_name, password, 7)
+    admin_id = _seed_user(admin_name, password, 3)
+    eng_id = _seed_user(eng_name, password, 3)
+    mover_id = _seed_user(mover_name, password, 3)
+
+    vendor_team_id = int(_psql(
+        "insert into team(name, owner_user_id, status, is_vendor) values "
+        f"({_sql_lit(vendor_team_name)}, {vendor_id}, 1, true) returning id"
+    )[0])
+    team_id = int(_psql(
+        f"insert into team(name, owner_user_id, status) values ({_sql_lit(team_name)}, {admin_id}, 1) "
+        "returning id"
+    )[0])
+    personal_team_id = int(_psql(
+        "insert into team(name, owner_user_id, status, is_personal) values "
+        f"({_sql_lit(personal_team_name)}, {mover_id}, 1, true) returning id"
+    )[0])
+
+    for tid, uid, role_code in (
+        (vendor_team_id, vendor_id, "team_admin"),
+        (team_id, admin_id, "team_admin"),
+        (team_id, eng_id, "engineer"),
+        (personal_team_id, mover_id, "team_admin"),
+    ):
+        _psql(
+            "insert into team_member(team_id, user_id, role_id, status) "
+            f"select {tid}, {uid}, id, 1 from role where code = {_sql_lit(role_code)}"
+        )
+        _psql(
+            "insert into team_member_role(team_member_id, role_id) "
+            "select tm.id, tm.role_id from team_member tm "
+            f"where tm.team_id = {tid} and tm.user_id = {uid} on conflict do nothing"
+        )
+    _psql(
+        "insert into user_balance(user_id) values "
+        f"({vendor_id}), ({admin_id}), ({eng_id}), ({mover_id}) on conflict do nothing"
+    )
+
+    org = SimpleNamespace(
+        vendor_name=vendor_name,
+        vendor_password=password,
+        vendor_id=vendor_id,
+        vendor_team_id=vendor_team_id,
+        vendor_team_name=vendor_team_name,
+        admin_name=admin_name,
+        admin_password=password,
+        admin_id=admin_id,
+        team_id=team_id,
+        team_name=team_name,
+        eng_name=eng_name,
+        eng_password=password,
+        eng_id=eng_id,
+        mover_name=mover_name,
+        mover_password=password,
+        mover_id=mover_id,
+        mover_team_id=personal_team_id,
+    )
+    yield org
+
+    names = ", ".join(_sql_lit(n) for n in (vendor_name, admin_name, eng_name, mover_name))
+    user_filter = f'user_id in (select id from "user" where name in ({names}))'
+    team_filter = ", ".join(str(t) for t in (vendor_team_id, team_id, personal_team_id))
+    for sql in (
+        f"delete from team_member_role where team_member_id in "
+        f"(select id from team_member where {user_filter})",
+        f"delete from user_system_role where {user_filter}",
+        f"delete from user_balance where {user_filter}",
+        f"delete from team_member where {user_filter}",
+        f"delete from team_subscription where team_id in ({team_filter})",
+        f"delete from team_feature_auth where team_id in ({team_filter})",
+        f"delete from team where id in ({team_filter})",
+        f'delete from "user" where name in ({names})',
+    ):
+        try:
+            _psql(sql)
+        except Exception as e:
+            print(f"[WARN] 清理失败: {sql} -> {e}")
+

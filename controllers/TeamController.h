@@ -12,11 +12,15 @@ class TeamController : public drogon::HttpController<TeamController>
 public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(TeamController::getTeam, "/api/team", Get, "AuthFilter");
+    ADD_METHOD_TO(TeamController::renameTeam, "/api/team", Patch, "AuthFilter");
     ADD_METHOD_TO(TeamController::createMember, "/api/team/member", Post, "AuthFilter");
     ADD_METHOD_TO(TeamController::updateMemberRoles, "/api/team/member/{1}", Patch, "AuthFilter");
+    ADD_METHOD_TO(TeamController::removeMember, "/api/team/member/{1}", Delete, "AuthFilter");
     METHOD_LIST_END
 
     Task<HttpResponsePtr> getTeam(HttpRequestPtr req);
+    Task<HttpResponsePtr> renameTeam(HttpRequestPtr req);
     Task<HttpResponsePtr> createMember(HttpRequestPtr req);
     Task<HttpResponsePtr> updateMemberRoles(HttpRequestPtr req, std::string userId);
+    Task<HttpResponsePtr> removeMember(HttpRequestPtr req, std::string userId);
 };

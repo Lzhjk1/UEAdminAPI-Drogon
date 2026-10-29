@@ -15,6 +15,17 @@ using namespace UEAdminAPI::Services;
 
 namespace {
 
+int CurrentUserId(const HttpRequestPtr &req)
+{
+    int userId = -1;
+    auto attributes = req->getAttributes();
+    if (attributes->find("userId"))
+    {
+        userId = attributes->get<int>("userId");
+    }
+    return userId;
+}
+
 // 读取 roleCodes 数组；老客户端只传单个 roleCode，一并兼容
 std::vector<std::string> ReadRoleCodes(const Json::Value &json)
 {
@@ -69,6 +80,28 @@ Task<HttpResponsePtr> TeamController::getTeam(HttpRequestPtr req)
     }
 
     UEAdminAPI::utils::HttpResult result = TeamService::GetTeam(userId);
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
+    co_return resp;
+}
+
+Task<HttpResponsePtr> TeamController::renameTeam(HttpRequestPtr req)
+{
+    UEAdminAPI::utils::HttpResult result;
+
+    auto reqJson = req->getJsonObject();
+    if (!reqJson)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        resp->setStatusCode(k200OK);
+        co_return resp;
+    }
+
+    const std::string name = reqJson->isMember("name") && (*reqJson)["name"].isString()
+                                 ? (*reqJson)["name"].asString()
+                                 : "";
+    result = TeamService::RenameTeam(CurrentUserId(req), name);
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
@@ -129,6 +162,31 @@ Task<HttpResponsePtr> TeamController::createMember(HttpRequestPtr req)
                                        roleCodes,
                                        systemRoleCodes,
                                        pm.getParam("nickName"));
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
+    co_return resp;
+}
+
+Task<HttpResponsePtr> TeamController::removeMember(HttpRequestPtr req, std::string userId)
+{
+    UEAdminAPI::utils::HttpResult result;
+
+    int memberUserId = 0;
+    try
+    {
+        memberUserId = std::stoi(userId);
+    }
+    catch (...)
+    {
+        memberUserId = 0;
+    }
+    if (memberUserId <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_UserNotFound);
+        co_return HttpResponse::newHttpJsonResponse(result.toJson());
+    }
+
+    result = TeamService::RemoveMember(CurrentUserId(req), memberUserId);
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;

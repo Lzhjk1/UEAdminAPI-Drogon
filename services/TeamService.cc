@@ -117,6 +117,189 @@ bool HasTeamAdminRole(const std::vector<std::string> &roleCodes)
     return std::find(roleCodes.begin(), roleCodes.end(), "team_admin") != roleCodes.end();
 }
 
+// 该用户是否是该团队的团队管理员：主角色与多角色表任一命中都算
+bool IsTeamAdminOf(const std::shared_ptr<drogon::orm::DbClient> &db, int userId, int teamId)
+{
+    auto rows = db->execSqlSync(
+        "select 1 from team_member tm join role r on r.id = tm.role_id "
+        "where tm.user_id = $1 and tm.team_id = $2 and tm.status = 1 and r.code = 'team_admin' "
+        "union all "
+        "select 1 from team_member tm "
+        "join team_member_role tmr on tmr.team_member_id = tm.id "
+        "join role r on r.id = tmr.role_id "
+        "where tm.user_id = $1 and tm.team_id = $2 and tm.status = 1 and r.code = 'team_admin' "
+        "limit 1",
+        userId, teamId);
+    return !rows.empty();
+}
+
+// 团队里有效团队管理员的人数（主角色 ∪ 多角色表去重）
+int CountTeamAdmins(const std::shared_ptr<drogon::orm::DbClient> &db, int teamId)
+{
+    auto rows = db->execSqlSync(
+        "select count(*) as cnt from ("
+        "  select tm.user_id from team_member tm join role r on r.id = tm.role_id "
+        "  where tm.team_id = $1 and tm.status = 1 and r.code = 'team_admin' "
+        "  union "
+        "  select tm.user_id from team_member tm "
+        "  join team_member_role tmr on tmr.team_member_id = tm.id "
+        "  join role r on r.id = tmr.role_id "
+        "  where tm.team_id = $1 and tm.status = 1 and r.code = 'team_admin'"
+        ") x",
+        teamId);
+    return rows.empty() ? 0 : static_cast<int>(rows[0]["cnt"].as<int64_t>());
+}
+
+// 厂商跨团队操作者：超级管理员，或厂商团队里的团队管理员
+bool IsVendorOperator(const std::shared_ptr<drogon::orm::DbClient> &db,
+                      int userId,
+                      int &ownTeamId,
+                      std::string &roleCode)
+{
+    ownTeamId = 0;
+    roleCode.clear();
+    auto rows = db->execSqlSync(
+        "select tm.team_id, r.code as role_code, t.is_vendor "
+        "from team_member tm "
+        "join role r on r.id = tm.role_id "
+        "join team t on t.id = tm.team_id "
+        "where tm.user_id = $1 and tm.status = 1",
+        userId);
+    if (!rows.empty())
+    {
+        ownTeamId = rows[0]["team_id"].as<int>();
+        roleCode = rows[0]["role_code"].as<std::string>();
+    }
+    // 与 AdminFilter 口径一致：不在厂商团队的超级管理员同样放行
+    if (IsSuperAdmin(db, userId))
+    {
+        return true;
+    }
+    return !rows.empty() && rows[0]["is_vendor"].as<bool>() &&
+           IsTeamAdminOf(db, userId, ownTeamId);
+}
+
+// 个人团队：注册时自动创建；允许改名后必须靠 is_personal 识别，不能再依赖名字
+bool ResolvePersonalTeam(const std::shared_ptr<drogon::orm::DbClient> &db,
+                         int userId,
+                         const std::string &userName,
+                         int &teamId)
+{
+    teamId = 0;
+    auto rows = db->execSqlSync(
+        "select id from team where is_personal = true and owner_user_id = $1 order by id limit 1",
+        userId);
+    if (!rows.empty())
+    {
+        teamId = rows[0]["id"].as<int>();
+        return true;
+    }
+
+    const std::string teamName = "Team-" + std::to_string(userId) + "-" + userName;
+    auto inserted = db->execSqlSync(
+        "insert into team (name, owner_user_id, status, is_personal) values ($1, $2, 1, true) "
+        "on conflict (name) do update set is_personal = true "
+        "returning id",
+        teamName, userId);
+    if (inserted.empty())
+    {
+        return false;
+    }
+    teamId = inserted[0]["id"].as<int>();
+    return true;
+}
+
+// 把成员整体移动到目标团队并替换角色。连接池下 begin/commit 不保证同连接，
+// 因此失败时按原值回滚（与 CreateMember 删用户的做法一致）。
+bool MoveMemberToTeam(const std::shared_ptr<drogon::orm::DbClient> &db,
+                      int memberUserId,
+                      int targetTeamId,
+                      const std::vector<int> &roleIds,
+                      std::string &err)
+{
+    if (roleIds.empty())
+    {
+        err = "至少保留一个团队角色";
+        return false;
+    }
+
+    auto rows = db->execSqlSync(
+        "select id, team_id, role_id, status from team_member where user_id = $1", memberUserId);
+    if (rows.empty())
+    {
+        err = "该账号不属于任何团队";
+        return false;
+    }
+    const int memberId = rows[0]["id"].as<int>();
+    const int oldTeamId = rows[0]["team_id"].as<int>();
+    const int oldRoleId = rows[0]["role_id"].as<int>();
+    const int oldStatus = rows[0]["status"].as<int>();
+
+    std::vector<int> oldRoleIds;
+    auto oldRoleRows = db->execSqlSync(
+        "select role_id from team_member_role where team_member_id = $1", memberId);
+    for (const auto &r : oldRoleRows)
+    {
+        oldRoleIds.push_back(r["role_id"].as<int>());
+    }
+
+    auto restore = [&]() {
+        try
+        {
+            db->execSqlSync(
+                "update team_member set team_id = $2, role_id = $3, status = $4 where id = $1",
+                memberId, oldTeamId, oldRoleId, oldStatus);
+            db->execSqlSync("delete from team_member_role where team_member_id = $1", memberId);
+            for (const int roleId : oldRoleIds)
+            {
+                db->execSqlSync(
+                    "insert into team_member_role (team_member_id, role_id) values ($1, $2) "
+                    "on conflict do nothing",
+                    memberId, roleId);
+            }
+        }
+        catch (...)
+        {
+            LOG_ERROR << "MoveMemberToTeam 回滚失败, memberId=" << memberId;
+        }
+    };
+
+    try
+    {
+        db->execSqlSync(
+            "update team_member set team_id = $2, role_id = $3, status = 1 where id = $1",
+            memberId, targetTeamId, roleIds[0]);
+        db->execSqlSync("delete from team_member_role where team_member_id = $1", memberId);
+        for (const int roleId : roleIds)
+        {
+            db->execSqlSync(
+                "insert into team_member_role (team_member_id, role_id) values ($1, $2) "
+                "on conflict do nothing",
+                memberId, roleId);
+        }
+        db->execSqlSync("insert into user_balance (user_id) values ($1) on conflict do nothing",
+                        memberUserId);
+        return true;
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        err = e.base().what();
+        restore();
+        return false;
+    }
+}
+
+std::string TrimText(const std::string &s)
+{
+    const size_t begin = s.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos)
+    {
+        return "";
+    }
+    const size_t end = s.find_last_not_of(" \t\r\n");
+    return s.substr(begin, end - begin + 1);
+}
+
 // 把角色 code 解析成 id（只认 scope=2 的团队角色），去重；team_admin 排最前作为主角色，
 // 因为旧版界面只读 team_member.role_id 判断管理员。
 bool ResolveTeamRoleIds(const std::shared_ptr<drogon::orm::DbClient> &db,
@@ -464,6 +647,41 @@ HttpResult TeamService::CreateMember(int operatorUserId,
                                      const std::string &nickName)
 {
     HttpResult result;
+    auto db = drogon::app().getDbClient();
+    int teamId = 0;
+    try
+    {
+        std::string operatorRole;
+        if (!GetMembership(db, operatorUserId, teamId, operatorRole))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamMember);
+            return result;
+        }
+        if (!IsTeamAdminOf(db, operatorUserId, teamId))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamAdmin);
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "CreateMember 校验操作者失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+    return CreateMemberInTeam(operatorUserId, teamId, userName, password, roleCodes,
+                              systemRoleCodes, nickName);
+}
+
+HttpResult TeamService::CreateMemberInTeam(int operatorUserId,
+                                           int teamId,
+                                           const std::string &userName,
+                                           const std::string &password,
+                                           const std::vector<std::string> &roleCodes,
+                                           const std::vector<std::string> &systemRoleCodes,
+                                           const std::string &nickName)
+{
+    HttpResult result;
     if (userName.empty() || password.size() < 6)
     {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "用户名不能为空，初始密码至少 6 位");
@@ -478,19 +696,6 @@ HttpResult TeamService::CreateMember(int operatorUserId,
     auto db = drogon::app().getDbClient();
     try
     {
-        int teamId = 0;
-        std::string operatorRole;
-        if (!GetMembership(db, operatorUserId, teamId, operatorRole))
-        {
-            result.setResult(ApiErrorCode::ApiError_NotTeamMember);
-            return result;
-        }
-        if (operatorRole != "team_admin")
-        {
-            result.setResult(ApiErrorCode::ApiError_NotTeamAdmin);
-            return result;
-        }
-
         auto teamRows = db->execSqlSync("select status, is_vendor from team where id = $1", teamId);
         if (teamRows.empty() || teamRows[0]["status"].as<int>() != 1)
         {
@@ -634,6 +839,40 @@ HttpResult TeamService::UpdateMemberRoles(int operatorUserId,
                                           bool updateSystemRoles)
 {
     HttpResult result;
+    auto db = drogon::app().getDbClient();
+    int teamId = 0;
+    try
+    {
+        std::string operatorRole;
+        if (!GetMembership(db, operatorUserId, teamId, operatorRole))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamMember);
+            return result;
+        }
+        if (!IsTeamAdminOf(db, operatorUserId, teamId))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamAdmin);
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "UpdateMemberRoles 校验操作者失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+    return UpdateMemberRolesInTeam(operatorUserId, teamId, memberUserId, roleCodes,
+                                   systemRoleCodes, updateSystemRoles);
+}
+
+HttpResult TeamService::UpdateMemberRolesInTeam(int operatorUserId,
+                                                int teamId,
+                                                int memberUserId,
+                                                const std::vector<std::string> &roleCodes,
+                                                const std::vector<std::string> &systemRoleCodes,
+                                                bool updateSystemRoles)
+{
+    HttpResult result;
     if (roleCodes.empty())
     {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "至少保留一个团队角色");
@@ -643,19 +882,6 @@ HttpResult TeamService::UpdateMemberRoles(int operatorUserId,
     auto db = drogon::app().getDbClient();
     try
     {
-        int teamId = 0;
-        std::string operatorRole;
-        if (!GetMembership(db, operatorUserId, teamId, operatorRole))
-        {
-            result.setResult(ApiErrorCode::ApiError_NotTeamMember);
-            return result;
-        }
-        if (operatorRole != "team_admin")
-        {
-            result.setResult(ApiErrorCode::ApiError_NotTeamAdmin);
-            return result;
-        }
-
         auto memberRows = db->execSqlSync(
             "select id from team_member where user_id = $1 and team_id = $2",
             memberUserId, teamId);
@@ -679,6 +905,22 @@ HttpResult TeamService::UpdateMemberRoles(int operatorUserId,
             result.setResult(ApiErrorCode::ApiError_NotTeamAdmin,
                              "只有厂商超级管理员或团队所有者可以授予团队管理员");
             return result;
+        }
+
+        // 撤销团队管理员同样受保护，且不能把团队清空到没有管理员
+        if (!grantAdmin && IsTeamAdminOf(db, memberUserId, teamId))
+        {
+            if (!CanGrantTeamAdmin(db, operatorUserId, teamId))
+            {
+                result.setResult(ApiErrorCode::ApiError_NotTeamAdmin,
+                                 "只有厂商超级管理员或团队所有者可以撤销团队管理员");
+                return result;
+            }
+            if (CountTeamAdmins(db, teamId) <= 1)
+            {
+                result.setResult(ApiErrorCode::ApiError_NotTeamAdmin, "团队至少保留一个团队管理员");
+                return result;
+            }
         }
 
         auto teamRows = db->execSqlSync(
@@ -808,9 +1050,9 @@ bool TeamService::ProvisionPersonalTeam(int userId, const std::string &userName)
 
         const std::string teamName = "Team-" + std::to_string(userId) + "-" + userName;
         auto teamRows = db->execSqlSync(
-            "insert into team (name, owner_user_id, status) values ($1, $2, 1) "
-            "on conflict (name) do update set owner_user_id = excluded.owner_user_id "
-            "returning id",
+            "insert into team (name, owner_user_id, status, is_personal) values ($1, $2, 1, true) "
+            "on conflict (name) do update set owner_user_id = excluded.owner_user_id, "
+            "is_personal = true returning id",
             teamName, userId);
         if (teamRows.empty())
         {
@@ -818,10 +1060,18 @@ bool TeamService::ProvisionPersonalTeam(int userId, const std::string &userName)
         }
         const int teamId = teamRows[0]["id"].as<int>();
 
-        db->execSqlSync(
+        auto insertedMemberRows = db->execSqlSync(
             "insert into team_member (team_id, user_id, role_id, status) values ($1, $2, $3, 1) "
-            "on conflict (user_id) do nothing",
+            "on conflict (user_id) do nothing returning id",
             teamId, userId, roleId);
+        if (!insertedMemberRows.empty())
+        {
+            // 多角色表是权威来源，这里也写一份，避免 LoadTeamMembers / 改角色时兜底分支不一致
+            db->execSqlSync(
+                "insert into team_member_role (team_member_id, role_id) values ($1, $2) "
+                "on conflict do nothing",
+                insertedMemberRows[0]["id"].as<int>(), roleId);
+        }
         db->execSqlSync("insert into user_balance (user_id) values ($1) on conflict do nothing",
                         userId);
         return true;
@@ -1312,6 +1562,557 @@ HttpResult TeamService::AdminSetSystemRole(int operatorUserId,
     catch (const drogon::orm::DrogonDbException &e)
     {
         LOG_ERROR << "AdminSetSystemRole 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------- 厂商团队管理员（跨团队）
+
+namespace {
+void SetVendorDenied(HttpResult &result)
+{
+    result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
+                     "只有厂商团队的团队管理员或超级管理员可以管理其他团队");
+}
+} // namespace
+
+HttpResult TeamService::VendorListTeams(int operatorUserId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        int ownTeamId = 0;
+        std::string roleCode;
+        if (!IsVendorOperator(db, operatorUserId, ownTeamId, roleCode))
+        {
+            SetVendorDenied(result);
+            return result;
+        }
+
+        auto rows = db->execSqlSync(
+            "select t.id, t.name, t.status, t.is_vendor, t.is_personal, t.owner_user_id, "
+            "       to_char(t.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') as created_at, "
+            "       (select count(*) from team_member m where m.team_id = t.id and m.status = 1) as member_count "
+            "from team t order by t.is_vendor desc, t.id");
+        Json::Value teams(Json::arrayValue);
+        for (const auto &row : rows)
+        {
+            Json::Value team;
+            team["id"] = row["id"].as<int>();
+            team["name"] = row["name"].as<std::string>();
+            team["status"] = row["status"].as<int>();
+            team["isVendor"] = row["is_vendor"].as<bool>();
+            team["isPersonal"] = row["is_personal"].as<bool>();
+            team["ownerUserId"] = row["owner_user_id"].isNull() ? 0 : row["owner_user_id"].as<int>();
+            team["createdAt"] = row["created_at"].as<std::string>();
+            team["memberCount"] = static_cast<int>(row["member_count"].as<int64_t>());
+            teams.append(team);
+        }
+
+        result.jsondata["teams"] = teams;
+        result.jsondata["ownTeamId"] = ownTeamId;
+        result.setResult(ApiErrorCode::ApiError_Success, "success");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "VendorListTeams 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult TeamService::VendorGetTeam(int operatorUserId, int teamId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        int ownTeamId = 0;
+        std::string roleCode;
+        if (!IsVendorOperator(db, operatorUserId, ownTeamId, roleCode))
+        {
+            SetVendorDenied(result);
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "VendorGetTeam 校验操作者失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+    return AdminGetTeam(teamId);
+}
+
+HttpResult TeamService::VendorCreateMember(int operatorUserId,
+                                           int teamId,
+                                           const std::string &userName,
+                                           const std::string &password,
+                                           const std::vector<std::string> &roleCodes,
+                                           const std::vector<std::string> &systemRoleCodes,
+                                           const std::string &nickName)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        int ownTeamId = 0;
+        std::string roleCode;
+        if (!IsVendorOperator(db, operatorUserId, ownTeamId, roleCode))
+        {
+            SetVendorDenied(result);
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "VendorCreateMember 校验操作者失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+    return CreateMemberInTeam(operatorUserId, teamId, userName, password, roleCodes,
+                              systemRoleCodes, nickName);
+}
+
+HttpResult TeamService::VendorUpdateMemberRoles(int operatorUserId,
+                                                int teamId,
+                                                int memberUserId,
+                                                const std::vector<std::string> &roleCodes,
+                                                const std::vector<std::string> &systemRoleCodes,
+                                                bool updateSystemRoles)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        int ownTeamId = 0;
+        std::string roleCode;
+        if (!IsVendorOperator(db, operatorUserId, ownTeamId, roleCode))
+        {
+            SetVendorDenied(result);
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "VendorUpdateMemberRoles 校验操作者失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+    return UpdateMemberRolesInTeam(operatorUserId, teamId, memberUserId, roleCodes,
+                                   systemRoleCodes, updateSystemRoles);
+}
+
+HttpResult TeamService::VendorRemoveMember(int operatorUserId, int teamId, int memberUserId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        int ownTeamId = 0;
+        std::string roleCode;
+        if (!IsVendorOperator(db, operatorUserId, ownTeamId, roleCode))
+        {
+            SetVendorDenied(result);
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "VendorRemoveMember 校验操作者失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+    return RemoveMemberInTeam(operatorUserId, teamId, memberUserId);
+}
+
+HttpResult TeamService::RemoveMember(int operatorUserId, int memberUserId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    int teamId = 0;
+    try
+    {
+        std::string roleCode;
+        if (!GetMembership(db, operatorUserId, teamId, roleCode))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamMember);
+            return result;
+        }
+        if (!IsTeamAdminOf(db, operatorUserId, teamId))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamAdmin);
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "RemoveMember 校验操作者失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+    return RemoveMemberInTeam(operatorUserId, teamId, memberUserId);
+}
+
+HttpResult TeamService::RemoveMemberInTeam(int operatorUserId, int teamId, int memberUserId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        if (memberUserId == operatorUserId)
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "不能移除自己");
+            return result;
+        }
+
+        auto teamRows = db->execSqlSync(
+            "select id, owner_user_id, is_personal from team where id = $1", teamId);
+        if (teamRows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_TeamNotFound);
+            return result;
+        }
+        if (teamRows[0]["is_personal"].as<bool>())
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "个人团队没有可移除的成员");
+            return result;
+        }
+        const int ownerUserId = teamRows[0]["owner_user_id"].isNull()
+                                    ? 0
+                                    : teamRows[0]["owner_user_id"].as<int>();
+        if (ownerUserId == memberUserId)
+        {
+            result.setResult(ApiErrorCode::ApiError_TeamOwnerProtected);
+            return result;
+        }
+
+        auto memberRows = db->execSqlSync(
+            "select u.name from team_member tm join \"user\" u on u.id = tm.user_id "
+            "where tm.team_id = $1 and tm.user_id = $2",
+            teamId, memberUserId);
+        if (memberRows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamMember, "该账号不是这个团队的成员");
+            return result;
+        }
+        const std::string memberName = memberRows[0]["name"].as<std::string>();
+
+        if (IsSuperAdmin(db, memberUserId) && !IsSuperAdmin(db, operatorUserId))
+        {
+            result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
+                             "只有超级管理员可以移除超级管理员");
+            return result;
+        }
+        if (IsTeamAdminOf(db, memberUserId, teamId) && CountTeamAdmins(db, teamId) <= 1)
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamAdmin, "团队至少保留一个团队管理员");
+            return result;
+        }
+
+        int personalTeamId = 0;
+        if (!ResolvePersonalTeam(db, memberUserId, memberName, personalTeamId))
+        {
+            result.setResult(ApiErrorCode::ApiError_InternalError, "开通个人团队失败");
+            return result;
+        }
+        if (personalTeamId == teamId)
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "该成员已在个人团队");
+            return result;
+        }
+
+        auto adminRoleRows = db->execSqlSync(
+            "select id from role where code = 'team_admin' and scope = 2");
+        if (adminRoleRows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidRoleCode, "缺少 team_admin 角色");
+            return result;
+        }
+        std::vector<int> roleIds{adminRoleRows[0]["id"].as<int>()};
+
+        std::string moveErr;
+        if (!MoveMemberToTeam(db, memberUserId, personalTeamId, roleIds, moveErr))
+        {
+            LOG_ERROR << "VendorRemoveMember 移动失败: " << moveErr;
+            result.setResult(ApiErrorCode::ApiError_TeamMemberCreateFailure, moveErr);
+            return result;
+        }
+
+        auto personalRows = db->execSqlSync("select name from team where id = $1", personalTeamId);
+        result.jsondata["userId"] = memberUserId;
+        result.jsondata["teamId"] = personalTeamId;
+        result.jsondata["teamName"] = personalRows.empty()
+                                          ? std::string()
+                                          : personalRows[0]["name"].as<std::string>();
+        result.setResult(ApiErrorCode::ApiError_Success, "成员已移回个人团队");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "VendorRemoveMember 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult TeamService::VendorMoveMembers(int operatorUserId,
+                                          int teamId,
+                                          const std::vector<int> &userIds,
+                                          const std::vector<std::string> &roleCodes)
+{
+    HttpResult result;
+    if (userIds.empty())
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "请选择要移动的用户");
+        return result;
+    }
+    if (roleCodes.empty())
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "至少选择一个团队角色");
+        return result;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        int ownTeamId = 0;
+        std::string roleCode;
+        if (!IsVendorOperator(db, operatorUserId, ownTeamId, roleCode))
+        {
+            SetVendorDenied(result);
+            return result;
+        }
+
+        auto teamRows = db->execSqlSync(
+            "select status, is_personal from team where id = $1", teamId);
+        if (teamRows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_TeamNotFound);
+            return result;
+        }
+        if (teamRows[0]["status"].as<int>() != 1)
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "团队已停用，不能移入成员");
+            return result;
+        }
+        if (teamRows[0]["is_personal"].as<bool>())
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "个人团队不能移入其他成员");
+            return result;
+        }
+
+        std::vector<int> roleIds;
+        if (!ResolveTeamRoleIds(db, roleCodes, roleIds))
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidRoleCode);
+            return result;
+        }
+        if (HasTeamAdminRole(roleCodes) && !CanGrantTeamAdmin(db, operatorUserId, teamId))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamAdmin,
+                             "只有厂商超级管理员或团队所有者可以授予团队管理员");
+            return result;
+        }
+
+        const bool operatorIsSuper = IsSuperAdmin(db, operatorUserId);
+        Json::Value results(Json::arrayValue);
+        int moved = 0;
+        int failed = 0;
+        for (const int targetUserId : userIds)
+        {
+            Json::Value item;
+            item["userId"] = targetUserId;
+            item["ok"] = false;
+
+            auto userRows = db->execSqlSync(
+                "select name from \"user\" where id = $1", targetUserId);
+            if (userRows.empty())
+            {
+                item["userName"] = "";
+                item["message"] = "用户不存在";
+                failed++;
+                results.append(item);
+                continue;
+            }
+            const std::string targetName = userRows[0]["name"].as<std::string>();
+            item["userName"] = targetName;
+
+            auto memberRows = db->execSqlSync(
+                "select tm.team_id, t.is_personal, t.owner_user_id "
+                "from team_member tm join team t on t.id = tm.team_id "
+                "where tm.user_id = $1",
+                targetUserId);
+            if (memberRows.empty())
+            {
+                item["message"] = "该账号不属于任何团队";
+                failed++;
+                results.append(item);
+                continue;
+            }
+            const int currentTeamId = memberRows[0]["team_id"].as<int>();
+            const bool currentIsPersonal = memberRows[0]["is_personal"].as<bool>();
+            const int currentOwnerId = memberRows[0]["owner_user_id"].isNull()
+                                           ? 0
+                                           : memberRows[0]["owner_user_id"].as<int>();
+            if (currentTeamId == teamId)
+            {
+                item["message"] = "该账号已在目标团队";
+                failed++;
+                results.append(item);
+                continue;
+            }
+            if (!currentIsPersonal && currentOwnerId == targetUserId)
+            {
+                item["message"] = "该账号是所在团队的创建者，不能直接移动";
+                failed++;
+                results.append(item);
+                continue;
+            }
+            if (IsSuperAdmin(db, targetUserId) && !operatorIsSuper)
+            {
+                item["message"] = "只有超级管理员可以移动超级管理员";
+                failed++;
+                results.append(item);
+                continue;
+            }
+
+            std::string moveErr;
+            if (!MoveMemberToTeam(db, targetUserId, teamId, roleIds, moveErr))
+            {
+                item["message"] = moveErr.empty() ? "移动失败" : moveErr;
+                failed++;
+            }
+            else
+            {
+                item["ok"] = true;
+                item["message"] = "已移入";
+                moved++;
+            }
+            results.append(item);
+        }
+
+        result.jsondata["moved"] = moved;
+        result.jsondata["failed"] = failed;
+        result.jsondata["results"] = results;
+        result.setResult(ApiErrorCode::ApiError_Success, "移动完成");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "VendorMoveMembers 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult TeamService::VendorListCandidates(int operatorUserId,
+                                             const std::string &keyword,
+                                             int excludeTeamId,
+                                             int limit)
+{
+    HttpResult result;
+    if (limit <= 0)
+    {
+        limit = 50;
+    }
+    if (limit > 200)
+    {
+        limit = 200;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        int ownTeamId = 0;
+        std::string roleCode;
+        if (!IsVendorOperator(db, operatorUserId, ownTeamId, roleCode))
+        {
+            SetVendorDenied(result);
+            return result;
+        }
+
+        auto rows = db->execSqlSync(
+            "select u.id, u.name, u.nick_name, u.status, tm.team_id, t.name as team_name, "
+            "       r.code as role_code, r.name as role_name "
+            "from \"user\" u "
+            "left join team_member tm on tm.user_id = u.id "
+            "left join team t on t.id = tm.team_id "
+            "left join role r on r.id = tm.role_id "
+            "where coalesce(u.status, 1) = 1 "
+            "  and (tm.team_id is null or tm.team_id <> $2::int) "
+            "  and ($1::text = '' or u.name ilike '%' || $1 || '%' "
+            "       or coalesce(u.nick_name, '') ilike '%' || $1 || '%') "
+            "order by u.id limit $3::int",
+            keyword, excludeTeamId, limit);
+
+        Json::Value users(Json::arrayValue);
+        for (const auto &r : rows)
+        {
+            Json::Value u;
+            u["userId"] = r["id"].as<int>();
+            u["userName"] = r["name"].as<std::string>();
+            u["nickName"] = r["nick_name"].isNull() ? "" : r["nick_name"].as<std::string>();
+            u["status"] = r["status"].isNull() ? 1 : r["status"].as<int>();
+            u["teamId"] = r["team_id"].isNull() ? 0 : r["team_id"].as<int>();
+            u["teamName"] = r["team_name"].isNull() ? "" : r["team_name"].as<std::string>();
+            u["roleCode"] = r["role_code"].isNull() ? "" : r["role_code"].as<std::string>();
+            u["roleName"] = r["role_name"].isNull() ? "" : r["role_name"].as<std::string>();
+            users.append(u);
+        }
+        result.jsondata["users"] = users;
+        result.setResult(ApiErrorCode::ApiError_Success, "success");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "VendorListCandidates 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult TeamService::RenameTeam(int operatorUserId, const std::string &name)
+{
+    HttpResult result;
+    const std::string teamName = TrimText(name);
+    if (teamName.empty() || teamName.size() > 64)
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "团队名称不能为空且不超过 64 个字符");
+        return result;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        int teamId = 0;
+        std::string roleCode;
+        if (!GetMembership(db, operatorUserId, teamId, roleCode))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamMember);
+            return result;
+        }
+        if (!IsTeamAdminOf(db, operatorUserId, teamId))
+        {
+            result.setResult(ApiErrorCode::ApiError_NotTeamAdmin);
+            return result;
+        }
+
+        auto dupRows = db->execSqlSync("select 1 from team where name = $1 and id <> $2",
+                                       teamName, teamId);
+        if (!dupRows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "团队名称已存在");
+            return result;
+        }
+        db->execSqlSync("update team set name = $2 where id = $1", teamId, teamName);
+
+        result.jsondata["teamId"] = teamId;
+        result.jsondata["name"] = teamName;
+        result.setResult(ApiErrorCode::ApiError_Success, "团队名称已更新");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "RenameTeam 失败: " << e.base().what();
         result.setResult(ApiErrorCode::ApiError_DatabaseError);
     }
     return result;
