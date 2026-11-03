@@ -20,6 +20,9 @@ public:
 
     static drogon::Task<PayQueryResult> Query(const std::string &orderNo);
 
+    // 关闭未支付订单：渠道无单视为成功，已支付返回 alreadyPaid
+    static drogon::Task<PayCloseResult> Close(const std::string &orderNo);
+
     // 渠道退款（按商户订单号 + 商户退款单号，幂等）
     static drogon::Task<PayRefundResult> Refund(const std::string &orderNo,
                                                 const std::string &refundNo,

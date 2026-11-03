@@ -283,6 +283,74 @@ Task<PayQueryResult> WechatPayProvider::Query(const std::string &orderNo)
     co_return result;
 }
 
+Task<PayCloseResult> WechatPayProvider::Close(const std::string &orderNo)
+{
+    PayCloseResult result;
+    const auto &cfg = PaymentConfig::Wechat();
+    if (!PaymentConfig::WechatReady())
+    {
+        result.error = "微信支付渠道未配置";
+        co_return result;
+    }
+
+    const std::string path = std::string("/v3/pay/transactions/out-trade-no/") +
+                             drogon::utils::urlEncode(orderNo) + "/close";
+    Json::Value body;
+    body["mchid"] = cfg.mchId;
+    const std::string payload = PaymentUtils::JsonCompact(body);
+
+    const std::string authorization = BuildAuthorization("POST", path, payload);
+    if (authorization.empty())
+    {
+        result.error = "微信支付关单签名失败";
+        co_return result;
+    }
+
+    auto req = HttpRequest::newHttpRequest();
+    req->setMethod(Post);
+    req->setPath(path);
+    req->setBody(payload);
+    req->setContentTypeString("application/json");
+    req->addHeader("Accept", "application/json");
+    req->addHeader("Authorization", authorization);
+
+    HttpResponsePtr resp;
+    try
+    {
+        resp = co_await GetClient(cfg.apiBase)->sendRequestCoro(req);
+    }
+    catch (const std::exception &e)
+    {
+        result.error = std::string("微信支付关单异常: ") + e.what();
+        LOG_ERROR << "[WeChatPay] " << result.error;
+        co_return result;
+    }
+
+    if (resp && (resp->statusCode() == k204NoContent || resp->statusCode() == k200OK))
+    {
+        result.ok = true;
+        co_return result;
+    }
+
+    const std::string respBody = resp ? std::string(resp->body().data(), resp->body().size()) : "";
+    Json::Value root;
+    const std::string code = ParseJson(respBody, root) ? root.get("code", "").asString() : "";
+    result.state = code;
+    if (code == "ORDER_NOT_EXIST" || code == "ORDER_CLOSED")
+    {
+        result.ok = true;
+        co_return result;
+    }
+    if (code == "ORDERPAID")
+    {
+        result.alreadyPaid = true;
+        co_return result;
+    }
+    result.error = ProviderError(resp, respBody);
+    LOG_WARN << "[WeChatPay] 关单失败 orderNo=" << orderNo << ", " << result.error;
+    co_return result;
+}
+
 Task<PayRefundResult> WechatPayProvider::Refund(const std::string &orderNo,
                                                 const std::string &refundNo,
                                                 int64_t refundCents,

@@ -1,6 +1,7 @@
 #include "BillService.h"
 
 #include <drogon/drogon.h>
+#include <drogon/utils/Utilities.h>
 
 #include "AlipayProvider.h"
 #include "PaymentTypes.h"
@@ -18,6 +19,7 @@
 #include <random>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 
 using namespace drogon;
 using namespace UEAdminAPI;
@@ -59,6 +61,40 @@ std::string GenerateOrderNo()
     return std::string(buf) + std::to_string(dist(rng));
 }
 
+std::string GenerateGroupNo()
+{
+    std::time_t now = std::time(nullptr);
+    std::tm tmv{};
+#ifdef _WIN32
+    localtime_s(&tmv, &now);
+#else
+    localtime_r(&now, &tmv);
+#endif
+    char buf[32] = {0};
+    std::strftime(buf, sizeof(buf), "BG%Y%m%d%H%M%S", &tmv);
+
+    static std::mt19937 rng(static_cast<unsigned>(std::random_device{}()));
+    std::uniform_int_distribution<int> dist(100000, 999999);
+    return std::string(buf) + std::to_string(dist(rng));
+}
+
+std::string GenerateRefundNo()
+{
+    std::time_t now = std::time(nullptr);
+    std::tm tmv{};
+#ifdef _WIN32
+    localtime_s(&tmv, &now);
+#else
+    localtime_r(&now, &tmv);
+#endif
+    char buf[32] = {0};
+    std::strftime(buf, sizeof(buf), "RF%Y%m%d%H%M%S", &tmv);
+
+    static std::mt19937 rng(static_cast<unsigned>(std::random_device{}()));
+    std::uniform_int_distribution<int> dist(100000, 999999);
+    return std::string(buf) + std::to_string(dist(rng));
+}
+
 std::string BuildQrUrl(const std::string &orderNo)
 {
     const auto &cfg = drogon::app().getCustomConfig();
@@ -69,6 +105,88 @@ std::string BuildQrUrl(const std::string &orderNo)
         host.pop_back();
     }
     return host + "/api/bill/qr/" + orderNo;
+}
+
+// 二维码图片直接随订单下发，客户端无需再下载 PNG
+std::string QrBase64For(const std::string &qrContent, int channel)
+{
+    if (qrContent.empty() || (channel != 1 && channel != 2))
+    {
+        return "";
+    }
+
+    // 客户端每 1.5 秒轮询一次，同一订单的二维码内容不变，缓存编码结果避免重复生成 PNG
+    static std::mutex cacheMutex;
+    static std::unordered_map<std::string, std::string> cache;
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        const auto it = cache.find(qrContent);
+        if (it != cache.end())
+        {
+            return it->second;
+        }
+    }
+
+    const std::string png = RenderQrPng(qrContent);
+    const std::string encoded = png.empty() ? "" : drogon::utils::base64Encode(png);
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        if (cache.size() > 500)
+        {
+            cache.clear();
+        }
+        cache[qrContent] = encoded;
+    }
+    return encoded;
+}
+
+Json::Value BuildOrderJson(const drogon::orm::Row &r)
+{
+    const std::string orderNo = r["order_no"].as<std::string>();
+    const int channel = r["channel"].as<int>();
+    const int status = r["status"].as<int>();
+    const std::string qrContent = r["qr_content"].isNull() ? "" : r["qr_content"].as<std::string>();
+
+    // 已支付/已关闭的订单不再下发支付入口，避免客户端继续打开收银台
+    const bool payable = (status == 0) && !r["expired"].as<bool>();
+
+    Json::Value order;
+    order["orderNo"] = orderNo;
+    order["amountCents"] = static_cast<Json::Int64>(r["amount_cents"].as<int64_t>());
+    order["channel"] = channel;
+    order["status"] = status;
+    order["paid"] = (status == 1);
+    order["qrContent"] = qrContent;
+    order["payUrl"] = payable && !r["pay_url"].isNull() ? r["pay_url"].as<std::string>() : "";
+    order["qrPngUrl"] = BuildQrUrl(orderNo);
+    order["qrPngBase64"] = payable ? QrBase64For(qrContent, channel) : "";
+    order["expired"] = r["expired"].as<bool>();
+    order["expireAt"] = r["expire_at"].isNull() ? "" : r["expire_at"].as<std::string>();
+    order["createdAt"] = r["created_at"].isNull() ? "" : r["created_at"].as<std::string>();
+    order["paidAt"] = r["paid_at"].isNull() ? "" : r["paid_at"].as<std::string>();
+    return order;
+}
+
+// 关单后的补偿查单节流：比待支付订单更稀疏，避免长期空转
+bool ShouldQueryClosed(const std::string &orderNo)
+{
+    static std::mutex mutex;
+    static std::unordered_map<std::string, std::chrono::steady_clock::time_point> lastQuery;
+
+    std::lock_guard<std::mutex> lock(mutex);
+    const auto now = std::chrono::steady_clock::now();
+    const auto it = lastQuery.find(orderNo);
+    if (it != lastQuery.end() &&
+        now - it->second < std::chrono::seconds(30))
+    {
+        return false;
+    }
+    if (lastQuery.size() > 20000)
+    {
+        lastQuery.clear();
+    }
+    lastQuery[orderNo] = now;
+    return true;
 }
 
 bool ShouldQueryProvider(const std::string &orderNo)
@@ -122,6 +240,116 @@ Task<PayQueryResult> QueryProvider(int channel, const std::string &orderNo)
     co_return result;
 }
 
+Task<PayCloseResult> CloseProviderOrder(int channel, const std::string &orderNo)
+{
+    if (channel == 1)
+    {
+        co_return co_await AlipayProvider::Close(orderNo);
+    }
+    if (channel == 2)
+    {
+        co_return co_await WechatPayProvider::Close(orderNo);
+    }
+    PayCloseResult result;
+    result.ok = true;  // 模拟渠道无渠道侧订单
+    co_return result;
+}
+
+bool SettleOrder(const std::string &orderNo,
+                 int channel,
+                 const std::string &providerTradeNo,
+                 int64_t paidCents,
+                 const char *source,
+                 std::string &error);
+
+// 关闭同组内其余待支付订单。关单时渠道若已支付，立即查单入账，
+// 再交给重复支付退款兜底，避免只依赖异步通知。
+Task<void> CloseSiblings(const std::string &groupNo, const std::string &paidOrderNo)
+{
+    if (groupNo.empty())
+    {
+        co_return;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select order_no, channel::int as channel from payment_order "
+            "where pay_group = $1 and order_no <> $2 and status = 0",
+            groupNo, paidOrderNo);
+        for (const auto &r : rows)
+        {
+            const std::string orderNo = r["order_no"].as<std::string>();
+            const int channel = r["channel"].as<int>();
+            if (channel == 1 || channel == 2)
+            {
+                PayCloseResult closed = co_await CloseProviderOrder(channel, orderNo);
+                if (closed.alreadyPaid)
+                {
+                    PayQueryResult query = co_await QueryProvider(channel, orderNo);
+                    if (query.ok && query.paid)
+                    {
+                        std::string settleError;
+                        if (!SettleOrder(orderNo, channel, query.providerTradeNo, query.paidCents,
+                                         "sibling-close", settleError))
+                        {
+                            LOG_WARN << "[Payment] 同级订单已支付但入账失败 orderNo=" << orderNo
+                                     << " reason=" << settleError;
+                        }
+                    }
+                    continue;
+                }
+                if (!closed.ok)
+                {
+                    LOG_WARN << "[Payment] 同级订单关单失败 orderNo=" << orderNo
+                             << " reason=" << closed.error;
+                    continue;
+                }
+            }
+            db->execSqlSync("update payment_order set status = 2 where order_no = $1 and status = 0", orderNo);
+            LOG_INFO << "[Payment] 已关闭同级订单 orderNo=" << orderNo << " paidOrderNo=" << paidOrderNo;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "[Payment] 关闭同级订单失败: " << e.base().what();
+    }
+}
+
+void ScheduleCloseSiblings(const std::string &groupNo, const std::string &paidOrderNo)
+{
+    if (groupNo.empty())
+    {
+        return;
+    }
+    // 结算可能发生在回调线程里，关单需要网络请求，异步执行，不阻塞渠道应答
+    drogon::async_run([groupNo, paidOrderNo]() -> Task<void> {
+        co_await CloseSiblings(groupNo, paidOrderNo);
+    });
+}
+
+// 同一支付组两笔都支付成功时，为后结算的一笔自动提交退款申请（仍需超管审核）
+void CreateDuplicateRefundRequest(const std::string &orderNo, int userId, int64_t amountCents)
+{
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        // 每笔重复支付只自动提交一次；超管驳回后不再反复生成
+        db->execSqlSync(
+            "insert into payment_refund (refund_no, order_no, user_id, amount_cents, status, reason) "
+            "select $1, $2, $3, $4, 0, $5 "
+            "where not exists (select 1 from payment_refund where order_no = $2) "
+            "on conflict do nothing",
+            GenerateRefundNo(), orderNo, userId, amountCents, "同组重复支付，系统自动提交退款");
+        LOG_WARN << "[Payment] 同组重复支付，已自动创建退款申请 orderNo=" << orderNo;
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "[Payment] 创建重复支付退款申请失败: orderNo=" << orderNo << " " << e.base().what();
+    }
+}
+
 // 幂等结算：校验订单/渠道/金额后，一条 CTE 完成「置为已支付 + 建余额行 + 加余额 + 记流水」。
 // 回调与主动查单都走这里，out_trade_no 唯一 + update ... where status = 0 保证并发安全。
 bool SettleOrder(const std::string &orderNo,
@@ -167,11 +395,17 @@ bool SettleOrder(const std::string &orderNo,
             error.clear();
             return true;
         }
-        if (status != 0)
+        if (status != 0 && status != 2)
         {
             error = "订单状态不允许结算";
             LOG_WARN << "[Payment][" << source << "] 结算失败: orderNo=" << orderNo << " status=" << status;
             return false;
+        }
+        if (status == 2)
+        {
+            // 关单与用户付款并发：渠道确认已支付，按已支付入账；同组重复支付由退款申请兜底
+            LOG_WARN << "[Payment][" << source << "] 订单已关闭但渠道确认已支付，按已支付入账 orderNo="
+                     << orderNo;
         }
 
         const std::string extRef = "order:" + orderNo;
@@ -179,7 +413,7 @@ bool SettleOrder(const std::string &orderNo,
             "with o as ("
             "    update payment_order set status = 1, paid_at = now(), "
             "        provider_trade_no = coalesce(nullif($2, ''), provider_trade_no) "
-            "    where order_no = $1 and status = 0 "
+            "    where order_no = $1 and status in (0, 2) "
             "    returning id, user_id, amount_cents"
             "), ensured as ("
             "    insert into user_balance (user_id) select user_id from o "
@@ -205,6 +439,44 @@ bool SettleOrder(const std::string &orderNo,
                  << " amount=" << amountCents
                  << " balance=" << settled[0]["balance_cents"].as<int64_t>()
                  << " tradeNo=" << providerTradeNo;
+
+        // 支付组：任一方支付成功后关闭另一单；若另一单也已支付，为本单自动提交退款申请
+        std::string groupNo;
+        try
+        {
+            auto groupRows = db->execSqlSync("select pay_group from payment_order where order_no = $1", orderNo);
+            if (!groupRows.empty() && !groupRows[0]["pay_group"].isNull())
+            {
+                groupNo = groupRows[0]["pay_group"].as<std::string>();
+            }
+        }
+        catch (const drogon::orm::DrogonDbException &e)
+        {
+            LOG_WARN << "[Payment] 读取支付组失败: " << e.base().what();
+        }
+
+        if (!groupNo.empty())
+        {
+            try
+            {
+                // 同一支付组只把最早支付的一笔视为有效，后支付的重复单自动申请退款
+                auto winner = db->execSqlSync(
+                    "select order_no from payment_order "
+                    "where pay_group = $1 and status = 1 "
+                    "order by paid_at asc nulls last, id asc limit 1",
+                    groupNo);
+                if (!winner.empty() && winner[0]["order_no"].as<std::string>() != orderNo)
+                {
+                    CreateDuplicateRefundRequest(orderNo, r["user_id"].as<int>(), amountCents);
+                }
+            }
+            catch (const drogon::orm::DrogonDbException &e)
+            {
+                LOG_WARN << "[Payment] 检查同组支付状态失败: " << e.base().what();
+            }
+            ScheduleCloseSiblings(groupNo, orderNo);
+        }
+
         error.clear();
         return true;
     }
@@ -418,6 +690,369 @@ Task<HttpResult> BillService::CreateOrder(int userId, int64_t amountCents, int c
     co_return result;
 }
 
+Task<HttpResult> BillService::CreateOrderGroup(int userId, int64_t amountCents, const std::string &idemKey)
+{
+    HttpResult result;
+    if (amountCents <= 0 || amountCents > kMaxAmountCents)
+    {
+        result.setResult(ApiErrorCode::ApiError_AmountInvalid);
+        co_return result;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        // 幂等：同一 idemKey 直接返回原支付组
+        if (!idemKey.empty())
+        {
+            auto exist = db->execSqlSync(
+                "select pay_group from payment_order "
+                "where user_id = $1 and idem_key in ($2::text, $3::text) and pay_group is not null limit 1",
+                userId, idemKey + ":1", idemKey + ":2");
+            if (!exist.empty())
+            {
+                const std::string groupNo = exist[0]["pay_group"].as<std::string>();
+
+                // 上次下单时某渠道临时失败：订单仍待支付且没有二维码/收银台，重试时补建
+                auto missing = db->execSqlSync(
+                    "select order_no, channel::int as channel, amount_cents from payment_order "
+                    "where pay_group = $1 and user_id = $2 and status = 0 "
+                    "  and coalesce(qr_content, '') = '' and coalesce(pay_url, '') = ''",
+                    groupNo, userId);
+                for (const auto &r : missing)
+                {
+                    const int channel = r["channel"].as<int>();
+                    if ((channel != 1 && channel != 2) || !PaymentConfig::ChannelReady(channel))
+                    {
+                        continue;
+                    }
+                    const std::string orderNo = r["order_no"].as<std::string>();
+                    PayCreateResult created = co_await CreateProviderOrder(
+                        channel, orderNo, r["amount_cents"].as<int64_t>());
+                    if (!created.ok)
+                    {
+                        LOG_WARN << "[Payment] 支付组补建渠道订单失败 orderNo=" << orderNo
+                                 << " reason=" << created.error;
+                        continue;
+                    }
+                    db->execSqlSync(
+                        "update payment_order set qr_content = nullif($2, ''), pay_url = nullif($3, ''), "
+                        "       provider_trade_no = coalesce(nullif($4, ''), provider_trade_no) "
+                        "where order_no = $1",
+                        orderNo, created.qrContent, created.payUrl, created.providerTradeNo);
+                }
+
+                HttpResult group = co_await GetOrderGroup(userId, groupNo);
+                co_return group;
+            }
+        }
+
+        std::vector<int> channels;
+        for (int channel : {1, 2})
+        {
+            if (PaymentConfig::ChannelReady(channel))
+            {
+                channels.push_back(channel);
+            }
+        }
+        if (channels.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_PayProviderError, "支付渠道未配置");
+            co_return result;
+        }
+
+        Json::Value unavailable(Json::arrayValue);
+        for (int channel : {1, 2})
+        {
+            if (!PaymentConfig::ChannelReady(channel))
+            {
+                Json::Value item;
+                item["channel"] = channel;
+                item["message"] = std::string(channel == 1 ? "支付宝" : "微信支付") + "暂未开通";
+                unavailable.append(item);
+            }
+        }
+
+        const std::string groupNo = GenerateGroupNo();
+        bool anyPayable = false;
+        for (int channel : channels)
+        {
+            const std::string orderNo = GenerateOrderNo();
+            // 组内每单的幂等键加渠道后缀，保留 payment_order.idem_key 的唯一约束
+            const std::string channelIdem = idemKey.empty() ? orderNo : idemKey + ":" + std::to_string(channel);
+            db->execSqlSync(
+                "insert into payment_order "
+                "(order_no, user_id, amount_cents, channel, status, idem_key, pay_group, expire_at) "
+                "values ($1, $2, $3, $4::int, 0, $5, $6, now() + ($7::int * interval '1 minute'))",
+                orderNo, userId, amountCents, channel, channelIdem, groupNo, kOrderExpireMinutes);
+
+            std::string qrContent;
+            std::string payUrl;
+            std::string providerTradeNo;
+            if (channel == 9)
+            {
+                qrContent = MockQrContent(orderNo);
+            }
+            else
+            {
+                PayCreateResult created = co_await CreateProviderOrder(channel, orderNo, amountCents);
+                if (!created.ok)
+                {
+                    // 保留待支付状态，同一次重试仍可补建渠道订单
+                    Json::Value item;
+                    item["channel"] = channel;
+                    item["message"] = created.error.empty() ? "渠道下单失败" : created.error;
+                    unavailable.append(item);
+                    continue;
+                }
+                qrContent = created.qrContent;
+                payUrl = created.payUrl;
+                providerTradeNo = created.providerTradeNo;
+            }
+            if (!qrContent.empty() || !payUrl.empty())
+            {
+                anyPayable = true;
+            }
+            db->execSqlSync(
+                "update payment_order set qr_content = nullif($2, ''), pay_url = nullif($3, ''), "
+                "       provider_trade_no = coalesce(nullif($4, ''), provider_trade_no) "
+                "where order_no = $1",
+                orderNo, qrContent, payUrl, providerTradeNo);
+        }
+
+        if (!anyPayable)
+        {
+            db->execSqlSync("delete from payment_order where pay_group = $1 and user_id = $2 and status = 0",
+                            groupNo, userId);
+            std::string message = "支付渠道下单失败，请稍后重试";
+            if (!unavailable.empty() && unavailable[0].isMember("message"))
+            {
+                message += "：" + unavailable[0]["message"].asString();
+            }
+            result.setResult(ApiErrorCode::ApiError_PayProviderError, message);
+            co_return result;
+        }
+
+        auto rows = db->execSqlSync(
+            "select order_no, amount_cents, channel::int as channel, status::int as status, "
+            "       qr_content, pay_url, "
+            "       (expire_at is not null and expire_at < now()) as expired, "
+            "       to_char(expire_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as expire_at, "
+            "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
+            "       to_char(paid_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as paid_at "
+            "from payment_order where pay_group = $1 and user_id = $2 order by channel",
+            groupNo, userId);
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_DatabaseError);
+            co_return result;
+        }
+
+        Json::Value orders(Json::arrayValue);
+        bool paid = false;
+        bool pending = false;
+        for (const auto &r : rows)
+        {
+            orders.append(BuildOrderJson(r));
+            const int status = r["status"].as<int>();
+            if (status == 1)
+            {
+                paid = true;
+            }
+            else if (status == 0 && !r["expired"].as<bool>())
+            {
+                pending = true;
+            }
+        }
+
+        result.jsondata["groupNo"] = groupNo;
+        result.jsondata["amountCents"] = static_cast<Json::Int64>(amountCents);
+        result.jsondata["paid"] = paid;
+        result.jsondata["status"] = paid ? 1 : (pending ? 0 : 2);
+        result.jsondata["expireAt"] = rows[0]["expire_at"].isNull() ? "" : rows[0]["expire_at"].as<std::string>();
+        result.jsondata["orders"] = orders;
+        result.jsondata["unavailable"] = unavailable;
+        result.jsondata["balanceAfterCents"] = 0;
+        result.setResult(ApiErrorCode::ApiError_Success, "success");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "CreateOrderGroup 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    co_return result;
+}
+
+Task<HttpResult> BillService::GetOrderGroup(int userId, const std::string &groupNo)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto load = [&]() {
+            return db->execSqlSync(
+                "select order_no, amount_cents, channel::int as channel, status::int as status, "
+                "       qr_content, pay_url, "
+                "       (expire_at is not null and expire_at < now()) as expired, "
+                "       to_char(expire_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as expire_at, "
+                "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
+                "       to_char(paid_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as paid_at "
+                "from payment_order where pay_group = $1 and user_id = $2 order by channel",
+                groupNo, userId);
+        };
+
+        auto rows = load();
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_OrderNotFound);
+            co_return result;
+        }
+
+        // 回调可能丢失：轮询时对待支付订单主动查单（同一订单 4 秒内最多一次）
+        bool refreshed = false;
+        for (const auto &r : rows)
+        {
+            const std::string orderNo = r["order_no"].as<std::string>();
+            const int status = r["status"].as<int>();
+            const int channel = r["channel"].as<int>();
+            if (status != 0 || r["expired"].as<bool>() || (channel != 1 && channel != 2) ||
+                !PaymentConfig::ChannelReady(channel) || !ShouldQueryProvider(orderNo))
+            {
+                continue;
+            }
+
+            PayQueryResult query = co_await QueryProvider(channel, orderNo);
+            if (query.ok)
+            {
+                if (query.paid)
+                {
+                    std::string settleError;
+                    if (!SettleOrder(orderNo, channel, query.providerTradeNo, query.paidCents,
+                                     "group-query", settleError))
+                    {
+                        LOG_WARN << "[Payment][group-query] 查单已支付但入账失败: orderNo=" << orderNo
+                                 << " reason=" << settleError;
+                    }
+                    refreshed = true;
+                }
+                else if (query.closed)
+                {
+                    db->execSqlSync("update payment_order set status = 2 where order_no = $1 and status = 0",
+                                    orderNo);
+                    refreshed = true;
+                }
+            }
+            else if (!query.error.empty())
+            {
+                LOG_DEBUG << "[Payment][group-query] 查单失败 orderNo=" << orderNo
+                          << " reason=" << query.error;
+            }
+        }
+        if (refreshed)
+        {
+            rows = load();
+        }
+
+        std::string paidOrderNo;
+        for (const auto &r : rows)
+        {
+            if (r["status"].as<int>() == 1)
+            {
+                paidOrderNo = r["order_no"].as<std::string>();
+                break;
+            }
+        }
+        if (!paidOrderNo.empty())
+        {
+            co_await CloseSiblings(groupNo, paidOrderNo);
+            rows = load();
+        }
+
+        // 兜底：同组两笔都已支付但退款申请未落库（结算时插入失败/并发遗漏）时补建
+        int paidCount = 0;
+        for (const auto &r : rows)
+        {
+            if (r["status"].as<int>() == 1)
+            {
+                ++paidCount;
+            }
+        }
+        if (paidCount >= 2)
+        {
+            try
+            {
+                auto paidRows = db->execSqlSync(
+                    "select order_no, user_id, amount_cents from payment_order "
+                    "where pay_group = $1 and status = 1 order by paid_at asc nulls last, id asc",
+                    groupNo);
+                for (size_t i = 1; i < paidRows.size(); ++i)
+                {
+                    const auto &dup = paidRows[i];
+                    CreateDuplicateRefundRequest(dup["order_no"].as<std::string>(),
+                                                 dup["user_id"].as<int>(),
+                                                 dup["amount_cents"].as<int64_t>());
+                }
+            }
+            catch (const drogon::orm::DrogonDbException &e)
+            {
+                LOG_WARN << "[Payment] 补建重复支付退款申请失败: " << e.base().what();
+            }
+        }
+
+        Json::Value orders(Json::arrayValue);
+        bool paid = false;
+        bool pending = false;
+        for (const auto &r : rows)
+        {
+            orders.append(BuildOrderJson(r));
+            const int status = r["status"].as<int>();
+            if (status == 1)
+            {
+                paid = true;
+            }
+            else if (status == 0 && !r["expired"].as<bool>())
+            {
+                pending = true;
+            }
+        }
+
+        Json::Value unavailable(Json::arrayValue);
+        for (int channel : {1, 2})
+        {
+            if (!PaymentConfig::ChannelReady(channel))
+            {
+                Json::Value item;
+                item["channel"] = channel;
+                item["message"] = std::string(channel == 1 ? "支付宝" : "微信支付") + "暂未开通";
+                unavailable.append(item);
+            }
+        }
+
+        result.jsondata["groupNo"] = groupNo;
+        result.jsondata["amountCents"] = static_cast<Json::Int64>(rows[0]["amount_cents"].as<int64_t>());
+        result.jsondata["paid"] = paid;
+        result.jsondata["status"] = paid ? 1 : (pending ? 0 : 2);
+        result.jsondata["expireAt"] = rows[0]["expire_at"].isNull() ? "" : rows[0]["expire_at"].as<std::string>();
+        result.jsondata["orders"] = orders;
+        result.jsondata["unavailable"] = unavailable;
+        result.jsondata["balanceAfterCents"] = 0;
+
+        if (paid)
+        {
+            auto bal = db->execSqlSync("select balance_cents from user_balance where user_id = $1", userId);
+            result.jsondata["balanceAfterCents"] =
+                bal.empty() ? 0 : static_cast<Json::Int64>(bal[0]["balance_cents"].as<int64_t>());
+        }
+        result.setResult(ApiErrorCode::ApiError_Success, "success");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "GetOrderGroup 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    co_return result;
+}
+
 Task<HttpResult> BillService::GetOrder(int userId, const std::string &orderNo)
 {
     HttpResult result;
@@ -490,9 +1125,12 @@ Task<HttpResult> BillService::GetOrder(int userId, const std::string &orderNo)
         result.jsondata["channel"] = channel;
         result.jsondata["status"] = status;
         result.jsondata["paid"] = (status == 1);
-        result.jsondata["qrContent"] = (*row)["qr_content"].isNull() ? "" : (*row)["qr_content"].as<std::string>();
+        const std::string qrContent =
+            (*row)["qr_content"].isNull() ? "" : (*row)["qr_content"].as<std::string>();
+        result.jsondata["qrContent"] = qrContent;
         result.jsondata["payUrl"] = (*row)["pay_url"].isNull() ? "" : (*row)["pay_url"].as<std::string>();
         result.jsondata["qrPngUrl"] = BuildQrUrl(orderNo);
+        result.jsondata["qrPngBase64"] = QrBase64For(qrContent, channel);
         result.jsondata["createdAt"] = (*row)["created_at"].as<std::string>();
         result.jsondata["paidAt"] = (*row)["paid_at"].isNull() ? "" : (*row)["paid_at"].as<std::string>();
 
@@ -797,6 +1435,52 @@ NotifyReply BillService::HandleWechatNotify(const std::string &body,
     reply.ok = true;
     reply.message = "成功";
     return reply;
+}
+
+Task<void> BillService::ReconcileClosedSiblings()
+{
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        // 只补偿“组内另一笔已支付、自己被关闭”的订单：这是关单与付款并发的主要窗口
+        auto rows = db->execSqlSync(
+            "select o.order_no, o.channel::int as channel "
+            "from payment_order o "
+            "join payment_order p on p.pay_group = o.pay_group and p.status = 1 "
+            "where o.status = 2 and o.pay_group is not null "
+            "  and o.created_at > now() - interval '2 hours' "
+            "  and o.channel in (1, 2) "
+            "  and (coalesce(o.qr_content, '') <> '' or coalesce(o.pay_url, '') <> '') "
+            "limit 100");
+
+        for (const auto &r : rows)
+        {
+            const std::string orderNo = r["order_no"].as<std::string>();
+            const int channel = r["channel"].as<int>();
+            if (!PaymentConfig::ChannelReady(channel) || !ShouldQueryClosed(orderNo))
+            {
+                continue;
+            }
+
+            PayQueryResult query = co_await QueryProvider(channel, orderNo);
+            if (!query.ok || !query.paid)
+            {
+                continue;
+            }
+
+            LOG_WARN << "[Payment][reconcile] 已关闭订单收到支付，按已支付入账 orderNo=" << orderNo;
+            std::string settleError;
+            if (!SettleOrder(orderNo, channel, query.providerTradeNo, query.paidCents, "reconcile", settleError))
+            {
+                LOG_WARN << "[Payment][reconcile] 入账失败 orderNo=" << orderNo << " reason=" << settleError;
+            }
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "[Payment][reconcile] 查询待补偿订单失败: " << e.base().what();
+    }
+    co_return;
 }
 
 bool BillService::GetQrPng(const std::string &orderNo, std::string &png)

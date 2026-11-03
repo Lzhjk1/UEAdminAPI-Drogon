@@ -26,6 +26,7 @@ namespace {
 constexpr const char *kMethodPrecreate = "alipay.trade.precreate";
 constexpr const char *kMethodPagePay = "alipay.trade.page.pay";
 constexpr const char *kMethodQuery = "alipay.trade.query";
+constexpr const char *kMethodClose = "alipay.trade.close";
 constexpr const char *kMethodRefund = "alipay.trade.refund";
 constexpr const char *kMethodRefundQuery = "alipay.trade.fastpay.refund.query";
 
@@ -146,6 +147,7 @@ Task<PayCreateResult> AlipayProvider::CreateOrder(const std::string &orderNo,
     biz["total_amount"] = PaymentUtils::FormatYuan(amountCents);
     biz["subject"] = subject;
     biz["product_code"] = cfg.productCode;
+    biz["timeout_express"] = "30m";  // 与 payment_order 的 30 分钟有效期对齐
 
     const bool qrMode = (cfg.mode == "qr");
     std::map<std::string, std::string> params;
@@ -301,6 +303,104 @@ Task<PayQueryResult> AlipayProvider::Query(const std::string &orderNo)
     result.ok = true;
     result.paid = (result.state == "TRADE_SUCCESS" || result.state == "TRADE_FINISHED");
     result.closed = (result.state == "TRADE_CLOSED");
+    co_return result;
+}
+
+Task<PayCloseResult> AlipayProvider::Close(const std::string &orderNo)
+{
+    PayCloseResult result;
+    const auto &cfg = PaymentConfig::Alipay();
+    if (!PaymentConfig::AlipayReady())
+    {
+        result.error = "支付宝渠道未配置";
+        co_return result;
+    }
+
+    Json::Value biz;
+    biz["out_trade_no"] = orderNo;
+
+    std::map<std::string, std::string> params;
+    params["app_id"] = cfg.appId;
+    params["method"] = kMethodClose;
+    params["format"] = "JSON";
+    params["charset"] = "utf-8";
+    params["sign_type"] = "RSA2";
+    params["timestamp"] = NowTimestamp();
+    params["version"] = "1.0";
+    params["biz_content"] = PaymentUtils::JsonCompact(biz);
+    params["sign"] = PaymentCrypto::RsaSignSha256(BuildSignContent(params), cfg.privateKeyPem);
+    if (params["sign"].empty())
+    {
+        result.error = "支付宝关单签名失败";
+        co_return result;
+    }
+
+    std::string base, path;
+    if (!PaymentUtils::SplitUrl(cfg.gateway, base, path))
+    {
+        result.error = "支付宝网关地址不合法";
+        co_return result;
+    }
+
+    auto req = HttpRequest::newHttpRequest();
+    req->setMethod(Post);
+    req->setPath(path);
+    req->setBody(BuildFormBody(params));
+    req->setContentTypeString("application/x-www-form-urlencoded;charset=utf-8");
+
+    HttpResponsePtr resp;
+    try
+    {
+        resp = co_await GetClient(base)->sendRequestCoro(req);
+    }
+    catch (const std::exception &e)
+    {
+        result.error = std::string("支付宝关单异常: ") + e.what();
+        LOG_ERROR << "[Alipay] " << result.error;
+        co_return result;
+    }
+
+    if (!resp)
+    {
+        result.error = "支付宝无响应";
+        co_return result;
+    }
+
+    const std::string body(resp->body().data(), resp->body().size());
+    Json::CharReaderBuilder builder;
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    Json::Value root;
+    std::string errs;
+    if (!reader->parse(body.data(), body.data() + body.size(), &root, &errs) ||
+        !root.isMember("alipay_trade_close_response") || !root["alipay_trade_close_response"].isObject())
+    {
+        result.error = "支付宝关单响应不是合法 JSON";
+        LOG_ERROR << "[Alipay] 关单响应解析失败: " << errs << ", body=" << body.substr(0, 512);
+        co_return result;
+    }
+
+    const Json::Value &node = root["alipay_trade_close_response"];
+    const std::string code = node.get("code", "").asString();
+    const std::string subCode = node.get("sub_code", "").asString();
+    result.state = code + "/" + subCode;
+    if (code == "10000")
+    {
+        result.ok = true;
+        co_return result;
+    }
+    if (subCode == "ACQ.TRADE_NOT_EXIST")
+    {
+        // 电脑网站支付是本地签名 URL，用户未打开收银台时渠道侧没有订单
+        result.ok = true;
+        co_return result;
+    }
+    if (subCode == "ACQ.TRADE_STATUS_ERROR" || subCode == "ACQ.TRADE_HAS_FINISHED")
+    {
+        result.alreadyPaid = true;
+        co_return result;
+    }
+    result.error = "支付宝关单返回 " + code + "/" + subCode + ": " + node.get("sub_msg", "").asString();
+    LOG_WARN << "[Alipay] 关单失败 orderNo=" << orderNo << ", " << result.error;
     co_return result;
 }
 

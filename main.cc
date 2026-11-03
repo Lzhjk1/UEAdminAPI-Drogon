@@ -16,6 +16,7 @@
 #include "services/ThirdPartyLoginService.h"
 #include "services/SystemService.h"
 #include "services/ActionTokenService.h"
+#include "services/BillService.h"
 #include "utils/TestModeConfig.h"
 #include "utils/PaymentConfig.h"
 
@@ -156,6 +157,13 @@ int main() {
         UEAdminAPI::Services::ActionTokenService::Init(drogon::app().getCustomConfig());
 
         LOG_INFO << "服务初始化完成";
+
+        // 兜底：组内已有一笔支付、另一笔刚被关闭的订单，定期向渠道确认是否仍被支付
+        drogon::app().getLoop()->runEvery(60.0, []() {
+            drogon::async_run([]() -> drogon::Task<void> {
+                co_await UEAdminAPI::Services::BillService::ReconcileClosedSiblings();
+            });
+        });
     });
 
     LOG_DEBUG << "即将启动...";

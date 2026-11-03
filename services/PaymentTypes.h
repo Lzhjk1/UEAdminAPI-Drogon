@@ -34,6 +34,13 @@ struct PayNotifyResult {
     std::string error;
 };
 
+struct PayCloseResult {
+    bool ok = false;
+    bool alreadyPaid = false;    // 渠道侧已支付，无法关闭
+    std::string state;           // 渠道原始状态（仅日志/排查用）
+    std::string error;
+};
+
 struct PayRefundResult {
     bool ok = false;          // 渠道受理成功（不代表已到账）
     bool success = false;     // 退款已完成

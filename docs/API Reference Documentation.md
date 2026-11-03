@@ -1045,12 +1045,12 @@ GitLab 相关接口目前使用独立的响应格式：
 - **错误码**: `-102` 未选用户/角色为空、`-105` 个人团队或团队已停用、`-801` 团队不存在、
   `-803` 非厂商管理员或试图授予团队管理员、`-805` 未知角色、`-807` 非超管操作超管
 
-## 9. 余额与支付（当前为模拟支付）
+## 9. 余额与支付
 
 > 金额单位统一为 **分**（`bigint`），展示时除以 100。
-> 本期为模拟支付：下单后调用 `mock-paid` 直接到账；真实支付宝当面付 / 微信 Native 接入时，
-> 只需把订单的 `qr_content` 换成渠道返回的 `code_url`、把 `mock-paid` 换成渠道回调验签，
-> 订单、流水、余额与幂等逻辑不变（回调建议先落 `payment_callback_log` 再入账）。
+> 支付宝电脑网站支付 / 订单码与微信 Native 已接入真实渠道；渠道未配置时下单返回 `-906`，不会退回模拟支付。
+> 渠道 9 仍为模拟支付，仅测试使用。渠道回调先落 `payment_callback_log` 再入账，结算用幂等 CTE。
+> 客户端默认使用 §9.9 的支付组接口。
 
 ### 9.1 创建充值订单
 - **URL**: `/api/bill/order`
@@ -1058,7 +1058,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Body**: `{ "amountCents": 10000, "channel": 9, "idemKey": "可选，客户端生成的幂等键" }`
   - `channel`: 1 支付宝 / 2 微信 / 9 模拟
   - `amountCents`: 1 ~ 10000000
-- **Response**: `data = { orderNo, amountCents, channel, status(0 待支付), qrContent, payUrl, qrPngUrl, expireAt }`
+- **Response**: `data = { orderNo, amountCents, channel, status(0 待支付), qrContent, qrPngBase64, payUrl, qrPngUrl, expireAt }`
   - 支付宝电脑网站支付返回 `payUrl`（收银台地址）；微信/订单码返回 `qrContent`（二维码串）
   - 同一 `idemKey` 重复下单返回原订单（不新建）；订单关闭/过期返回 `-902`
 - **错误码**: `-903` 金额不合法、`-904` 渠道不支持、`-906` 渠道未配置或下单失败、`-104` 数据库错误
@@ -1088,6 +1088,7 @@ GitLab 相关接口目前使用独立的响应格式：
 - **URL**: `/api/bill/qr/{orderNo}`
 - **Method**: `GET`（无需登录）
 - **Response**: `image/png`。按订单 `qr_content` 实时渲染；模拟订单/无二维码时返回占位图。
+- 客户端通常直接用订单响应里的 `qrPngBase64`，无需再请求此接口。
 
 ### 9.6 用户申请退款
 - **URL**: `/api/bill/order/{orderNo}/refund`
@@ -1113,6 +1114,20 @@ GitLab 相关接口目前使用独立的响应格式：
 | `/api/admin/refunds/{id}/sync` | POST | 查询渠道退款结果：成功→已退款；处理中→保持；失败→冲正余额 |
 | `/api/admin/refunds/{id}/rollback` | POST | 仅退款中：手动回滚余额并标记失败（渠道卡单兜底） |
 
+
+### 9.9 支付组（微信 + 支付宝双栏）
+
+- **创建**：`POST /api/bill/order/group`，`Authorization: Bearer {token}`
+  - Body：`{ "amountCents": 10000, "idemKey": "可选" }`
+  - Response：`data = { groupNo, amountCents, paid, status, expireAt, balanceAfterCents, orders[], unavailable[] }`
+    - `orders[]`：`{ orderNo, amountCents, channel, status, paid, qrContent, qrPngBase64, payUrl, qrPngUrl, expireAt, expired }`
+    - `unavailable[]`：`{ channel, message }`，渠道未配置时不出单
+  - 同一 `idemKey` 返回原支付组；组内每单 `idem_key` 带 `:1` / `:2` 后缀
+- **轮询**：`GET /api/bill/order/group/{groupNo}`，`Authorization: Bearer {token}`
+  - 待支付时会向各渠道主动查单（同一订单 4 秒最多一次）
+  - `paid=true` 时返回 `balanceAfterCents`；`status`：0 待支付 / 1 已支付 / 2 已关闭或过期
+- **行为**：任一方支付成功后关闭同组另一笔；若另一笔也已支付，为后结算的一笔自动生成待审核退款申请。
+- **错误码**：`-903` 金额不合法、`-906` 渠道未配置或下单失败、`-901` 支付组不存在、`-104` 数据库错误
 
 ## 10. 厂商后台：角色 / 权限 / 权限组（RBAC）
 

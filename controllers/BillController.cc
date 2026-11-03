@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 #include <map>
+#include <optional>
 #include <string>
 
 using namespace drogon;
@@ -32,6 +33,32 @@ HttpResponsePtr JsonResponse(const UEAdminAPI::utils::HttpResult &result)
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     return resp;
+}
+
+std::optional<int64_t> ParseAmountCents(const HttpRequestPtr &req)
+{
+    auto reqJson = req->getJsonObject();
+    if (!reqJson)
+    {
+        return std::nullopt;
+    }
+    const auto &amountNode = (*reqJson)["amountCents"];
+    if (amountNode.isInt64() || amountNode.isInt() || amountNode.isUInt())
+    {
+        return amountNode.asInt64();
+    }
+    if (amountNode.isString())
+    {
+        try
+        {
+            return std::stoll(amountNode.asString());
+        }
+        catch (...)
+        {
+            return static_cast<int64_t>(0);
+        }
+    }
+    return static_cast<int64_t>(0);
 }
 
 int ToInt(const std::string &value, int fallback)
@@ -69,31 +96,15 @@ const char *kQrPlaceholderBase64 =
 Task<HttpResponsePtr> BillController::createOrder(HttpRequestPtr req)
 {
     UEAdminAPI::utils::HttpResult result;
-    auto reqJson = req->getJsonObject();
-    if (!reqJson)
+    auto amountOpt = ParseAmountCents(req);
+    if (!amountOpt)
     {
         result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
         co_return JsonResponse(result);
     }
+    const int64_t amountCents = *amountOpt;
 
-    int64_t amountCents = 0;
-    const auto &amountNode = (*reqJson)["amountCents"];
-    if (amountNode.isInt64() || amountNode.isInt() || amountNode.isUInt())
-    {
-        amountCents = amountNode.asInt64();
-    }
-    else if (amountNode.isString())
-    {
-        try
-        {
-            amountCents = std::stoll(amountNode.asString());
-        }
-        catch (...)
-        {
-            amountCents = 0;
-        }
-    }
-
+    auto reqJson = req->getJsonObject();
     int channel = 9;
     const auto &channelNode = (*reqJson)["channel"];
     if (channelNode.isInt())
@@ -108,6 +119,28 @@ Task<HttpResponsePtr> BillController::createOrder(HttpRequestPtr req)
     const std::string idemKey = (*reqJson)["idemKey"].asString();
 
     result = co_await BillService::CreateOrder(CurrentUserId(req), amountCents, channel, idemKey);
+    co_return JsonResponse(result);
+}
+
+Task<HttpResponsePtr> BillController::createOrderGroup(HttpRequestPtr req)
+{
+    UEAdminAPI::utils::HttpResult result;
+    auto amountOpt = ParseAmountCents(req);
+    if (!amountOpt)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return JsonResponse(result);
+    }
+
+    const std::string idemKey = (*req->getJsonObject())["idemKey"].asString();
+    result = co_await BillService::CreateOrderGroup(CurrentUserId(req), *amountOpt, idemKey);
+    co_return JsonResponse(result);
+}
+
+Task<HttpResponsePtr> BillController::getOrderGroup(HttpRequestPtr req, std::string groupNo)
+{
+    UEAdminAPI::utils::HttpResult result =
+        co_await BillService::GetOrderGroup(CurrentUserId(req), groupNo);
     co_return JsonResponse(result);
 }
 

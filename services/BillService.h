@@ -27,6 +27,16 @@ public:
                                                        int channel,
                                                        const std::string &idemKey);
 
+    // 支付组：一次下单同时生成微信/支付宝两笔订单，任一方支付成功后关闭另一笔
+    static drogon::Task<utils::HttpResult> CreateOrderGroup(int userId,
+                                                            int64_t amountCents,
+                                                            const std::string &idemKey);
+
+    static drogon::Task<utils::HttpResult> GetOrderGroup(int userId, const std::string &groupNo);
+
+    // 兜底：组内已有一笔支付、另一笔关闭后仍可能被支付的订单，定期查单补偿
+    static drogon::Task<void> ReconcileClosedSiblings();
+
     static drogon::Task<utils::HttpResult> GetOrder(int userId, const std::string &orderNo);
 
     // 我的已支付订单（含最近一条退款申请状态），供客户端发起退款
