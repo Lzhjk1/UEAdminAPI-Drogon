@@ -105,7 +105,8 @@ Task<HttpResponsePtr> BillController::createOrder(HttpRequestPtr req)
     const int64_t amountCents = *amountOpt;
 
     auto reqJson = req->getJsonObject();
-    int channel = 9;
+    // 缺省 0 会被 CreateOrder 判为不支持，避免旧请求误落模拟渠道
+    int channel = 0;
     const auto &channelNode = (*reqJson)["channel"];
     if (channelNode.isInt())
     {
@@ -113,7 +114,7 @@ Task<HttpResponsePtr> BillController::createOrder(HttpRequestPtr req)
     }
     else if (channelNode.isString())
     {
-        channel = ToInt(channelNode.asString(), 9);
+        channel = ToInt(channelNode.asString(), 0);
     }
 
     const std::string idemKey = (*reqJson)["idemKey"].asString();

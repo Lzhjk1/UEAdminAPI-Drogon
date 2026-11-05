@@ -45,7 +45,7 @@ public:
     // 余额流水（type: 0 全部 1 充值 2 消费 3 退款）
     static utils::HttpResult ListTransactions(int userId, int type, int page, int size);
 
-    // 模拟到账：仅 TestMode 开启或 channel == 9 时可用；幂等（重复调用不重复入账）
+    // 模拟到账：仅 TestMode 开启时可用（生产禁用）；幂等（重复调用不重复入账）
     static utils::HttpResult MockPaid(int userId, const std::string &orderNo);
 
     // 支付宝异步通知（application/x-www-form-urlencoded）

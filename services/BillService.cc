@@ -527,7 +527,7 @@ bool ShouldUseMock(int channel)
 {
     if (channel == 9)
     {
-        return true;
+        return IsTestMode();
     }
     // 真实渠道未配置时，仅在 TestMode 下退回模拟二维码，避免开发环境把真实渠道误当可用
     return !PaymentConfig::ChannelReady(channel) && IsTestMode();
@@ -543,7 +543,8 @@ Task<HttpResult> BillService::CreateOrder(int userId, int64_t amountCents, int c
         result.setResult(ApiErrorCode::ApiError_AmountInvalid);
         co_return result;
     }
-    if (channel != 1 && channel != 2 && channel != 9)
+    // 模拟渠道 9 仅供 TestMode 联调，生产一律拒绝，避免凭空入账
+    if (channel != 1 && channel != 2 && !(channel == 9 && IsTestMode()))
     {
         result.setResult(ApiErrorCode::ApiError_PayChannelUnsupported);
         co_return result;
@@ -1277,10 +1278,16 @@ HttpResult BillService::ListTransactions(int userId, int type, int page, int siz
         const int64_t total = countRows.empty() ? 0 : countRows[0]["total"].as<int64_t>();
 
         auto rows = db->execSqlSync(
-            "select id, type::int as type, amount_cents, balance_after, remark, "
-            "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at "
-            "from balance_txn where user_id = $1 and ($2::int = 0 or type::int = $2::int) "
-            "order by id desc limit $3::int offset $4::int",
+            "select bt.id, bt.type::int as type, bt.amount_cents, bt.balance_after, bt.remark, "
+            "       to_char(bt.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
+            "       coalesce(po.channel, po2.channel, 0)::int as channel "
+            "from balance_txn bt "
+            "left join payment_order po on po.id = bt.order_id "
+            "left join payment_refund pr on pr.id = case when bt.ext_ref ~ '^refund:[0-9]+:' "
+            "    then substring(bt.ext_ref from '^refund:([0-9]+):')::bigint end "
+            "left join payment_order po2 on po2.order_no = pr.order_no "
+            "where bt.user_id = $1 and ($2::int = 0 or bt.type::int = $2::int) "
+            "order by bt.id desc limit $3::int offset $4::int",
             userId, type, size, (page - 1) * size);
 
         Json::Value items(Json::arrayValue);
@@ -1293,6 +1300,7 @@ HttpResult BillService::ListTransactions(int userId, int type, int page, int siz
             item["balanceAfterCents"] = static_cast<Json::Int64>(r["balance_after"].as<int64_t>());
             item["remark"] = r["remark"].isNull() ? "" : r["remark"].as<std::string>();
             item["createdAt"] = r["created_at"].as<std::string>();
+            item["channel"] = r["channel"].as<int>();
             items.append(item);
         }
 
@@ -1313,6 +1321,11 @@ HttpResult BillService::ListTransactions(int userId, int type, int page, int siz
 HttpResult BillService::MockPaid(int userId, const std::string &orderNo)
 {
     HttpResult result;
+    if (!IsTestMode())
+    {
+        result.setResult(ApiErrorCode::ApiError_MockPayDisabled);
+        return result;
+    }
     auto db = drogon::app().getDbClient();
     try
     {
@@ -1341,12 +1354,6 @@ HttpResult BillService::MockPaid(int userId, const std::string &orderNo)
             result.jsondata["balanceAfterCents"] =
                 bal.empty() ? 0 : static_cast<Json::Int64>(bal[0]["balance_cents"].as<int64_t>());
             result.setResult(ApiErrorCode::ApiError_Success, "already paid");
-            return result;
-        }
-
-        if (channel != 9 && !IsTestMode())
-        {
-            result.setResult(ApiErrorCode::ApiError_MockPayDisabled);
             return result;
         }
 

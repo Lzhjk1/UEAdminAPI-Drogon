@@ -53,6 +53,7 @@ def test_mock_pay_is_idempotent_and_credits_balance(seeded_org, logged_client):
     assert txns["total"] == 1
     item = txns["items"][0]
     assert item["type"] == 1
+    assert item["channel"] == 9
     assert item["amountCents"] == 12345
     assert item["balanceAfterCents"] == 12345
 

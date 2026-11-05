@@ -294,7 +294,7 @@
 | :--- | :--- | :--- | :--- |
 | **/api/bill/order** (POST) | 0 | `ApiError_Success` | 返回订单、二维码地址或支付宝收银台 `payUrl` |
 | | -903 | `ApiError_AmountInvalid` | 金额不在 1 ~ 10000000 分 |
-| | -904 | `ApiError_PayChannelUnsupported` | 渠道不是 1/2/9 |
+| | -904 | `ApiError_PayChannelUnsupported` | 渠道不是 1/2（9 仅 TestMode 可用） |
 | | -906 | `ApiError_PayProviderError` | 渠道未配置或渠道下单失败（信息含原因） |
 | | -902 | `ApiError_OrderStateInvalid` | 幂等键对应订单已关闭/已过期，需重新下单 |
 | | -101 | `ApiError_InvalidJsonFormat` | 请求体非 JSON |
@@ -305,7 +305,7 @@
 | **/api/bill/order/{orderNo}/mock-paid** (POST) | 0 | `ApiError_Success` | 已到账（重复调用幂等） |
 | | -901 | `ApiError_OrderNotFound` | 订单不存在 |
 | | -902 | `ApiError_OrderStateInvalid` | 订单已关闭 |
-| | -905 | `ApiError_MockPayDisabled` | 模拟支付未开启（非 9 渠道且 TestMode 关闭） |
+| | -905 | `ApiError_MockPayDisabled` | 模拟支付未开启（TestMode 关闭，生产一律禁用） |
 | **/api/bill/order/{orderNo}/refund** (POST) | 0 | `ApiError_Success` | 退款申请已提交 |
 | | -901 | `ApiError_OrderNotFound` | 订单不存在或不属于当前用户 |
 | | -913 | `ApiError_RefundNotAllowed` | 未支付/超期/已有有效退款申请 |

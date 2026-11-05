@@ -1049,14 +1049,14 @@ GitLab 相关接口目前使用独立的响应格式：
 
 > 金额单位统一为 **分**（`bigint`），展示时除以 100。
 > 支付宝电脑网站支付 / 订单码与微信 Native 已接入真实渠道；渠道未配置时下单返回 `-906`，不会退回模拟支付。
-> 渠道 9 仍为模拟支付，仅测试使用。渠道回调先落 `payment_callback_log` 再入账，结算用幂等 CTE。
+> 渠道 9 为模拟支付，仅 `TestMode` 下可用，生产环境一律拒绝。渠道回调先落 `payment_callback_log` 再入账，结算用幂等 CTE。
 > 客户端默认使用 §9.9 的支付组接口。
 
 ### 9.1 创建充值订单
 - **URL**: `/api/bill/order`
 - **Method**: `POST`，`Authorization: Bearer {token}`
-- **Body**: `{ "amountCents": 10000, "channel": 9, "idemKey": "可选，客户端生成的幂等键" }`
-  - `channel`: 1 支付宝 / 2 微信 / 9 模拟
+- **Body**: `{ "amountCents": 10000, "channel": 2, "idemKey": "可选，客户端生成的幂等键" }`
+  - `channel`: 1 支付宝 / 2 微信 / 9 模拟（仅 TestMode）
   - `amountCents`: 1 ~ 10000000
 - **Response**: `data = { orderNo, amountCents, channel, status(0 待支付), qrContent, qrPngBase64, payUrl, qrPngUrl, expireAt }`
   - 支付宝电脑网站支付返回 `payUrl`（收银台地址）；微信/订单码返回 `qrContent`（二维码串）
@@ -1074,12 +1074,13 @@ GitLab 相关接口目前使用独立的响应格式：
 - **URL**: `/api/bill/transactions?type=0&page=1&size=50`
 - **Method**: `GET`，`Authorization: Bearer {token}`
 - **Params**: `type`（0 全部 / 1 充值 / 2 消费 / 3 退款）、`page`、`size`（≤200）
-- **Response**: `data = { total, page, size, items[]{ id, type, amountCents, balanceAfterCents, remark, createdAt } }`
+- **Response**: `data = { total, page, size, items[]{ id, type, channel, amountCents, balanceAfterCents, remark, createdAt } }`
+  - `channel`: 1 支付宝 / 2 微信 / 9 模拟 / 0 历史或非订单来源
 
 ### 9.4 模拟到账（仅模拟支付阶段）
 - **URL**: `/api/bill/order/{orderNo}/mock-paid`
 - **Method**: `POST`，`Authorization: Bearer {token}`
-- **说明**: 需要 `TestMode.Enable=true` 或订单 `channel=9`；**幂等**，重复调用不会重复加余额。
+- **说明**: 需要 `TestMode.Enable=true`（生产一律禁用）；**幂等**，重复调用不会重复加余额。
   到账在同一条 SQL（CTE）内完成：订单置已支付 → 建余额行 → 加余额 → 记流水，并发安全。
 - **Response**: `data = { orderNo, paid: true, amountCents, balanceAfterCents }`
 - **错误码**: `-901` 订单不存在、`-902` 订单已关闭、`-905` 模拟支付未开启
