@@ -187,6 +187,8 @@ bool DeviceLoginSessionService::MarkLoggedInByUserCode(const std::string &userCo
     }
 
     info.userId = userId;
+    // 清零轮询时间戳, 放行紧接的客户端请求, 避免触发 slow_down
+    info.lastPoll = std::chrono::steady_clock::time_point{};
     SaveSessionLocked(deviceCode, info);
     return true;
 }
@@ -208,7 +210,8 @@ DeviceLoginSessionService::PollStatus DeviceLoginSessionService::PollAndConsume(
     if (info.lastPoll != std::chrono::steady_clock::time_point{} &&
         now - info.lastPoll < std::chrono::seconds(info.intervalSec)) {
         // RFC 8628: slow_down 后客户端应把间隔增加 5 秒。
-        info.intervalSec = std::min(info.intervalSec + 5, 60);
+        // (std::min) 的括号避开 windows.h 的 min 宏
+        info.intervalSec = (std::min)(info.intervalSec + 5, 60);
         SaveSessionLocked(deviceCode, info);
         out = info;
         return PollStatus::SlowDown;
