@@ -27,6 +27,31 @@ using namespace UEAdminAPI::utils;
 namespace UEAdminAPI {
 namespace Controllers {
 
+namespace {
+std::string ReadJsonOrQuery(const HttpRequestPtr &req, const char *key) {
+    auto json = req->getJsonObject();
+    if (json && json->isMember(key)) {
+        const auto &node = (*json)[key];
+        if (node.isString()) {
+            return node.asString();
+        }
+        if (node.isBool()) {
+            return node.asBool() ? "true" : "false";
+        }
+    }
+    return req->getParameter(key);
+}
+} // namespace
+
+Task<HttpResponsePtr> ThirdPartyLogin::verifyLoginPost(HttpRequestPtr req) {
+    const std::string onlyCheck = ReadJsonOrQuery(req, "onlyCheck");
+    co_return co_await verifyLogin(req,
+                                   ReadJsonOrQuery(req, "platform"),
+                                   ReadJsonOrQuery(req, "code"),
+                                   ReadJsonOrQuery(req, "verifyCode"),
+                                   onlyCheck == "true" || onlyCheck == "1");
+}
+
 Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req,
                                  const std::string platform,
                                  const std::string ueadmin_state) {

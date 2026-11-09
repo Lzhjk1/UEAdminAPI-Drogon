@@ -21,6 +21,8 @@ public:
     // 验证第三方登录
     ADD_METHOD_TO(ThirdPartyLogin::verifyLogin,                 "/api/third/login/check?platform={1}&code={2}&verifyCode={3}&onlyCheck={4}", 
         Get);
+    // 新登录器用 POST body 提交 code/verifyCode，旧 GET 保留兼容
+    ADD_METHOD_TO(ThirdPartyLogin::verifyLoginPost,             "/api/third/login/check", Post);
 
     // 直接通过第三方平台登录
     ADD_METHOD_TO(ThirdPartyLogin::loginWithThirdParty,         "/api/third/login?platform={1}&code={2}&verifyCode={3}", 
@@ -59,6 +61,7 @@ public:
 	// 验证第三方登录
     // 仅确认对应的code和verifyCode是否已经登陆
 	Task<HttpResponsePtr> verifyLogin(HttpRequestPtr req, const std::string platform, const std::string code, const std::string verifyCode, const bool onlyCheck);
+    Task<HttpResponsePtr> verifyLoginPost(HttpRequestPtr req);
 
     // GET
     // 直接通过第三方平台登录
