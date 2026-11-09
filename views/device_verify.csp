@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>设备登录验证</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; background: #f5f7fa; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: #fff; padding: 32px 40px 36px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); width: 420px; box-sizing: border-box; }
+        h2 { margin: 0 0 8px; text-align: center; color: #1f2937; }
+        .sub { text-align: center; color: #6b7280; font-size: 13px; margin-bottom: 20px; line-height: 1.6; }
+        label { display: block; font-size: 13px; color: #374151; margin: 14px 0 6px; }
+        input { width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; font-size: 20px; letter-spacing: 4px; text-align: center; text-transform: uppercase; outline: none; }
+        input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        button { width: 100%; margin-top: 18px; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .err { color: #dc2626; font-size: 13px; margin-top: 12px; text-align: center; min-height: 18px; }
+        .warn { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 12px; border-radius: 8px; padding: 10px 12px; line-height: 1.6; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>设备登录验证</h2>
+        <p class="sub">请输入客户端上显示的 8 位验证码。<br/>如果你没有主动发起登录，请不要继续。</p>
+        <form method="POST" action="/device">
+            <label for="user_code">验证码</label>
+            <input id="user_code" name="user_code" value="[[userCode]]" maxlength="12" autocomplete="one-time-code" required />
+            <button type="submit">继续</button>
+            <div class="err">[[error]]</div>
+        </form>
+        <div class="warn">系统只会把登录令牌交给发起本次登录的客户端。请勿把验证码告诉他人，也不要在他人发来的链接中输入验证码。</div>
+    </div>
+</body>
+</html>

@@ -25,11 +25,15 @@ class Login : public drogon::HttpController<Login>
     // METHOD_ADD(Login::your_method_name, "/{1}/{2}/list", Get); // path is /Login/{arg1}/{arg2}/list
     // ADD_METHOD_TO(Login::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
     ADD_METHOD_TO(Login::LoginByPwd, "/api/user/login/pwd?userName={1}&passWord={2}", Get);
+    // 敏感凭证优先走 POST body；GET 仅保留给旧客户端过渡。
+    ADD_METHOD_TO(Login::LoginByPwdPost, "/api/user/login/pwd", Post);
     ADD_METHOD_TO(Login::LoginByEmail, "/api/user/login/email?email={1}", Get, "ActionTokenMiddleware");
     ADD_METHOD_TO(Login::LoginByPhone, "/api/user/login/phone?phone={1}", Get, "ActionTokenMiddleware");
     ADD_METHOD_TO(Login::LoginByFlashToken, "/api/user/login/flashtoken", Get);
     ADD_METHOD_TO(Login::VerifyFlashToken, "/api/user/token/verify/flash?flashToken={1}", Get);
     ADD_METHOD_TO(Login::VerifyAuthToken, "/api/user/token/verify/auth?token={1}", Get);
+    ADD_METHOD_TO(Login::VerifyFlashTokenPost, "/api/user/token/verify/flash", Post);
+    ADD_METHOD_TO(Login::VerifyAuthTokenPost, "/api/user/token/verify/auth", Post);
     ADD_METHOD_TO(Login::GetSelfInfo, "/api/user/self", Get, "AuthFilter");
     ADD_METHOD_TO(Login::Logout, "/api/user/logout", Post, "AuthFilter");
 
@@ -41,6 +45,8 @@ class Login : public drogon::HttpController<Login>
 
     /// @brief 通过密码登录
     Task<HttpResponsePtr> LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd);
+    /// @brief POST body 版本（密码不进入 URL）
+    Task<HttpResponsePtr> LoginByPwdPost(HttpRequestPtr req);
 
     /// @brief 通过其他方式, 如邮箱, 手机验证码登录
     /// @param req 固定格式, 包含各种请求参数
@@ -75,6 +81,9 @@ class Login : public drogon::HttpController<Login>
     /// @param token 要验证的AuthToken
     /// @return 
     Task<HttpResponsePtr> VerifyAuthToken(HttpRequestPtr req, std::string token);
+
+    Task<HttpResponsePtr> VerifyFlashTokenPost(HttpRequestPtr req);
+    Task<HttpResponsePtr> VerifyAuthTokenPost(HttpRequestPtr req);
 
     Task<HttpResponsePtr> GetSelfInfo(HttpRequestPtr req);
 

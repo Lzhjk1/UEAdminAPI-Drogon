@@ -279,9 +279,81 @@ static bool isAllowedLoopbackRedirectUri(const std::string &uri) {
     return host == "127.0.0.1" || host == "localhost" || host == "::1";
 }
 
-/// @brief POST /api/oauth2/login/start — 发起设备登录
-/// 入参：{ "redirect_uri": "http://127.0.0.1:PORT/cb" }
-/// 返回：{ state, login_url, expires }
+namespace {
+
+std::string ReadJsonOrForm(const HttpRequestPtr &req, const char *key) {
+    auto json = req->getJsonObject();
+    if (json && json->isMember(key)) {
+        const auto &node = (*json)[key];
+        if (node.isString()) {
+            return node.asString();
+        }
+        if (node.isBool()) {
+            return node.asBool() ? "true" : "false";
+        }
+    }
+    return req->getParameter(key);
+}
+
+std::string ServerBaseUrl() {
+    std::string host = drogon::app().getCustomConfig().get("ServerHost", "").asString();
+    while (!host.empty() && host.back() == '/') {
+        host.pop_back();
+    }
+    return host;
+}
+
+void AddNoStore(const HttpResponsePtr &resp) {
+    resp->addHeader("Cache-Control", "no-store");
+    resp->addHeader("Pragma", "no-cache");
+}
+
+HttpResponsePtr TokenError(int status, const std::string &error,
+                           const std::string &description, int interval = 0) {
+    Json::Value body;
+    body["error"] = error;
+    if (!description.empty()) {
+        body["error_description"] = description;
+    }
+    if (interval > 0) {
+        body["interval"] = interval;
+    }
+    auto resp = HttpResponse::newHttpJsonResponse(body);
+    resp->setStatusCode(static_cast<HttpStatusCode>(status));
+    AddNoStore(resp);
+    return resp;
+}
+
+HttpResponsePtr RenderLoginPage(const std::string &userCode, const std::string &redirectUri) {
+    HttpViewData viewData;
+    viewData.insertAsString("userCode", HttpViewData::htmlTranslate(userCode));
+    viewData.insertAsString("redirectUri", HttpViewData::htmlTranslate(redirectUri));
+    auto resp = HttpResponse::newHttpViewResponse("oauth2_login.csp", viewData);
+    resp->setStatusCode(k200OK);
+    return resp;
+}
+
+HttpResponsePtr RenderDeviceVerify(const std::string &userCode, const std::string &error) {
+    HttpViewData viewData;
+    viewData.insertAsString("userCode", HttpViewData::htmlTranslate(userCode));
+    viewData.insertAsString("error", HttpViewData::htmlTranslate(error));
+    auto resp = HttpResponse::newHttpViewResponse("device_verify.csp", viewData);
+    resp->setStatusCode(error.empty() ? k200OK : k400BadRequest);
+    return resp;
+}
+
+int TokenExpireSeconds() {
+    const auto cfg = drogon::app().getCustomConfig();
+    if (cfg.isMember("UserManage") && cfg["UserManage"].isMember("tokenExpeirSec") &&
+        cfg["UserManage"]["tokenExpeirSec"].isInt()) {
+        return cfg["UserManage"]["tokenExpeirSec"].asInt();
+    }
+    return 720;
+}
+
+} // namespace
+
+/// @brief POST /api/oauth2/device_authorization — 发起 RFC 8628 设备登录
 Task<HttpResponsePtr> OAuth2Controller::loginStart(HttpRequestPtr req) {
     HttpResult result;
     std::string redirectUri;
@@ -307,269 +379,242 @@ Task<HttpResponsePtr> OAuth2Controller::loginStart(HttpRequestPtr req) {
         co_return resp;
     }
 
-    std::string state = sessionService->CreateSession(redirectUri);
-    int expireSec = sessionService->GetExpireSeconds();
-
-    std::string loginUrl = "/login?state=" + drogon::utils::urlEncodeComponent(state);
-    if (!redirectUri.empty()) {
-        loginUrl += "&redirect_uri=" + drogon::utils::urlEncodeComponent(redirectUri);
+    auto auth = sessionService->CreateSession(redirectUri);
+    if (auth.deviceCode.empty() || auth.userCode.empty()) {
+        result.setResult(ApiErrorCode::ApiError_InternalError, "创建设备登录会话失败");
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        resp->setStatusCode(k500InternalServerError);
+        co_return resp;
     }
 
+    const std::string base = ServerBaseUrl();
+    const std::string verificationUri = base + "/device";
+    const std::string verificationUriComplete =
+        verificationUri + "?user_code=" + drogon::utils::urlEncodeComponent(auth.userCode);
+
     result.setResult(ApiErrorCode::ApiError_Success);
-    result.jsondata["state"] = state;
-    result.jsondata["login_url"] = loginUrl;
-    result.jsondata["expires"] = expireSec;
+    result.jsondata["device_code"] = auth.deviceCode;
+    result.jsondata["user_code"] = auth.userCode;
+    result.jsondata["verification_uri"] = verificationUri;
+    result.jsondata["verification_uri_complete"] = verificationUriComplete;
+    result.jsondata["expires_in"] = auth.expiresIn;
+    result.jsondata["interval"] = auth.interval;
+    // 旧客户端只认 login_url/expires；这里给不含 device_code 的完整验证 URL。
+    result.jsondata["login_url"] = verificationUriComplete;
+    result.jsondata["expires"] = auth.expiresIn;
 
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
+    AddNoStore(resp);
     co_return resp;
 }
 
-/// @brief GET /api/oauth2/login/check?state= — 轮询登录状态
-/// 未完成：{active:false}；已完成：{active:true, token, flashToken, username}；取后即废
-Task<HttpResponsePtr> OAuth2Controller::loginCheck(HttpRequestPtr req, std::string state) {
-    HttpResult result;
+Task<HttpResponsePtr> OAuth2Controller::deviceToken(HttpRequestPtr req) {
+    const std::string grantType = ReadJsonOrForm(req, "grant_type");
+    if (!grantType.empty() &&
+        grantType != "urn:ietf:params:oauth:grant-type:device_code" &&
+        grantType != "device_code") {
+        co_return TokenError(k400BadRequest, "unsupported_grant_type",
+                             "仅支持 urn:ietf:params:oauth:grant-type:device_code");
+    }
+
+    const std::string deviceCode = ReadJsonOrForm(req, "device_code");
+    if (deviceCode.empty()) {
+        co_return TokenError(k400BadRequest, "invalid_request", "缺少 device_code");
+    }
 
     auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
     if (!sessionService) {
-        result.setResult(ApiErrorCode::ApiError_InternalError, "DeviceLoginSessionService 未初始化");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k500InternalServerError);
-        co_return resp;
+        co_return TokenError(k500InternalServerError, "server_error", "DeviceLoginSessionService 未初始化");
     }
 
-    auto sessionOpt = sessionService->FindSession(state);
-    if (!sessionOpt) {
-        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateInvalid,
-                         "state 不存在、已过期或已消费");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k404NotFound);
-        co_return resp;
+    UEAdminAPI::Services::DeviceLoginSessionInfo session;
+    const auto status = sessionService->PollAndConsume(deviceCode, session);
+    if (status == UEAdminAPI::Services::DeviceLoginSessionService::PollStatus::NotFound) {
+        co_return TokenError(k400BadRequest, "expired_token", "device_code 不存在、已过期或已使用");
+    }
+    if (status == UEAdminAPI::Services::DeviceLoginSessionService::PollStatus::SlowDown) {
+        co_return TokenError(k400BadRequest, "slow_down", "轮询过快，请按 interval 轮询", session.intervalSec);
+    }
+    if (status == UEAdminAPI::Services::DeviceLoginSessionService::PollStatus::Pending) {
+        co_return TokenError(k400BadRequest, "authorization_pending", "用户尚未完成授权");
     }
 
-    const auto &session = *sessionOpt;
-    if (session.userId <= 0) {
-        // 尚未登录完成：不消费 state，保证并发轮询均可继续拿到 active:false
-        result.setResult(ApiErrorCode::ApiError_Success);
-        result.jsondata["active"] = false;
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k200OK);
-        co_return resp;
-    }
-
-    // 已登录：原子消费会话后生成新 Token 对并返回。
-    // 先消费再生成 token，避免两个并发 check 同时通过 FindSession 并各自返回 token。
-    auto consumedSession = sessionService->ConsumeSession(state);
-    if (!consumedSession) {
-        // 另一个并发请求已消费：按“已被领取”语义处理。
-        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed,
-                         "state 已被使用，请勿重复获取 token");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k409Conflict);
-        co_return resp;
-    }
-
-    // 后续流程如果失败（如用户查询失败），会话已消费不再恢复；客户端可重新发起设备登录。
     auto authService = AuthService::Instance();
-    auto [token, flashToken, status] = co_await authService->NewTokenPair(consumedSession->userId);
-    if (status == -1) {
-        result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新状态失败");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k500InternalServerError);
-        co_return resp;
+    auto [token, flashToken, tokenStatus] = co_await authService->NewTokenPair(session.userId);
+    if (tokenStatus == -1) {
+        co_return TokenError(k500InternalServerError, "server_error", "生成登录令牌失败");
     }
 
     std::string username;
     try {
         auto dbClientPtr = drogon::app().getDbClient();
         drogon::orm::Mapper<drogon_model::UEAdminAPI::User> mapper(dbClientPtr);
-        auto user = mapper.findByPrimaryKey(consumedSession->userId);
+        auto user = mapper.findByPrimaryKey(session.userId);
         username = user.getValueOfName();
     } catch (const drogon::orm::UnexpectedRows &) {
-        // 用户已被删除：会话已消费，返回明确错误，避免返回空用户名。
-        result.setResult(ApiErrorCode::ApiError_UserNotFound, "用户不存在");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k404NotFound);
-        co_return resp;
+        co_return TokenError(k400BadRequest, "access_denied", "用户不存在");
     } catch (const std::exception &e) {
-        LOG_ERROR << "loginCheck: 查询用户失败: " << e.what();
-        result.setResult(ApiErrorCode::ApiError_InternalError, "查询用户失败");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k500InternalServerError);
-        co_return resp;
+        LOG_ERROR << "deviceToken 查询用户失败: " << e.what();
+        co_return TokenError(k500InternalServerError, "server_error", "查询用户失败");
     }
 
-    result.setResult(ApiErrorCode::ApiError_Success);
-    result.jsondata["active"] = true;
-    result.jsondata["token"] = token;
-    result.jsondata["flashToken"] = flashToken;
-    result.jsondata["username"] = username;
+    Json::Value body;
+    body["access_token"] = token;
+    body["token_type"] = "Bearer";
+    body["expires_in"] = TokenExpireSeconds();
+    body["refresh_token"] = flashToken;
+    body["scope"] = "";
+    // 兼容现有客户端字段
+    body["token"] = token;
+    body["flashToken"] = flashToken;
+    body["id"] = session.userId;
+    body["username"] = username;
 
-    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    auto resp = HttpResponse::newHttpJsonResponse(body);
     resp->setStatusCode(k200OK);
+    AddNoStore(resp);
     co_return resp;
 }
 
-/// @brief GET /login — 设备登录页（第一阶段：密码登录表单）
+/// @brief GET /device — 输入 user_code 的验证页
+Task<HttpResponsePtr> OAuth2Controller::deviceVerificationPage(HttpRequestPtr req) {
+    const std::string userCode = req->getParameter("user_code");
+    auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
+    if (!sessionService) {
+        co_return RenderDeviceVerify("", "服务未初始化");
+    }
+
+    if (userCode.empty()) {
+        co_return RenderDeviceVerify("", "");
+    }
+
+    auto session = sessionService->FindByUserCode(userCode);
+    if (!session) {
+        co_return RenderDeviceVerify(userCode, "验证码不存在或已过期");
+    }
+    if (session->userId > 0) {
+        co_return RenderDeviceVerify("", "该设备登录已完成，请回到客户端");
+    }
+    co_return RenderLoginPage(userCode, session->redirectUri);
+}
+
+/// @brief POST /device — 校验 user_code 后进入登录页
+Task<HttpResponsePtr> OAuth2Controller::deviceVerificationSubmit(HttpRequestPtr req) {
+    const std::string userCode = ReadJsonOrForm(req, "user_code");
+    auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
+    if (!sessionService) {
+        co_return RenderDeviceVerify(userCode, "服务未初始化");
+    }
+    if (userCode.empty()) {
+        co_return RenderDeviceVerify("", "请输入设备上显示的验证码");
+    }
+
+    auto session = sessionService->FindByUserCode(userCode);
+    if (!session) {
+        co_return RenderDeviceVerify(userCode, "验证码不存在或已过期");
+    }
+    if (session->userId > 0) {
+        co_return RenderDeviceVerify("", "该设备登录已完成，请回到客户端");
+    }
+    co_return RenderLoginPage(userCode, session->redirectUri);
+}
+
+/// @brief GET /login — 设备登录页
 Task<HttpResponsePtr> OAuth2Controller::loginPage(HttpRequestPtr req) {
-    auto state = req->getParameter("state");
-    auto redirectUri = req->getParameter("redirect_uri");
+    std::string userCode = req->getParameter("user_code");
+    if (userCode.empty()) {
+        userCode = req->getParameter("state"); // 旧链接兼容：按 user_code 解析，旧 secret state 不会命中
+    }
 
     auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
     if (!sessionService) {
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setBody("<html><body>服务未初始化</body></html>");
-        resp->setContentTypeCode(CT_TEXT_HTML);
-        resp->setStatusCode(k500InternalServerError);
-        co_return resp;
+        co_return RenderDeviceVerify("", "服务未初始化");
+    }
+    if (userCode.empty()) {
+        co_return RenderDeviceVerify("", "");
     }
 
-    auto sessionOpt = sessionService->FindSession(state);
-    if (!sessionOpt) {
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setBody("<html><body><h2>登录会话无效或已过期</h2></body></html>");
-        resp->setContentTypeCode(CT_TEXT_HTML);
-        resp->setStatusCode(k400BadRequest);
-        co_return resp;
+    auto session = sessionService->FindByUserCode(userCode);
+    if (!session) {
+        co_return RenderDeviceVerify(userCode, "验证码不存在或已过期");
     }
-
-    // 视图层做 HTML 转义，防止 GET /login 的 redirect_uri 参数注入 XSS。
-    HttpViewData viewData;
-    viewData.insertAsString("state", HttpViewData::htmlTranslate(state));
-    viewData.insertAsString("redirect_uri", HttpViewData::htmlTranslate(redirectUri));
-    auto resp = HttpResponse::newHttpViewResponse("oauth2_login.csp", viewData);
-    resp->setStatusCode(k200OK);
-    co_return resp;
+    if (session->userId > 0) {
+        co_return RenderDeviceVerify("", "该设备登录已完成，请回到客户端");
+    }
+    co_return RenderLoginPage(userCode, session->redirectUri);
 }
 
 /// @brief POST /login — 设备登录页账号密码登录
-/// 第一阶段仅支持用户名密码；成功后写 state→userId 并跳转通知。
 Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
-    HttpResult result;
-
-    // 兼容两种提交格式：
-    // 1) JSON body（设备/脚本调用）
-    // 2) 原生 HTML 表单 application/x-www-form-urlencoded（登录页原生表单导航，避免 CORS）
-    // 判断是否为表单提交（原生表单导航无法读取 JSON 响应，失败时需 302 回错误页）
     auto contentType = req->getHeader("content-type");
-    bool isFormSubmit = (contentType.find("application/x-www-form-urlencoded") != std::string::npos) ||
-                        (contentType.find("multipart/form-data") != std::string::npos);
+    const bool isFormSubmit = (contentType.find("application/x-www-form-urlencoded") != std::string::npos) ||
+                              (contentType.find("multipart/form-data") != std::string::npos);
 
     auto reqJson = req->getJsonObject();
-    if (!reqJson) {
-        // 请求声明为 JSON 但解析失败（body 非法/为空），直接报 JSON 格式错误
-        if (contentType.find("application/json") != std::string::npos) {
-            result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
-            auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-            resp->setStatusCode(k400BadRequest);
-            co_return resp;
-        }
-        // 尝试从 form 参数读取
+    if (!reqJson && isFormSubmit) {
         auto params = req->getParameters();
         Json::Value formJson(Json::objectValue);
-        if (params.find("state") != params.end())
-            formJson["state"] = params["state"];
-        if (params.find("userName") != params.end())
-            formJson["userName"] = params["userName"];
-        if (params.find("passWord") != params.end())
-            formJson["passWord"] = params["passWord"];
-        if (params.find("redirect_uri") != params.end())
-            formJson["redirect_uri"] = params["redirect_uri"];
-        if (formJson.isMember("state") && formJson.isMember("userName") &&
-            formJson.isMember("passWord")) {
-            reqJson = std::make_shared<Json::Value>(formJson);
-        } else if (isFormSubmit) {
-            // 表单缺参：302 回登录页并携带错误信息
-            std::string state = params["state"];
-            std::string redirectUri = params["redirect_uri"];
-            auto resp = HttpResponse::newRedirectionResponse(
-                "/login?state=" + drogon::utils::urlEncodeComponent(state) +
-                "&redirect_uri=" + drogon::utils::urlEncodeComponent(redirectUri) +
-                "&error=" + drogon::utils::urlEncodeComponent("缺少参数，请重试"));
-            resp->setStatusCode(k303SeeOther);
-            co_return resp;
+        for (const char *key : {"user_code", "state", "userName", "passWord", "redirect_uri"}) {
+            if (params.find(key) != params.end()) {
+                formJson[key] = params[key];
+            }
         }
+        reqJson = std::make_shared<Json::Value>(formJson);
     }
     if (!reqJson) {
-        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k400BadRequest);
-        co_return resp;
+        co_return TokenError(k400BadRequest, "invalid_request", "请求体必须是 JSON 或表单");
     }
 
-    PostParamMap paramMap;
-    paramMap.addParam("state", true)
-            .addParam("userName", true)
-            .addParam("passWord", true)
-            .addParam("redirect_uri", false);
-    paramMap.readParamsFromJson(*reqJson);
-    auto missing = paramMap.checkRequiredParams();
-    if (!missing.empty()) {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少参数: " + missing[0]);
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k400BadRequest);
-        co_return resp;
+    std::string userCode = ReadJsonOrForm(req, "user_code");
+    if (userCode.empty()) {
+        userCode = ReadJsonOrForm(req, "state");
     }
+    const std::string userName = ReadJsonOrForm(req, "userName");
+    const std::string passWord = ReadJsonOrForm(req, "passWord");
+    const std::string redirectUri = ReadJsonOrForm(req, "redirect_uri");
 
-    std::string state = paramMap.getParam("state");
-    std::string userName = paramMap.getParam("userName");
-    std::string passWord = paramMap.getParam("passWord");
-    std::string redirectUri = paramMap.getParam("redirect_uri");
-
-    // 表单提交失败时 302 回登录页并携带错误信息（原生表单导航无法展示 JSON 错误）
     auto failWithFormRedirect = [&](const std::string &errorMsg) -> HttpResponsePtr {
         auto resp = HttpResponse::newRedirectionResponse(
-            "/login?state=" + drogon::utils::urlEncodeComponent(state) +
-            "&redirect_uri=" + drogon::utils::urlEncodeComponent(redirectUri) +
+            "/login?user_code=" + drogon::utils::urlEncodeComponent(userCode) +
             "&error=" + drogon::utils::urlEncodeComponent(errorMsg));
         resp->setStatusCode(k303SeeOther);
         return resp;
     };
+
+    if (userCode.empty() || userName.empty() || passWord.empty()) {
+        if (isFormSubmit) {
+            co_return failWithFormRedirect("缺少 user_code、userName 或 passWord");
+        }
+        co_return TokenError(k400BadRequest, "invalid_request", "缺少 user_code、userName 或 passWord");
+    }
 
     auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
     if (!sessionService) {
         if (isFormSubmit) {
             co_return failWithFormRedirect("服务异常，请稍后重试");
         }
-        result.setResult(ApiErrorCode::ApiError_InternalError, "DeviceLoginSessionService 未初始化");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k500InternalServerError);
-        co_return resp;
+        co_return TokenError(k500InternalServerError, "server_error", "DeviceLoginSessionService 未初始化");
     }
 
-    auto sessionOpt = sessionService->FindSession(state);
-    if (!sessionOpt) {
+    auto session = sessionService->FindByUserCode(userCode);
+    if (!session) {
         if (isFormSubmit) {
-            co_return failWithFormRedirect("登录会话无效或已过期，请重新发起登录");
+            co_return failWithFormRedirect("验证码不存在或已过期，请回到客户端重新发起登录");
         }
-        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateInvalid, "state 不存在或已过期");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k400BadRequest);
-        co_return resp;
+        co_return TokenError(k400BadRequest, "expired_token", "user_code 不存在或已过期");
     }
-
-    const auto &session = *sessionOpt;
-    if (session.userId > 0) {
+    if (session->userId > 0) {
         if (isFormSubmit) {
-            co_return failWithFormRedirect("该登录会话已完成，请直接使用 login/check 获取 token");
+            co_return failWithFormRedirect("该设备登录已完成，请回到客户端");
         }
-        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed,
-                         "该登录会话已完成，请直接使用 login/check 获取 token");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k400BadRequest);
-        co_return resp;
+        co_return TokenError(k400BadRequest, "access_denied", "该设备登录已完成");
     }
-
-    // 通知地址必须以创建会话时保存的 redirect_uri 为准，防止请求体篡改跳转目标。
-    if (redirectUri != session.redirectUri) {
+    if (!redirectUri.empty() && redirectUri != session->redirectUri) {
         if (isFormSubmit) {
             co_return failWithFormRedirect("redirect_uri 与登录会话不一致");
         }
-        result.setResult(ApiErrorCode::ApiError_DeviceLoginRedirectUriNotAllowed,
-                         "redirect_uri 与登录会话不一致");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k400BadRequest);
-        co_return resp;
+        co_return TokenError(k400BadRequest, "invalid_request", "redirect_uri 与登录会话不一致");
     }
 
     auto authService = AuthService::Instance();
@@ -583,29 +628,25 @@ Task<HttpResponsePtr> OAuth2Controller::loginByPwd(HttpRequestPtr req) {
         co_return resp;
     }
 
-    int userId = loginResult.jsondata["id"].asInt();
-    if (!sessionService->MarkLoggedIn(state, userId)) {
+    const int userId = loginResult.jsondata["id"].asInt();
+    if (!sessionService->MarkLoggedInByUserCode(userCode, userId)) {
         if (isFormSubmit) {
-            co_return failWithFormRedirect("该登录会话已完成，请直接使用 login/check 获取 token");
+            co_return failWithFormRedirect("该设备登录已完成，请回到客户端");
         }
-        result.setResult(ApiErrorCode::ApiError_DeviceLoginStateConsumed,
-                         "该登录会话已完成，请直接使用 login/check 获取 token");
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k400BadRequest);
-        co_return resp;
+        co_return TokenError(k400BadRequest, "access_denied", "该设备登录已完成");
     }
 
-    // 登录成功：通知跳转。使用会话保存的 redirect_uri；无则兼容 ueloginreturn。
-    std::string notifyUri = session.redirectUri;
+    // 浏览器只负责完成授权；token 必须由持有 device_code 的客户端到 /api/oauth2/token 领取。
+    std::string notifyUri = session->redirectUri;
     if (notifyUri.empty()) {
-        notifyUri = "ueloginreturn://success?state=" + state;
+        notifyUri = "ueloginreturn://success?state=" + drogon::utils::urlEncodeComponent(userCode);
     }
-    auto resp2 = HttpResponse::newRedirectionResponse(notifyUri);
-    co_return resp2;
+    auto resp = HttpResponse::newRedirectionResponse(notifyUri);
+    co_return resp;
 }
 
 Task<HttpResponsePtr> OAuth2Controller::loginDone(HttpRequestPtr req) {
-    // 无状态校验：客户端 loopback 收到通知后立刻轮询 login/check，state 此时可能已被消费，
+    // 无状态校验：客户端 loopback 收到通知后继续用 device_code 轮询 /api/oauth2/token，
     // 这一页只负责展示结果，不依赖会话。
     auto resp = HttpResponse::newHttpViewResponse("login_done.csp");
     co_return resp;

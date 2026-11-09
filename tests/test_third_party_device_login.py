@@ -3,7 +3,7 @@
 覆盖:
   GET /api/third/authorization_url
     - 不带 ueadmin_state (旧兼容流程)
-    - 带有效 ueadmin_state (记录设备 state, 返回 appId/redirectUri 供页内二维码用)
+    - 带有效 user_code (记录设备 state, 返回 appId/redirectUri 供页内二维码用)
     - 带无效 ueadmin_state (应被 DeviceLoginOptional 拦截 -701)
   GET /api/third/{platform}  (第三方回调)
     - 带设备会话: 必须走到设备会话分支 (渲染提示页, 绝不能跳 ueloginreturn)
@@ -29,23 +29,23 @@ def test_authorization_url_without_device_state(client):
     assert data["code"]
     assert data["verifyCode"]
     assert data["authorizationUrl"].startswith("https://")
-    assert data.get("state", "") == ""
+    assert data.get("user_code", "") == ""
     assert "ueadmin_state=" not in data["authorizationUrl"]
 
 
 def test_authorization_url_with_valid_device_state(client):
-    """带有效 ueadmin_state: 记录设备 state 并回显, 同时返回页内二维码所需字段。
+    """带有效 user_code: 记录设备 state 并回显, 同时返回页内二维码所需字段。
 
-    设备 state 必须存在服务端(loginValue->deviceState), 不能追加到第三方授权 URL 上 ——
+    设备 user_code 必须存在服务端(loginValue->userCode), 不能追加到第三方授权 URL 上 ——
     第三方平台回调只会带回 code/state, 附加的自定义参数会被丢弃。
     """
-    state = client.device_login_start(LOOPBACK)["data"]["state"]
-    body = client.third_authorization_url("qq", ueadmin_state=state)
+    user_code = client.device_login_start(LOOPBACK)["data"]["user_code"]
+    body = client.third_authorization_url("qq", user_code=user_code)
     assert body["code"] == 0
     data = body["data"]
     assert data["code"]
     assert data["verifyCode"]
-    assert data["state"] == state
+    assert data["user_code"] == user_code
     # 不能挂在授权 URL 上(注定回不来); 页面靠 data.code 作为 state 渲染二维码
     assert "ueadmin_state=" not in data["authorizationUrl"]
     # 页内二维码(微信 wxLogin.js)需要的两个公开值
@@ -54,7 +54,7 @@ def test_authorization_url_with_valid_device_state(client):
 
 
 def test_authorization_url_with_invalid_device_state(client):
-    """带无效/过期 ueadmin_state: DeviceLoginOptional 应返回 -701"""
+    """带无效/过期 user_code: DeviceLoginOptional 应返回 -701"""
     code, body = client.third_authorization_url_raw("qq", ueadmin_state="bogus-state")
     assert code == 400
     assert body["code"] == -701  # ApiError_DeviceLoginStateInvalid
@@ -74,8 +74,8 @@ def test_callback_links_device_session(client):
     渲染"无法完成登录"提示页。若设备 state 丢失, 这里会退化成
     ueloginreturn:// 的 PDMS 兜底页, 断言即失败。
     """
-    state = client.device_login_start(LOOPBACK)["data"]["state"]
-    third_code = client.third_authorization_url("wechat", ueadmin_state=state)["data"]["code"]
+    user_code = client.device_login_start(LOOPBACK)["data"]["user_code"]
+    third_code = client.third_authorization_url("wechat", user_code=user_code)["data"]["code"]
 
     resp = client.third_callback_raw("wechat", code="bogus-code", state=third_code)
     assert resp.status_code == 200
@@ -93,8 +93,8 @@ def test_callback_auto_registers_when_unbound(client):
     "不跳 ueloginreturn、且不把回调未完成误报成注册失败" 这条可确定验证的行为;
     完整的"扫码 -> 自动建号 -> 客户端拿到 token"需要人工用手机验一次。
     """
-    state = client.device_login_start(LOOPBACK)["data"]["state"]
-    third_code = client.third_authorization_url("qq", ueadmin_state=state)["data"]["code"]
+    user_code = client.device_login_start(LOOPBACK)["data"]["user_code"]
+    third_code = client.third_authorization_url("qq", user_code=user_code)["data"]["code"]
 
     resp = client.third_callback_raw("qq", code="bogus-code", state=third_code)
     assert resp.status_code == 200

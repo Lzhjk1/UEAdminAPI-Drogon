@@ -17,6 +17,8 @@
    - **生产环境务必保持 `Enable: false`**。
 
 2. **重新编译并启动后端**：修改 config 后需重启服务才能加载新配置（TestModeConfig 在服务启动时初始化）。
+   - 模拟支付（channel=9 / `mock-paid`）还需要显式设置环境变量 `UEADMIN_ALLOW_MOCK_PAY=1`；仅开启 TestMode 不再允许凭空入账。
+   - 涉及支付用例时启动命令示例：`UEADMIN_ALLOW_MOCK_PAY=1 ./UEAdminAPI_drogon`。
 
 3. **安装 Python 依赖**：
    ```bash

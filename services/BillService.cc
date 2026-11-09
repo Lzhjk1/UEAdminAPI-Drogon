@@ -13,6 +13,7 @@
 #include "utils/PaymentUtils.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <ctime>
 #include <mutex>
 #include <optional>
@@ -523,14 +524,21 @@ std::string MockQrContent(const std::string &orderNo)
     return "mockpay://order/" + orderNo;
 }
 
+// 模拟支付必须同时满足：TestMode 开启 + 进程显式设置 UEADMIN_ALLOW_MOCK_PAY。
+// 仅误开 TestMode 不允许凭空入账，生产即使配置错误也默认安全。
+bool MockPayEnabled()
+{
+    return IsTestMode() && std::getenv("UEADMIN_ALLOW_MOCK_PAY") != nullptr;
+}
+
 bool ShouldUseMock(int channel)
 {
     if (channel == 9)
     {
-        return IsTestMode();
+        return MockPayEnabled();
     }
-    // 真实渠道未配置时，仅在 TestMode 下退回模拟二维码，避免开发环境把真实渠道误当可用
-    return !PaymentConfig::ChannelReady(channel) && IsTestMode();
+    // 真实渠道未配置时，仅显式开启模拟支付才退回模拟二维码。
+    return !PaymentConfig::ChannelReady(channel) && MockPayEnabled();
 }
 
 } // namespace
@@ -543,8 +551,8 @@ Task<HttpResult> BillService::CreateOrder(int userId, int64_t amountCents, int c
         result.setResult(ApiErrorCode::ApiError_AmountInvalid);
         co_return result;
     }
-    // 模拟渠道 9 仅供 TestMode 联调，生产一律拒绝，避免凭空入账
-    if (channel != 1 && channel != 2 && !(channel == 9 && IsTestMode()))
+    // 模拟渠道 9 仅供显式开启的联调环境使用，生产一律拒绝，避免凭空入账
+    if (channel != 1 && channel != 2 && !(channel == 9 && MockPayEnabled()))
     {
         result.setResult(ApiErrorCode::ApiError_PayChannelUnsupported);
         co_return result;
@@ -1321,7 +1329,7 @@ HttpResult BillService::ListTransactions(int userId, int type, int page, int siz
 HttpResult BillService::MockPaid(int userId, const std::string &orderNo)
 {
     HttpResult result;
-    if (!IsTestMode())
+    if (!MockPayEnabled())
     {
         result.setResult(ApiErrorCode::ApiError_MockPayDisabled);
         return result;

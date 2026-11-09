@@ -10,6 +10,18 @@ using namespace drogon_model::UEAdminAPI;
 using namespace UEAdminAPI;
 using namespace UEAdminAPI::utils;
 
+namespace {
+std::string ReadJsonOrQuery(const HttpRequestPtr &req, const char *key)
+{
+    auto json = req->getJsonObject();
+    if (json && json->isMember(key) && (*json)[key].isString())
+    {
+        return (*json)[key].asString();
+    }
+    return req->getParameter(key);
+}
+} // namespace
+
 // Add definition of your processing function here
 
 Task<HttpResponsePtr> Login::LoginByPwd(HttpRequestPtr req, std::string userName, std::string pwd) 
@@ -49,6 +61,41 @@ Task<HttpResponsePtr> Login::Logout(HttpRequestPtr req) {
     resp->setStatusCode(k200OK);
 
     co_return resp;
+}
+
+Task<HttpResponsePtr> Login::LoginByPwdPost(HttpRequestPtr req)
+{
+    std::string userName = ReadJsonOrQuery(req, "userName");
+    std::string pwd = ReadJsonOrQuery(req, "passWord");
+    if (userName.empty())
+    {
+        userName = ReadJsonOrQuery(req, "username");
+    }
+    if (pwd.empty())
+    {
+        pwd = ReadJsonOrQuery(req, "password");
+    }
+    co_return co_await LoginByPwd(req, userName, pwd);
+}
+
+Task<HttpResponsePtr> Login::VerifyFlashTokenPost(HttpRequestPtr req)
+{
+    std::string token = ReadJsonOrQuery(req, "flashToken");
+    if (token.empty())
+    {
+        token = ReadJsonOrQuery(req, "token");
+    }
+    co_return co_await VerifyFlashToken(req, token);
+}
+
+Task<HttpResponsePtr> Login::VerifyAuthTokenPost(HttpRequestPtr req)
+{
+    std::string token = ReadJsonOrQuery(req, "token");
+    if (token.empty())
+    {
+        token = ReadJsonOrQuery(req, "flashToken");
+    }
+    co_return co_await VerifyAuthToken(req, token);
 }
 
 Task<HttpResponsePtr> Login::LoginByEmail(HttpRequestPtr req, std::string email){

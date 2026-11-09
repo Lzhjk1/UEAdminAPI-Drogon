@@ -140,6 +140,67 @@ bool WechatPayProvider::VerifySignature(const std::string &timestamp,
     return PaymentCrypto::RsaVerifySha256(message, signature, cfg.publicKeyPem);
 }
 
+bool WechatPayProvider::VerifyResponse(const HttpResponsePtr &resp,
+                                       const std::string &body,
+                                       std::string &error)
+{
+    if (!resp)
+    {
+        error = "微信支付无响应";
+        return false;
+    }
+
+    auto header = [&resp](const char *name) {
+        const std::string target = Lower(name);
+        for (const auto &[key, value] : resp->headers())
+        {
+            if (Lower(key) == target)
+            {
+                return value;
+            }
+        }
+        return std::string();
+    };
+
+    const std::string timestamp = header("Wechatpay-Timestamp");
+    const std::string nonce = header("Wechatpay-Nonce");
+    const std::string signature = header("Wechatpay-Signature");
+    const std::string serial = header("Wechatpay-Serial");
+    if (timestamp.empty() || nonce.empty() || signature.empty())
+    {
+        error = "微信支付响应缺少签名头";
+        LOG_ERROR << "[WeChatPay] " << error;
+        return false;
+    }
+
+    long long ts = 0;
+    try
+    {
+        ts = std::stoll(timestamp);
+    }
+    catch (...)
+    {
+        error = "微信支付响应时间戳不合法";
+        LOG_ERROR << "[WeChatPay] " << error;
+        return false;
+    }
+    const long long now = static_cast<long long>(std::time(nullptr));
+    if (std::llabs(now - ts) > kNotifyToleranceSec)
+    {
+        error = "微信支付响应已过期";
+        LOG_ERROR << "[WeChatPay] " << error;
+        return false;
+    }
+
+    if (!VerifySignature(timestamp, nonce, body, signature, serial))
+    {
+        error = "微信支付响应验签失败";
+        LOG_ERROR << "[WeChatPay] " << error;
+        return false;
+    }
+    return true;
+}
+
 Task<PayCreateResult> WechatPayProvider::CreateNative(const std::string &orderNo,
                                                       int64_t amountCents,
                                                       const std::string &description)
@@ -191,6 +252,12 @@ Task<PayCreateResult> WechatPayProvider::CreateNative(const std::string &orderNo
     }
 
     const std::string respBody = resp ? std::string(resp->body().data(), resp->body().size()) : "";
+    std::string verifyError;
+    if (!VerifyResponse(resp, respBody, verifyError))
+    {
+        result.error = verifyError;
+        co_return result;
+    }
     if (!resp || resp->statusCode() != k200OK)
     {
         result.error = ProviderError(resp, respBody);
@@ -257,6 +324,15 @@ Task<PayQueryResult> WechatPayProvider::Query(const std::string &orderNo)
         result.ok = true;
         result.state = "NOT_EXIST";
         co_return result;
+    }
+    if (resp && resp->statusCode() == k200OK)
+    {
+        std::string verifyError;
+        if (!VerifyResponse(resp, body, verifyError))
+        {
+            result.error = verifyError;
+            co_return result;
+        }
     }
     if (!resp || resp->statusCode() != k200OK)
     {
@@ -333,6 +409,12 @@ Task<PayCloseResult> WechatPayProvider::Close(const std::string &orderNo)
     }
 
     const std::string respBody = resp ? std::string(resp->body().data(), resp->body().size()) : "";
+    std::string verifyError;
+    if (!VerifyResponse(resp, respBody, verifyError))
+    {
+        result.error = verifyError;
+        co_return result;
+    }
     Json::Value root;
     const std::string code = ParseJson(respBody, root) ? root.get("code", "").asString() : "";
     result.state = code;
@@ -403,6 +485,12 @@ Task<PayRefundResult> WechatPayProvider::Refund(const std::string &orderNo,
     }
 
     const std::string respBody = resp ? std::string(resp->body().data(), resp->body().size()) : "";
+    std::string verifyError;
+    if (!VerifyResponse(resp, respBody, verifyError))
+    {
+        result.error = verifyError;
+        co_return result;
+    }
     if (!resp || resp->statusCode() != k200OK)
     {
         result.error = ProviderError(resp, respBody);
@@ -466,6 +554,12 @@ Task<PayRefundResult> WechatPayProvider::QueryRefund(const std::string &refundNo
     }
 
     const std::string body = resp ? std::string(resp->body().data(), resp->body().size()) : "";
+    std::string verifyError;
+    if (!VerifyResponse(resp, body, verifyError))
+    {
+        result.error = verifyError;
+        co_return result;
+    }
     if (!resp || resp->statusCode() != k200OK)
     {
         result.error = ProviderError(resp, body);
@@ -478,8 +572,13 @@ Task<PayRefundResult> WechatPayProvider::QueryRefund(const std::string &refundNo
         result.error = "微信支付退款查询响应不是合法 JSON";
         co_return result;
     }
-    result.ok = true;
     result.state = root.get("status", "").asString();
+    if (result.state.empty())
+    {
+        result.error = "微信支付退款查询响应缺少 status";
+        co_return result;
+    }
+    result.ok = true;
     result.providerRefundNo = root.get("refund_id", "").asString();
     result.success = (result.state == "SUCCESS");
     result.processing = (result.state == "PROCESSING");

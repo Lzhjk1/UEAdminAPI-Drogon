@@ -1,5 +1,9 @@
 # UEAdmin 侧实现计划：OAuth2 设备登录（Pidgin 支持）
 
+> **已升级为 RFC 8628**：`state` 不再能换 token，改由客户端持有的 `device_code`
+> 轮询 `/api/oauth2/token`；浏览器只用 `user_code` 完成授权。最新契约见
+> [UEADMIN-OAUTH2-RFC8628.md](UEADMIN-OAUTH2-RFC8628.md)，本文件下面保留为第一阶段历史方案。
+
 > 对应设计文档：`D:\vc\unrealircd\doc\UEADMIN-OAUTH2-IRC-DESIGN.md` 4.1 节  
 > 目标仓库：`D:\vc\UEAdminAPI_drogon_myOwn`
 

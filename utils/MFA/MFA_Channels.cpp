@@ -1,7 +1,26 @@
 #include "MFA_Channels.h"
 #include <drogon/drogon.h>
 
+#include <algorithm>
+
 #define LOG_TAG "[MFAChannels]"
+
+namespace {
+
+constexpr int kMaxVerifyFailures = 5;
+
+bool ConstantTimeEquals(const std::string &a, const std::string &b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    unsigned char diff = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        diff |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+    }
+    return diff == 0;
+}
+
+} // namespace
 
 // ========== MFAChannelBase ==========
 
@@ -29,13 +48,28 @@ bool MFAChannelBase::VerifyTheCode(const std::string &baseInfo, const std::strin
         errorMsg = "验证码不存在或已过期";
         return false;
     }
-    bool result = (target.value()->Code() == code) && ((target.value()->MFAType() & type));
-    if (result && isConsume) {
-        std::lock_guard lock(_mutex);
-        _listCodePairs.erase(std::remove(_listCodePairs.begin(), _listCodePairs.end(), target.value()), _listCodePairs.end());
+    bool result = ConstantTimeEquals(target.value()->Code(), code) &&
+                  ((target.value()->MFAType() & type));
+    if (result) {
+        if (isConsume) {
+            std::lock_guard lock(_mutex);
+            _listCodePairs.erase(std::remove(_listCodePairs.begin(), _listCodePairs.end(), target.value()), _listCodePairs.end());
+        }
+        errorMsg.clear();
+        return true;
     }
-    errorMsg = result ? "" : "验证码错误";
-    return result;
+
+    // 同一个验证码只允许有限次失败，防止 6 位数字被在线穷举。
+    bool invalidated = false;
+    {
+        std::lock_guard lock(_mutex);
+        invalidated = target.value()->RecordFailure(kMaxVerifyFailures);
+        if (invalidated) {
+            _listCodePairs.erase(std::remove(_listCodePairs.begin(), _listCodePairs.end(), target.value()), _listCodePairs.end());
+        }
+    }
+    errorMsg = invalidated ? "验证码错误次数过多，请重新获取" : "验证码错误";
+    return false;
 }
 
 void MFAChannelBase::ClearExpired() {

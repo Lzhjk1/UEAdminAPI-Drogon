@@ -947,7 +947,7 @@ drogon::Task<void> ThirdPartyLoginService::clearExpired() {
 
 
 
-drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(const std::string &platform, const std::string &deviceState) {
+drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(const std::string &platform, const std::string &userCode) {
     UEAdminAPI::utils::HttpResult result;
     if (platform.empty()) {
         result.setResult(ApiErrorCode::ApiError_UnsupportedPlatform, "请指定平台.");
@@ -963,19 +963,16 @@ drogon::Task<UEAdminAPI::utils::HttpResult> ThirdPartyLoginService::GetLoginUrl(
     auto loginValue = co_await platformService->createNewThirdLoginValue();
     std::string authUrl = co_await platformService->getAuthorizationUrl(loginValue);
 
-    // 若调用方是设备登录页（OAuth2 login/start 会话），记下设备 state 以便回调时定位
-    // loopback redirect_uri。
-    // 注意：只能存在服务端（loginValue->deviceState），不能追加到 authUrl 上 ——
-    // 第三方平台回调只会带回 code 和 state（redirect_uri 也是固定值），任何附加的
-    // 自定义 query 参数都会被平台丢弃，回调时按 code 反查才是可靠的做法。
-    if (!deviceState.empty()) {
-        loginValue->deviceState = deviceState;
+    // 设备登录页发起时记录 user_code，回调按第三方 code 反查后定位设备会话。
+    // user_code 是公开短码，不能用来领取 token；secret 是设备侧保存的 device_code。
+    if (!userCode.empty()) {
+        loginValue->userCode = userCode;
     }
 
     result.jsondata["code"] = loginValue->code;
     result.jsondata["verifyCode"] = loginValue->verifyCode;
     result.jsondata["authorizationUrl"] = authUrl;
-    result.jsondata["state"] = deviceState;
+    result.jsondata["user_code"] = userCode;
     // appid / redirectUri: 供登录页在页内实例化微信 wxLogin.js 渲染二维码
     result.jsondata["appId"] = platformService->getClientId();
     result.jsondata["redirectUri"] = platformService->getRedirectUrl();
@@ -1013,27 +1010,24 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
 
     auto parsed = ParseUeAdminState(state);
     std::string thirdPartyState = parsed.thirdPartyState;
-    std::string deviceState = parsed.deviceState;
 
-    // 按第三方 code 反查本次登录记录 —— 由设备登录页发起的登录把设备 state 存在那里
-    // （见 GetLoginUrl）。parsed.deviceState 只在旧格式（state 里夹带参数）下非空，保留作兼容回退。
+    // 按第三方 code 反查本次登录记录。设备会话的 user_code 只能取自服务端 loginValue，
+    // 绝不能信任回调 query 里的 ueadmin_state（攻击者可伪造，导致会话错绑）。
     std::shared_ptr<ThirdPartyLoginValue> loginValue;
     if (platformService) {
         loginValue = co_await platformService->getLoginValue(thirdPartyState);
-        if (deviceState.empty() && loginValue && !loginValue->deviceState.empty()) {
-            deviceState = loginValue->deviceState;
-        }
-        // state 可能携带 ueadmin_state，必须把原始第三方 state 还原后再交给平台回调
+        // state 可能携带历史 ueadmin_state，必须把原始第三方 state 还原后再交给平台回调
         co_await platformService->callBack(code, thirdPartyState);
         // callBack 会把 openId 等写回同一个对象 (shared_ptr)，因此上面拿到的 loginValue 仍然有效
     }
+    const std::string userCode = loginValue ? loginValue->userCode : "";
 
     // 由设备登录页发起时，回调后要跳转到该设备会话保存的 loopback redirect_uri（仅通知，不传 token）。
     auto sessionService = UEAdminAPI::Services::DeviceLoginSessionService::Instance();
-    if (!deviceState.empty() && sessionService) {
-        auto session = sessionService->FindSession(deviceState);
+    if (!userCode.empty() && sessionService) {
+        auto session = sessionService->FindByUserCode(userCode);
         if (session && !session->redirectUri.empty()) {
-            // 把 userId 写回设备会话后，/api/oauth2/login/check 才能返回 token/flashToken。
+                        // 把 userId 写回设备会话后，客户端用 device_code 到 /api/oauth2/token 领取 token。
             // 顺序：已绑定则直接用；没绑定则按 /api/third/register 的做法快速注册并绑定，
             // 免得用户扫码后卡在"验证成功但客户端登录不上"。
             const int platformId = int(platformService->getPlatform());
@@ -1044,22 +1038,22 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
                 if (userId <= 0) {
                     auto regResult = co_await CreateUserFromThirdParty(platform, thirdPartyState, loginValue->verifyCode);
                     if (regResult.code == 0) {
-                        LOG_INFO << "设备登录第三方回调: 该第三方账号未绑定, 已自动注册并绑定新账号, deviceState=" << deviceState;
+                        LOG_INFO << "设备登录第三方回调: 该第三方账号未绑定, 已自动注册并绑定新账号, userCode=" << userCode;
                     } else if (regResult.code == ApiErrorCode::ApiError_PlatformAlreadyBound) {
                         // 并发下（比如同一二维码被扫两次）可能刚好已被另一个请求绑定，按已绑定继续
-                        LOG_WARN << "设备登录第三方回调: 自动注册时发现已被绑定, 按已绑定继续, deviceState=" << deviceState;
+                        LOG_WARN << "设备登录第三方回调: 自动注册时发现已被绑定, 按已绑定继续, userCode=" << userCode;
                     } else {
                         regError = regResult.msg;
                         LOG_WARN << "设备登录第三方回调: 自动注册失败: " << regResult.msg
-                                 << ", deviceState=" << deviceState;
+                                 << ", userCode=" << userCode;
                     }
                     // 注册成功或已被绑定，这里都能查到 userId
                     userId = FindBoundUserId(loginValue->openId, platformId);
                 }
                 if (userId > 0) {
-                    loggedIn = sessionService->MarkLoggedIn(deviceState, userId);
+                    loggedIn = sessionService->MarkLoggedInByUserCode(userCode, userId);
                 } else {
-                    LOG_WARN << "设备登录第三方回调: 未能定位到本地用户, 不标记设备会话 userId, deviceState=" << deviceState;
+                    LOG_WARN << "设备登录第三方回调: 未能定位到本地用户, 不标记设备会话 userId, userCode=" << userCode;
                 }
             }
 
@@ -1089,20 +1083,22 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
                 co_return resp;
             }
 
-            std::string customProtocol = session->redirectUri;
+            const std::string customProtocol = session->redirectUri;
             HttpViewData viewData;
-            viewData.insert("customProtocol", customProtocol);
+            // 视图会把它同时放进 href/meta 和页面脚本；必须先做 HTML 转义，
+            // 页面脚本再读取转义后的 href，避免 state/redirect_uri 注入。
+            viewData.insertAsString("customProtocolHtml", HttpViewData::htmlTranslate(customProtocol));
             auto resp = HttpResponse::newHttpViewResponse("login_redirect.csp", viewData);
             co_return resp;
         }
     }
 
     // 构造自定义协议地址（兼容 ueclient / 非设备登录流程）
-    std::string customProtocol = "ueloginreturn://success?state=" + thirdPartyState;
+    const std::string customProtocol = "ueloginreturn://success?state=" + thirdPartyState;
 
     // 渲染登录跳转提示页 (views/login_redirect.csp, 编译期已嵌入 exe)
     HttpViewData viewData;
-    viewData.insert("customProtocol", customProtocol);
+    viewData.insertAsString("customProtocolHtml", HttpViewData::htmlTranslate(customProtocol));
 
     auto resp = HttpResponse::newHttpViewResponse("login_redirect.csp", viewData);
 

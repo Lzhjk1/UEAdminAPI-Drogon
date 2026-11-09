@@ -17,15 +17,16 @@ class GitlabController : public drogon::HttpController<GitlabController>
 {
 public:
     METHOD_LIST_BEGIN
-    // 用户管理相关接口
-    ADD_METHOD_TO(GitlabController::createUser, "/api/gitlab/user/create", Post);
-    ADD_METHOD_TO(GitlabController::deleteUser, "/api/gitlab/user/delete", Post);
-    ADD_METHOD_TO(GitlabController::modifyUserPassword, "/api/gitlab/user/password", Post);
-    ADD_METHOD_TO(GitlabController::createImpersonationToken, "/api/gitlab/user/token/create", Post);
-    ADD_METHOD_TO(GitlabController::deleteImpersonationToken, "/api/gitlab/user/token/delete", Post);
+    // 用户管理相关接口：GitLab 管理员 Token 能直接操作用户与 Impersonation Token，
+    // 必须与后台同等保护，禁止匿名调用。
+    ADD_METHOD_TO(GitlabController::createUser, "/api/gitlab/user/create", Post, "AuthFilter", "SuperAdminFilter");
+    ADD_METHOD_TO(GitlabController::deleteUser, "/api/gitlab/user/delete", Post, "AuthFilter", "SuperAdminFilter");
+    ADD_METHOD_TO(GitlabController::modifyUserPassword, "/api/gitlab/user/password", Post, "AuthFilter", "SuperAdminFilter");
+    ADD_METHOD_TO(GitlabController::createImpersonationToken, "/api/gitlab/user/token/create", Post, "AuthFilter", "SuperAdminFilter");
+    ADD_METHOD_TO(GitlabController::deleteImpersonationToken, "/api/gitlab/user/token/delete", Post, "AuthFilter", "SuperAdminFilter");
 
     // 项目管理相关接口
-    ADD_METHOD_TO(GitlabController::inviteToProject, "/api/gitlab/project/invite", Post);
+    ADD_METHOD_TO(GitlabController::inviteToProject, "/api/gitlab/project/invite", Post, "AuthFilter", "SuperAdminFilter");
 
     METHOD_LIST_END
 

@@ -1,16 +1,20 @@
 #include "MFACodePair.h"
+#include <openssl/rand.h>
 #include <random>
 #include <stdexcept>
 #include <ctime>
 #include <locale>
 #include <codecvt>
 
-// 工具函数：生成6位数字验证码
+// 工具函数：生成6位数字验证码。验证码是认证凭证，必须使用 CSPRNG。
 static std::string generate6DigitCode() {
-   static thread_local std::mt19937 gen(std::random_device{}());
-   std::uniform_int_distribution<int> dist(0, 9);
+   unsigned char buf[6] = {0};
+   if (RAND_bytes(buf, sizeof(buf)) != 1) {
+       // 极端情况下退回系统随机源，避免生成固定验证码。
+       for (auto &b : buf) b = static_cast<unsigned char>(std::random_device{}());
+   }
    std::string code;
-   for (int i = 0; i < 6; ++i) code += '0' + dist(gen);
+   for (unsigned char b : buf) code += static_cast<char>('0' + (b % 10));
    return code;
 }
 
@@ -42,6 +46,14 @@ std::chrono::system_clock::time_point CodePairBase::ExpireTime() const { return 
 void CodePairBase::SetExpireTime(std::chrono::system_clock::time_point t) { _expireTime = t; }
 bool CodePairBase::IsExpired() const {
    return std::chrono::system_clock::now() > _expireTime;
+}
+
+bool CodePairBase::RecordFailure(int maxFailures) {
+   return _failureCount.fetch_add(1) + 1 >= maxFailures;
+}
+
+int CodePairBase::FailureCount() const {
+   return _failureCount.load();
 }
 bool CodePairBase::IsEverythingAllSet() const {
    return !Code().empty() && _mfaType != eMFAType::Error && !IsExpired();

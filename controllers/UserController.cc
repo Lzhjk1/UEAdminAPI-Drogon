@@ -16,6 +16,15 @@ using namespace UEAdminAPI;
 using namespace UEAdminAPI::utils;
 using namespace UEAdminAPI::Services;
 
+namespace {
+std::string ReadJsonOrQuery(const HttpRequestPtr &req, const char *key) {
+    auto json = req->getJsonObject();
+    if (json && json->isMember(key) && (*json)[key].isString()) {
+        return (*json)[key].asString();
+    }
+    return req->getParameter(key);
+}
+} // namespace
 
 Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     auto _authService = AuthService::Instance();
@@ -120,4 +129,18 @@ Task<HttpResponsePtr> UserController::generateActionTokenBeforeLogin(HttpRequest
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
+}
+
+Task<HttpResponsePtr> UserController::generateActionTokenPost(HttpRequestPtr req) {
+    co_return co_await generateActionToken(req,
+                                           ReadJsonOrQuery(req, "mfaType"),
+                                           ReadJsonOrQuery(req, "mfaCode"),
+                                           ReadJsonOrQuery(req, "target"));
+}
+
+Task<HttpResponsePtr> UserController::generateActionTokenBeforeLoginPost(HttpRequestPtr req) {
+    co_return co_await generateActionTokenBeforeLogin(req,
+                                                      ReadJsonOrQuery(req, "mfaType"),
+                                                      ReadJsonOrQuery(req, "mfaCode"),
+                                                      ReadJsonOrQuery(req, "target"));
 }

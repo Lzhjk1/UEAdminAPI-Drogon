@@ -1,144 +1,154 @@
-"""OAuth2 设备登录接口 pytest 测试。
+"""OAuth2 RFC 8628 设备登录接口 pytest 测试。
 
 覆盖:
-  POST /api/oauth2/login/start
-  GET  /api/oauth2/login/check
-  GET  /login
+  POST /api/oauth2/device_authorization
+  POST /api/oauth2/token
+  GET/POST /device
   POST /login
   /.well-known/jwks.json
   POST /api/oauth2/introspect
   POST /api/oauth2/revoke
-
-需要后端开启 TestMode 且已编译新增的 DeviceLoginOptional 过滤器。
 """
+import time
+
 import pytest
 
 from api_client import ApiError
 
+LOOPBACK = "http://127.0.0.1:45678/cb"
+DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 
-def test_login_start_success(client):
-    """发起设备登录会话应返回 state / login_url / expires"""
-    body = client.device_login_start("http://127.0.0.1:45678/cb")
+
+def _start(client, redirect_uri=LOOPBACK):
+    body = client.device_authorization(redirect_uri)
     assert body["code"] == 0
-    data = body["data"]
-    assert data["state"]
-    assert data["login_url"].startswith("/login?state=")
-    assert "redirect_uri=" in data["login_url"]
-    assert data["expires"] > 0  # 避免硬编码 TTL，配置文件修改后仍可通过
+    return body["data"]
 
 
-def test_login_start_empty_redirect_uri(client):
-    """redirect_uri 为空时兼容旧 ueloginreturn 流程"""
-    body = client.device_login_start()
+def test_device_authorization_success(client):
+    data = _start(client)
+    assert data["device_code"]
+    assert data["user_code"]
+    assert data["verification_uri"].endswith("/device")
+    assert data["verification_uri_complete"].startswith(data["verification_uri"] + "?user_code=")
+    assert data["expires_in"] > 0
+    assert data["interval"] > 0
+    # state 不再作为取 token 的凭证出现在响应里
+    assert "state" not in data
+
+
+def test_device_authorization_empty_redirect_uri(client):
+    body = client.device_authorization()
     assert body["code"] == 0
-    data = body["data"]
-    assert data["state"]
-    assert "redirect_uri=" not in data["login_url"]
+    assert body["data"]["device_code"]
 
 
-def test_login_start_rejects_non_loopback(client):
-    """非 loopback redirect_uri 应返回 -703"""
-    code, body = client.device_login_start_raw("https://evil.example.com/cb")
+def test_device_authorization_rejects_non_loopback(client):
+    code, body = client.device_authorization_raw("https://evil.example.com/cb")
     assert code == 400
     assert body["code"] == -703  # ApiError_DeviceLoginRedirectUriNotAllowed
 
 
-def test_login_start_rejects_prefix_bypass(client):
-    """redirect_uri 前缀匹配绕过（127.0.0.1.evil.com 等）应被严格拒绝"""
+def test_device_authorization_rejects_prefix_bypass(client):
     for evil in (
         "http://127.0.0.1.evil.com/cb",
         "http://localhost.evil.com/cb",
         "http://127.0.0.1@evil.com/cb",
     ):
-        code, body = client.device_login_start_raw(evil)
+        code, body = client.device_authorization_raw(evil)
         assert code == 400, evil
         assert body["code"] == -703, evil
 
 
-def test_login_start_allows_ipv6_loopback(client):
-    """IPv6 loopback http://[::1]:45678/cb 应放行"""
-    body = client.device_login_start("http://[::1]:45678/cb")
-    assert body["code"] == 0
+def test_device_authorization_allows_ipv6_loopback(client):
+    _start(client, "http://[::1]:45678/cb")
 
 
-def test_login_check_invalid_state(client):
-    """不存在的 state 应返回 -701"""
-    code, body = client.device_login_check_raw("state-does-not-exist")
-    assert code == 404
-    assert body["code"] == -701  # ApiError_DeviceLoginStateInvalid
+def test_device_token_invalid_code(client):
+    code, body = client.device_token_raw("device-code-does-not-exist")
+    assert code == 400
+    assert body["error"] == "expired_token"
 
 
-def test_login_check_mismatched_redirect_uri(client):
-    """POST /login 的 redirect_uri 必须与创建会话时保存的一致"""
-    state = client.device_login_start("http://127.0.0.1:45678/cb")["data"]["state"]
-    resp = client.device_login_pwd(state, "someone", "whatever", "https://evil.example.com/cb")
+def test_device_token_pending(client):
+    data = _start(client)
+    code, body = client.device_token_raw(data["device_code"])
+    assert code == 400
+    assert body["error"] == "authorization_pending"
+
+
+def test_device_token_rejects_wrong_grant_type(client):
+    data = _start(client)
+    code, body = client.device_token_raw(data["device_code"], grant_type="password")
+    assert code == 400
+    assert body["error"] == "unsupported_grant_type"
+
+
+def test_device_page_invalid_user_code(client):
+    resp = client.device_login_page("NOPE-NOPE")
     assert resp.status_code == 400
-    assert resp.json()["code"] == -703
+    assert "验证码不存在或已过期" in resp.text
 
 
-def test_login_check_pending_then_completed(client, registered_email_account):
-    """端到端: 创建会话 -> 未登录 active:false -> 密码登录 -> active:true -> 消费后 -701"""
-    account = registered_email_account
-    redirect_uri = "http://127.0.0.1:45678/cb"
-
-    start = client.device_login_start(redirect_uri)
-    state = start["data"]["state"]
-
-    # 未登录
-    body = client.device_login_check(state)
-    assert body["code"] == 0
-    assert body["data"]["active"] is False
-
-    # 错误密码: 保持未登录
-    resp = client.device_login_pwd(state, account.username, "WrongPassword123", redirect_uri)
-    assert resp.status_code == 401
-    assert resp.json()["code"] == -301
-    body = client.device_login_check(state)
-    assert body["data"]["active"] is False
-
-    # 正确密码: 302 到 loopback
-    resp = client.device_login_pwd(state, account.username, account.password, redirect_uri)
-    assert resp.status_code == 302
-    assert resp.headers.get("Location", "").startswith(redirect_uri)
-
-    # 登录完成, 一次性取 token
-    body = client.device_login_check(state)
-    assert body["code"] == 0
-    data = body["data"]
-    assert data["active"] is True
-    assert data["token"]
-    assert data["flashToken"]
-    assert data["username"] == account.username
-
-    # 二次 check 已消费（state 已删除，与“不存在/过期/已消费”同属 -701）
-    code, body = client.device_login_check_raw(state)
-    assert code == 404
-    assert body["code"] == -701
-
-
-def test_login_page_invalid_state(client):
-    """GET /login 对无效 state 返回 400 HTML"""
-    resp = client.device_login_page("invalid-state-xyz")
-    assert resp.status_code == 400
-    assert "text/html" in resp.headers.get("Content-Type", "").lower()
-
-
-def test_login_page_valid_state(client):
-    """GET /login 对有效 state 返回 200 HTML"""
-    state = client.device_login_start("http://127.0.0.1:45678/cb")["data"]["state"]
-    resp = client.device_login_page(state, "http://127.0.0.1:45678/cb")
+def test_device_page_valid_user_code(client):
+    data = _start(client)
+    resp = client.device_login_page(data["user_code"])
     assert resp.status_code == 200
-    assert "text/html" in resp.headers.get("Content-Type", "").lower()
-    assert state in resp.text
+    assert data["user_code"] in resp.text
 
 
-def test_login_page_escapes_redirect_uri(client):
-    """GET /login 的 redirect_uri 应做 HTML 转义，防止 XSS"""
-    state = client.device_login_start("http://127.0.0.1:45678/cb")["data"]["state"]
-    resp = client.device_login_page(state, '"><script>alert(1)</script>')
+def test_device_page_escapes_redirect_uri(client):
+    """redirect_uri 会进入登录页隐藏字段，必须 HTML 转义"""
+    malicious = 'http://127.0.0.1/cb"><script>alert(1)</script>'
+    data = _start(client, malicious)
+    resp = client.device_login_page(data["user_code"])
     assert resp.status_code == 200
-    assert resp.text.count("&lt;script&gt;") >= 1
     assert "<script>alert(1)</script>" not in resp.text
+    assert "&lt;script&gt;" in resp.text
+
+
+def test_device_password_login_and_token(client, registered_email_account):
+    """完整流程：pending -> 密码登录 -> 等待 interval -> token -> 二次失败"""
+    account = registered_email_account
+    data = _start(client)
+    device_code = data["device_code"]
+    user_code = data["user_code"]
+    interval = data["interval"]
+
+    # 第一次轮询：pending，同时会更新 lastPoll
+    code, body = client.device_token_raw(device_code)
+    assert code == 400 and body["error"] == "authorization_pending"
+
+    # 模拟用户等待页/输入，按 interval 后再完成登录
+    time.sleep(interval + 1)
+    resp = client.device_login_pwd(user_code, account.username, account.password)
+    assert resp.status_code == 302
+
+    time.sleep(interval + 1)
+    body = client.device_token(device_code)
+    assert body.get("access_token")
+    assert body.get("refresh_token")
+    assert body.get("id") == account.user_id
+    assert body.get("username") == account.username
+
+    # 一次性：device_code 已消费
+    code, body = client.device_token_raw(device_code)
+    assert code == 400
+    assert body["error"] == "expired_token"
+
+
+def test_device_login_rejects_redirect_uri_mismatch(client):
+    data = _start(client)
+    resp = client.device_login_pwd(data["user_code"], "someone", "whatever",
+                                   "https://evil.example.com/cb")
+    assert resp.status_code == 400
+    assert resp.json().get("error") == "invalid_request"
+
+
+def test_device_login_page_done(client):
+    resp = client.device_login_done_page()
+    assert resp.status_code == 200
+    assert "登录成功" in resp.text
 
 
 def test_jwks_endpoint(client):
@@ -156,15 +166,12 @@ def test_jwks_endpoint(client):
 
 
 def test_introspect_missing_token(client):
-    """无 token 的 introspection 返回 inactive=false"""
     resp = client.oauth2_introspect_raw("")
     assert resp.status_code == 200
-    body = resp.json()
-    assert body.get("active") is False
+    assert resp.json().get("active") is False
 
 
 def test_introspect_valid_token(client, registered_email_account):
-    """有效 AuthToken 的 introspection 返回 active=true 与用户信息"""
     token = registered_email_account.client._auth_token
     assert token
     resp = client.oauth2_introspect_raw(token)
@@ -176,7 +183,6 @@ def test_introspect_valid_token(client, registered_email_account):
 
 
 def test_revoke_flash_token(client, registered_email_account):
-    """吊销 FlashToken 后返回 ok"""
     flash_token = registered_email_account.client._flash_token
     assert flash_token
     resp = client.oauth2_revoke_raw(flash_token)

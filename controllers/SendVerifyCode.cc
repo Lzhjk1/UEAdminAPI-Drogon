@@ -1,10 +1,85 @@
 #include "SendVerifyCode.h"
 #include "utils/HttpResult.h"
 
+#include <algorithm>
+#include <cctype>
+
 // Add definition of your processing function here
 
 using namespace UEAdminAPI;
 using namespace UEAdminAPI::utils;
+
+namespace {
+constexpr auto kTargetCooldown = std::chrono::seconds(60);
+constexpr auto kTargetWindow = std::chrono::hours(1);
+constexpr size_t kMaxTargetSendsPerWindow = 5;
+constexpr size_t kMaxTrackedTargets = 20000;
+
+std::string NormalizeRateLimitTarget(const std::string &target) {
+    if (target.find('@') == std::string::npos) {
+        return target;
+    }
+    std::string normalized = target;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return normalized;
+}
+
+std::string ReadJsonOrQuery(const HttpRequestPtr &req, const char *key) {
+    auto json = req->getJsonObject();
+    if (json && json->isMember(key) && (*json)[key].isString()) {
+        return (*json)[key].asString();
+    }
+    return req->getParameter(key);
+}
+} // namespace
+
+bool SendVerifyCode::IsTargetRateLimited(const std::string &target) {
+    if (target.empty()) {
+        return false;
+    }
+    const std::string key = NormalizeRateLimitTarget(target);
+    std::lock_guard<std::mutex> lock(_mutexForColdDownMap);
+    const auto now = std::chrono::steady_clock::now();
+
+    auto histIt = _targetSendHistory.find(key);
+    if (histIt != _targetSendHistory.end()) {
+        auto &history = histIt->second;
+        while (!history.empty() && now - history.front() > kTargetWindow) {
+            history.pop_front();
+        }
+        if (history.size() >= kMaxTargetSendsPerWindow) {
+            return true;
+        }
+    }
+
+    auto lastIt = _targetLastSent.find(key);
+    if (lastIt != _targetLastSent.end() && now - lastIt->second < kTargetCooldown) {
+        return true;
+    }
+    return false;
+}
+
+void SendVerifyCode::RecordSuccessfulSend(const std::string &target) {
+    if (target.empty()) {
+        return;
+    }
+    const std::string key = NormalizeRateLimitTarget(target);
+    std::lock_guard<std::mutex> lock(_mutexForColdDownMap);
+    const auto now = std::chrono::steady_clock::now();
+    _targetLastSent[key] = now;
+
+    auto &history = _targetSendHistory[key];
+    while (!history.empty() && now - history.front() > kTargetWindow) {
+        history.pop_front();
+    }
+    history.push_back(now);
+
+    if (_targetSendHistory.size() > kMaxTrackedTargets) {
+        _targetSendHistory.clear();
+        _targetLastSent.clear();
+    }
+}
 
 Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string target, std::string type) {
     // 依赖
@@ -12,9 +87,18 @@ Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string t
 
 	HttpResult result;
 
+    const bool testMode = TestModeConfig::Enable();
+
     // 检查IP是否处于冷却
     if(IsInColdDown(req->getPeerAddr().toIp())) {    
         result.setResult(ApiErrorCode::ApiError_SendVerifyCodeTooFrequent, "发送过于频繁, 请稍后再试");
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        co_return resp;
+    }
+
+    // 同一目标 60 秒内只能发一次、每小时最多 5 次；测试模式保留原有宽松策略。
+    if (!testMode && IsTargetRateLimited(target)) {
+        result.setResult(ApiErrorCode::ApiError_SendVerifyCodeTooFrequent, "该账号验证码发送过于频繁, 请稍后再试");
         auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
         co_return resp;
     }
@@ -24,11 +108,27 @@ Task<HttpResponsePtr> SendVerifyCode::SendCode(HttpRequestPtr req, std::string t
     if (!isSuccess) {
         result.setResult(ApiErrorCode::ApiError_InternalError, errMsg);
     } else {
+        if (!testMode) {
+            RecordSuccessfulSend(target);
+        }
         result.setResult(ApiErrorCode::ApiError_Success);
     }
     
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     co_return resp;
+}
+
+Task<HttpResponsePtr> SendVerifyCode::SendCodePost(HttpRequestPtr req) {
+    co_return co_await SendCode(req,
+                                ReadJsonOrQuery(req, "target"),
+                                ReadJsonOrQuery(req, "type"));
+}
+
+Task<HttpResponsePtr> SendVerifyCode::CheckCodePost(HttpRequestPtr req) {
+    co_return co_await CheckCode(req,
+                                 ReadJsonOrQuery(req, "target"),
+                                 ReadJsonOrQuery(req, "mfaCode"),
+                                 ReadJsonOrQuery(req, "type"));
 }
 
 Task<HttpResponsePtr> SendVerifyCode::CheckCode(HttpRequestPtr req, std::string target, std::string mfaCode, std::string type) {

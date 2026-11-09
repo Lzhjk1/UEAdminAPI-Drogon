@@ -514,6 +514,12 @@ Task<HttpResult> AuthService::RegisterByEmail(
     const bool &isMale, 
     const std::string &nickname) {
     HttpResult result;
+
+    // 自助注册只能创建普通用户，管理员必须走后台/团队授权链路。
+    if ((static_cast<int>(privilege) & static_cast<int>(UserPrivileges::Admin)) != 0) {
+        result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired, "自助注册不能创建管理员");
+        co_return result;
+    }
     
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
@@ -552,6 +558,12 @@ Task<HttpResult> AuthService::RegisterByPhone(
         const std::string &nickname) {
     
     HttpResult result;
+
+    // 自助注册只能创建普通用户，管理员必须走后台/团队授权链路。
+    if ((static_cast<int>(privilege) & static_cast<int>(UserPrivileges::Admin)) != 0) {
+        result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired, "自助注册不能创建管理员");
+        co_return result;
+    }
 
     // 数据库初始化
     auto dbClientPtr = drogon::app().getDbClient();
@@ -596,6 +608,12 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
 
     HttpResult result;
+
+    // 自助注册只能创建普通用户，管理员必须走后台/团队授权链路。
+    if ((static_cast<int>(privilege) & static_cast<int>(UserPrivileges::Admin)) != 0) {
+        result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired, "自助注册不能创建管理员");
+        co_return result;
+    }
     
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();
@@ -672,6 +690,12 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::RegisterWithThirdPartyB
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
 
     HttpResult result;
+
+    // 自助注册只能创建普通用户，管理员必须走后台/团队授权链路。
+    if ((static_cast<int>(privilege) & static_cast<int>(UserPrivileges::Admin)) != 0) {
+        result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired, "自助注册不能创建管理员");
+        co_return result;
+    }
     
     // 2. 数据库查重
     auto dbClientPtr = drogon::app().getDbClient();

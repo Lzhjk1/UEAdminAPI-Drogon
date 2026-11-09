@@ -11,43 +11,45 @@ class ThirdPartyLogin : public drogon::HttpController<ThirdPartyLogin> {
 public:
     METHOD_LIST_BEGIN
     // 获取第三方登录URL
-    ADD_METHOD_TO(ThirdPartyLogin::getLoginUrl,                 "/api/third/authorization_url?platform={1}&ueadmin_state={2}", 
+    ADD_METHOD_TO(ThirdPartyLogin::getLoginUrl,                 "/api/third/authorization_url",
         Get, "DeviceLoginOptional");
 
     // 第三方登录回调
-    ADD_METHOD_TO(ThirdPartyLogin::callback,                    "/api/third/{1}?code={2}&state={3}", 
+    ADD_METHOD_TO(ThirdPartyLogin::callback,                    "/api/third/{1}?code={2}&state={3}",
         Get);
 
     // 验证第三方登录
-    ADD_METHOD_TO(ThirdPartyLogin::verifyLogin,                 "/api/third/login/check?platform={1}&code={2}&verifyCode={3}&onlyCheck={4}", 
+    ADD_METHOD_TO(ThirdPartyLogin::verifyLogin,                 "/api/third/login/check?platform={1}&code={2}&verifyCode={3}&onlyCheck={4}",
         Get);
+    ADD_METHOD_TO(ThirdPartyLogin::verifyLoginPost,             "/api/third/login/check", Post);
 
     // 直接通过第三方平台登录
-    ADD_METHOD_TO(ThirdPartyLogin::loginWithThirdParty,         "/api/third/login?platform={1}&code={2}&verifyCode={3}", 
-        Get);    
+    ADD_METHOD_TO(ThirdPartyLogin::loginWithThirdParty,         "/api/third/login?platform={1}&code={2}&verifyCode={3}",
+        Get);
+    ADD_METHOD_TO(ThirdPartyLogin::loginWithThirdPartyPost,     "/api/third/login", Post);
 
     // 第三方绑定已有账号
-    ADD_METHOD_TO(ThirdPartyLogin::bindAccount,                 "/api/third/bind?platform={1}&code={2}&verifyCode={3}", 
-        Post, 
+    ADD_METHOD_TO(ThirdPartyLogin::bindAccountPost,             "/api/third/bind",
+        Post,
         "AuthFilter", "ActionTokenMiddleware");
 
     // 第三方直接注册账号并完成登录
-    ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdParty,    "/api/third/register?platform={1}&code={2}&verifyCode={3}", 
+    ADD_METHOD_TO(ThirdPartyLogin::createUserFromThirdPartyPost, "/api/third/register",
         Post);
 
-    ADD_METHOD_TO(ThirdPartyLogin::unbindAccount,               "/api/third/unbind?platform={1}", 
-        Post, 
+    ADD_METHOD_TO(ThirdPartyLogin::unbindAccount,               "/api/third/unbind?platform={1}",
+        Post,
         "AuthFilter", "ActionTokenMiddleware");
-        
+
     METHOD_LIST_END
 
     // GET
     // 获取第三方登录URL
-    Task<HttpResponsePtr> getLoginUrl(HttpRequestPtr req, const std::string platform, const std::string ueadmin_state);
+    Task<HttpResponsePtr> getLoginUrl(HttpRequestPtr req);
 
     // GET
     // 第三方登录回调
-    // 实际上进入getLoginUrl接口返回的登录页面完成登录后, 浏览器会跳转到callback接口, 并获得code和state参数, 程序获取到之后就已经可以完成登录, 但是考虑到在AutoPDMS, 使用了一个独立的内置浏览器, 不便让该内置浏览器回传参数给AutoPDMS, 所以还需要AutoPDMS调用后续的verifyLogin接口来确认登录是否已经完成 
+    // 实际上进入getLoginUrl接口返回的登录页面完成登录后, 浏览器会跳转到callback接口, 并获得code和state参数, 程序获取到之后就已经可以完成登录, 但是考虑到在AutoPDMS, 使用了一个独立的内置浏览器, 不便让该内置浏览器回传参数给AutoPDMS, 所以还需要AutoPDMS调用后续的verifyLogin接口来确认登录是否已经完成
     // 这一步只是将LoginValue与第三方账号关联, 并没有绑定到某个用户
     Task<HttpResponsePtr> callback(HttpRequestPtr req, const std::string platform, const std::string code, const std::string state);
 
@@ -67,6 +69,11 @@ public:
     // POST
     // 从第三方账号注册账号, 不登录, 不消耗第三方登陆值, 以便注册好后直接使用原登录值登录
     Task<HttpResponsePtr> createUserFromThirdParty(HttpRequestPtr req, const std::string platform, const std::string code, const std::string verifyCode);
+    Task<HttpResponsePtr> createUserFromThirdPartyPost(HttpRequestPtr req);
+
+    Task<HttpResponsePtr> verifyLoginPost(HttpRequestPtr req);
+    Task<HttpResponsePtr> loginWithThirdPartyPost(HttpRequestPtr req);
+    Task<HttpResponsePtr> bindAccountPost(HttpRequestPtr req);
 
     Task<HttpResponsePtr> unbindAccount(HttpRequestPtr req, const std::string platform);
 

@@ -50,6 +50,102 @@ std::shared_ptr<HttpClient> GetClient(const std::string &base)
     return client;
 }
 
+// 支付宝 JSON 响应的签名是对响应节点“原始文本”计算的，不能反序列化后重新序列化。
+bool ExtractJsonObjectText(const std::string &body, const char *nodeName, std::string &out)
+{
+    const std::string needle = std::string("\"") + nodeName + "\"";
+    size_t pos = body.find(needle);
+    if (pos == std::string::npos)
+    {
+        return false;
+    }
+    const size_t colon = body.find(':', pos + needle.size());
+    if (colon == std::string::npos)
+    {
+        return false;
+    }
+    size_t start = body.find_first_not_of(" \t\r\n", colon + 1);
+    if (start == std::string::npos || body[start] != '{')
+    {
+        return false;
+    }
+
+    int depth = 0;
+    bool inString = false;
+    bool escaped = false;
+    for (size_t i = start; i < body.size(); ++i)
+    {
+        const char c = body[i];
+        if (inString)
+        {
+            if (escaped)
+            {
+                escaped = false;
+            }
+            else if (c == '\\')
+            {
+                escaped = true;
+            }
+            else if (c == '"')
+            {
+                inString = false;
+            }
+            continue;
+        }
+        if (c == '"')
+        {
+            inString = true;
+            continue;
+        }
+        if (c == '{')
+        {
+            ++depth;
+        }
+        else if (c == '}')
+        {
+            --depth;
+            if (depth == 0)
+            {
+                out = body.substr(start, i - start + 1);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool VerifyResponseSign(const std::string &body, const Json::Value &root,
+                        const char *nodeName, std::string &error)
+{
+    const auto &cfg = PaymentConfig::Alipay();
+    if (cfg.publicKeyPem.empty())
+    {
+        error = "支付宝公钥未配置，拒绝信任响应";
+        return false;
+    }
+    const std::string sign = root.get("sign", "").asString();
+    if (sign.empty())
+    {
+        error = "支付宝响应缺少 sign";
+        LOG_ERROR << "[Alipay] " << error << ", node=" << nodeName;
+        return false;
+    }
+    std::string signedContent;
+    if (!ExtractJsonObjectText(body, nodeName, signedContent))
+    {
+        error = "支付宝响应无法提取待验签原文";
+        LOG_ERROR << "[Alipay] " << error << ", node=" << nodeName;
+        return false;
+    }
+    if (!PaymentCrypto::RsaVerifySha256(signedContent, sign, cfg.publicKeyPem))
+    {
+        error = "支付宝响应验签失败";
+        LOG_ERROR << "[Alipay] " << error << ", node=" << nodeName;
+        return false;
+    }
+    return true;
+}
+
 bool ParseResponse(const HttpResponsePtr &resp, const char *nodeName, Json::Value &node, std::string &error)
 {
     if (!resp)
@@ -72,6 +168,10 @@ bool ParseResponse(const HttpResponsePtr &resp, const char *nodeName, Json::Valu
     {
         error = "支付宝响应缺少 " + std::string(nodeName);
         LOG_ERROR << "[Alipay] " << error << ", body=" << body.substr(0, 512);
+        return false;
+    }
+    if (!VerifyResponseSign(body, root, nodeName, error))
+    {
         return false;
     }
     node = root[nodeName];
@@ -611,10 +711,20 @@ Task<PayRefundResult> AlipayProvider::QueryRefund(const std::string &orderNo,
         co_return result;
     }
 
-    result.ok = true;
     result.state = node.get("refund_status", "").asString();
+    if (result.state.empty())
+    {
+        result.error = "支付宝退款查询响应缺少 refund_status";
+        co_return result;
+    }
+    result.ok = true;
     result.success = (result.state == "REFUND_SUCCESS");
-    result.processing = !result.success;
+    // 只有明确“处理中”才继续保持退款中；FAIL/CLOSED 交给同步流程冲正余额。
+    result.processing = (result.state == "REFUND_PROCESSING");
+    if (!result.success && !result.processing)
+    {
+        result.error = "支付宝退款状态: " + result.state;
+    }
     result.providerRefundNo = node.get("trade_no", "").asString();
     co_return result;
 }

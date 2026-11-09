@@ -26,8 +26,8 @@ public:
     static drogon::Task<utils::HttpResult> AdminApprove(int adminUserId, long long id, const std::string &remark);
     static utils::HttpResult AdminReject(int adminUserId, long long id, const std::string &remark);
     static drogon::Task<utils::HttpResult> AdminSync(long long id);
-    // 卡单兜底：退款中但渠道无法确认时，手动回滚余额并置为失败
-    static utils::HttpResult AdminRollback(int adminUserId, long long id);
+    // 卡单兜底：先向渠道确认退款确实失败，才回滚余额并置为失败
+    static drogon::Task<utils::HttpResult> AdminRollback(int adminUserId, long long id);
 
     static std::string StatusText(int status);
 };

@@ -18,4 +18,7 @@ public:
 	virtual bool IsExpired() const = 0;
 	virtual bool IsEverythingAllSet() const = 0;
 	virtual std::string BaseInfo() const = 0;
+	// 记录一次校验失败；达到上限返回 true，调用方应作废该验证码。
+	virtual bool RecordFailure(int maxFailures) = 0;
+	virtual int FailureCount() const = 0;
 };

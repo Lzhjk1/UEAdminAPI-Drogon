@@ -611,28 +611,88 @@ Task<HttpResult> RefundService::AdminSync(long long id)
     co_return result;
 }
 
-HttpResult RefundService::AdminRollback(int adminUserId, long long id)
+drogon::Task<HttpResult> RefundService::AdminRollback(int adminUserId, long long id)
 {
     HttpResult result;
     auto db = drogon::app().getDbClient();
+
+    std::string refundNo;
+    std::string orderNo;
+    int channel = 0;
     try
     {
-        auto rows = db->execSqlSync("select status::int as status from payment_refund where id = $1", id);
+        auto rows = db->execSqlSync(
+            "select r.status::int as status, r.refund_no, r.order_no, o.channel::int as channel "
+            "from payment_refund r join payment_order o on o.order_no = r.order_no where r.id = $1",
+            id);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_RefundNotFound);
-            return result;
+            co_return result;
         }
         if (rows[0]["status"].as<int>() != 1)
         {
             result.setResult(ApiErrorCode::ApiError_RefundStateInvalid, "只有「退款中」的申请可以回滚");
-            return result;
+            co_return result;
         }
+        refundNo = rows[0]["refund_no"].as<std::string>();
+        orderNo = rows[0]["order_no"].as<std::string>();
+        channel = rows[0]["channel"].as<int>();
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "[Refund] 回滚查询失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        co_return result;
+    }
 
+    // 手动回滚前必须向渠道确认“确实没退成功”，否则会造成余额与渠道双重退款。
+    PayRefundResult refund;
+    if (channel == 1)
+    {
+        refund = co_await AlipayProvider::QueryRefund(orderNo, refundNo);
+    }
+    else if (channel == 2)
+    {
+        refund = co_await WechatPayProvider::QueryRefund(refundNo);
+    }
+    else
+    {
+        result.setResult(ApiErrorCode::ApiError_RefundProviderError, "该订单渠道不支持退款查询");
+        co_return result;
+    }
+
+    if (!refund.ok)
+    {
+        result.setResult(ApiErrorCode::ApiError_RefundProviderError,
+                         refund.error.empty() ? "渠道退款查询失败，不能确认状态" : refund.error);
+        co_return result;
+    }
+    if (refund.success)
+    {
+        db->execSqlSync(
+            "update payment_refund set status = 2, provider_refund_no = nullif($2, ''), "
+            "       provider_state = nullif($3, ''), error_msg = null, "
+            "       refunded_at = coalesce(refunded_at, now()), updated_at = now() "
+            "where id = $1 and status = 1",
+            id, refund.providerRefundNo, refund.state);
+        result.setResult(ApiErrorCode::ApiError_RefundStateInvalid,
+                         "渠道已退款成功，不能冲正余额");
+        co_return result;
+    }
+    if (refund.processing)
+    {
+        result.setResult(ApiErrorCode::ApiError_RefundStateInvalid,
+                         "渠道仍在处理中，请稍后同步，不能回滚");
+        co_return result;
+    }
+
+    try
+    {
         if (!RollbackRefund(id, "管理员手动回滚"))
         {
             result.setResult(ApiErrorCode::ApiError_DatabaseError, "回滚失败，请检查日志");
-            return result;
+            co_return result;
         }
 
         db->execSqlSync(
@@ -651,7 +711,7 @@ HttpResult RefundService::AdminRollback(int adminUserId, long long id)
         LOG_ERROR << "[Refund] 回滚异常: " << e.base().what();
         result.setResult(ApiErrorCode::ApiError_DatabaseError);
     }
-    return result;
+    co_return result;
 }
 
 } // namespace Services

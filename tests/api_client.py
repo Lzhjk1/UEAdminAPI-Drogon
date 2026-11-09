@@ -172,34 +172,46 @@ class ApiClient:
     def delete_user(self):
         return self._request("DELETE", "/api/user/delete")
 
-    # ---------- OAuth2 设备登录 / 标准端点 ----------
-    def device_login_start(self, redirect_uri: str | None = None):
+    # ---------- OAuth2 RFC 8628 设备登录 ----------
+    def device_authorization(self, redirect_uri: str | None = None):
         body = {} if redirect_uri is None else {"redirect_uri": redirect_uri}
-        return self._request("POST", "/api/oauth2/login/start", json_body=body)
+        return self._request("POST", "/api/oauth2/device_authorization", json_body=body)
+
+    def device_authorization_raw(self, redirect_uri: str | None = None):
+        body = {} if redirect_uri is None else {"redirect_uri": redirect_uri}
+        resp = self._raw_request("POST", "/api/oauth2/device_authorization", json_body=body)
+        return resp.status_code, resp.json()
+
+    def device_token_raw(self, device_code: str,
+                         grant_type: str = "urn:ietf:params:oauth:grant-type:device_code"):
+        body = {"grant_type": grant_type, "device_code": device_code}
+        resp = self._raw_request("POST", "/api/oauth2/token", json_body=body)
+        try:
+            return resp.status_code, resp.json()
+        except Exception:
+            return resp.status_code, {"raw": resp.text}
+
+    def device_token(self, device_code: str,
+                     grant_type: str = "urn:ietf:params:oauth:grant-type:device_code"):
+        body = {"grant_type": grant_type, "device_code": device_code}
+        return self._request("POST", "/api/oauth2/token", json_body=body)
+
+    def device_login_start(self, redirect_uri: str | None = None):
+        """兼容旧用例名；现在走 RFC 8628 device_authorization。"""
+        return self.device_authorization(redirect_uri)
 
     def device_login_start_raw(self, redirect_uri: str | None = None):
-        body = {} if redirect_uri is None else {"redirect_uri": redirect_uri}
-        resp = self._raw_request("POST", "/api/oauth2/login/start", json_body=body)
-        return resp.status_code, resp.json()
+        return self.device_authorization_raw(redirect_uri)
 
-    def device_login_check(self, state: str):
-        return self._request("GET", "/api/oauth2/login/check",
-                             params={"state": state})
-
-    def device_login_check_raw(self, state: str):
-        resp = self._raw_request("GET", "/api/oauth2/login/check",
-                                 params={"state": state})
-        return resp.status_code, resp.json()
-
-    def device_login_page(self, state: str, redirect_uri: str | None = None):
-        params = {"state": state}
+    def device_login_page(self, user_code: str, redirect_uri: str | None = None):
+        params = {"user_code": user_code}
         if redirect_uri is not None:
             params["redirect_uri"] = redirect_uri
-        return self._raw_request("GET", "/login", params=params)
+        return self._raw_request("GET", "/device", params=params)
 
-    def device_login_pwd(self, state: str, username: str, password: str,
+    def device_login_pwd(self, user_code: str, username: str, password: str,
                          redirect_uri: str | None = None):
-        body = {"state": state, "userName": username, "passWord": password}
+        body = {"user_code": user_code, "userName": username, "passWord": password}
         if redirect_uri is not None:
             body["redirect_uri"] = redirect_uri
         return self._raw_request("POST", "/login", json_body=body)
@@ -215,15 +227,21 @@ class ApiClient:
         return self._raw_request("POST", "/api/oauth2/revoke",
                                  data={"token": token})
 
-    def third_authorization_url(self, platform: str, ueadmin_state: str | None = None):
+    def third_authorization_url(self, platform: str, user_code: str | None = None,
+                                ueadmin_state: str | None = None):
         params = {"platform": platform}
-        if ueadmin_state is not None:
+        if user_code is not None:
+            params["user_code"] = user_code
+        elif ueadmin_state is not None:
             params["ueadmin_state"] = ueadmin_state
         return self._request("GET", "/api/third/authorization_url", params=params)
 
-    def third_authorization_url_raw(self, platform: str, ueadmin_state: str | None = None):
+    def third_authorization_url_raw(self, platform: str, user_code: str | None = None,
+                                    ueadmin_state: str | None = None):
         params = {"platform": platform}
-        if ueadmin_state is not None:
+        if user_code is not None:
+            params["user_code"] = user_code
+        elif ueadmin_state is not None:
             params["ueadmin_state"] = ueadmin_state
         resp = self._raw_request("GET", "/api/third/authorization_url", params=params)
         return resp.status_code, resp.json()

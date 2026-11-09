@@ -39,6 +39,9 @@
     <div class="card">
         <h2>通过 ueadmin 登录</h2>
         <p class="sub">此页面将授权您的客户端登录 IRC</p>
+        <p class="sub" style="color:#9a3412;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;line-height:1.6;">
+            登录令牌只会交给发起本次登录的客户端。如果你没有主动在客户端发起登录，请关闭此页面，不要把验证码告诉他人。
+        </p>
 
         <div class="tabs">
             <div class="tab active" data-tab="pwd">账号密码</div>
@@ -48,9 +51,9 @@
         <!-- 账号密码: 保持原生表单提交 (同源, 避开了 fetch 的 CORS 预检) -->
         <div class="panel active" id="panel-pwd">
             <form id="loginForm">
-                <!-- 该页面在 controller 中已对 state/redirect_uri 做 HTML 转义，防止查询参数 XSS -->
-                <input type="hidden" name="state" value="[[state]]" />
-                <input type="hidden" name="redirect_uri" value="[[redirect_uri]]" />
+                <!-- controller 已对 userCode/redirectUri 做 HTML 转义，防止查询参数 XSS -->
+                <input type="hidden" name="user_code" value="[[userCode]]" />
+                <input type="hidden" name="redirect_uri" value="[[redirectUri]]" />
                 <label for="userName">用户名</label>
                 <input type="text" id="userName" name="userName" autocomplete="username" required />
                 <label for="passWord">密码</label>
@@ -84,7 +87,7 @@
             var qrErr = document.getElementById('qrErr');
             var qrBox = document.getElementById('qrBox');
             var qrFallback = document.getElementById('fallbackQr');
-            var deviceState = form.querySelector('input[name="state"]').value;
+            var userCode = form.querySelector('input[name="user_code"]').value;
 
             // 表单提交失败时后端 302 回本页并携带 error 参数，这里将其展示出来
             var params = new URLSearchParams(window.location.search);
@@ -154,7 +157,7 @@
 
             function fetchAuth(platform) {
                 var url = '/api/third/authorization_url?platform=' + encodeURIComponent(platform) +
-                          '&ueadmin_state=' + encodeURIComponent(deviceState);
+                          '&user_code=' + encodeURIComponent(userCode);
                 return fetch(url).then(function (r) { return r.json(); }).then(function (body) {
                     if (!body || body.code !== 0 || !body.data) {
                         throw new Error((body && body.msg) || '获取第三方登录信息失败');

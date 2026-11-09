@@ -12,8 +12,10 @@ public:
     ADD_METHOD_TO(UserController::deleteUser, "/api/user/delete", Delete, "AuthFilter", "ActionTokenMiddleware");
     // 登录后使用的 ActionToken 获取接口
     ADD_METHOD_TO(UserController::generateActionToken, "/api/user/action_token?mfaType={1}&mfaCode={2}&target={3}", Get, "AuthFilter");
+    ADD_METHOD_TO(UserController::generateActionTokenPost, "/api/user/action_token", Post, "AuthFilter");
     // 登录前（或匿名状态下）使用的 ActionToken 获取接口
     ADD_METHOD_TO(UserController::generateActionTokenBeforeLogin, "/api/user/action_token/anonymous?mfaType={1}&mfaCode={2}&target={3}", Get);
+    ADD_METHOD_TO(UserController::generateActionTokenBeforeLoginPost, "/api/user/action_token/anonymous", Post);
     METHOD_LIST_END
 
     Task<HttpResponsePtr> updateUser(HttpRequestPtr req);
@@ -24,7 +26,9 @@ public:
 
     // 获取操作授权令牌 (ActionToken) - 登录后
     Task<HttpResponsePtr> generateActionToken(HttpRequestPtr req, std::string mfaType, std::string mfaCode, std::string target);
+    Task<HttpResponsePtr> generateActionTokenPost(HttpRequestPtr req);
 
     // 获取操作授权令牌 (ActionToken) - 登录前
     Task<HttpResponsePtr> generateActionTokenBeforeLogin(HttpRequestPtr req, std::string mfaType, std::string mfaCode, std::string target);
+    Task<HttpResponsePtr> generateActionTokenBeforeLoginPost(HttpRequestPtr req);
 };

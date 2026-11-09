@@ -133,7 +133,8 @@ Task<HttpResponsePtr> RefundController::adminRollback(HttpRequestPtr req, std::s
         result.setResult(ApiErrorCode::ApiError_InvalidOperation, "退款单 ID 不合法");
         co_return JsonResponse(result);
     }
-    UEAdminAPI::utils::HttpResult result = RefundService::AdminRollback(CurrentUserId(req), refundId);
+    UEAdminAPI::utils::HttpResult result =
+        co_await RefundService::AdminRollback(CurrentUserId(req), refundId);
     co_return JsonResponse(result);
 }
 

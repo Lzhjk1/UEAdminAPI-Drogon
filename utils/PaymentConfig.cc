@@ -44,6 +44,18 @@ std::string ReadPem(const Json::Value &node, const char *pathKey, const char *pe
     return Trim(oss.str());
 }
 
+bool IsHttpsUrl(const std::string &url)
+{
+    return url.rfind("https://", 0) == 0;
+}
+
+bool IsLoopbackHttpUrl(const std::string &url)
+{
+    return url.rfind("http://127.0.0.1", 0) == 0 ||
+           url.rfind("http://localhost", 0) == 0 ||
+           url.rfind("http://[::1]", 0) == 0;
+}
+
 std::string JoinNotifyUrl(const std::string &serverHost, const std::string &configured, const char *path)
 {
     if (!configured.empty())
@@ -151,17 +163,19 @@ const WechatPayConfig &PaymentConfig::Wechat()
 
 bool PaymentConfig::AlipayReady()
 {
-    const bool notifyOk = _alipay.notifyUrl.rfind("http://", 0) == 0 || _alipay.notifyUrl.rfind("https://", 0) == 0;
-    return _enabled && _alipay.enabled && !_alipay.appId.empty() && !_alipay.gateway.empty() && notifyOk &&
+    // 渠道网关必须 HTTPS；通知地址允许公网 HTTPS 或本机回环 HTTP（本地联调）。
+    const bool notifyOk = IsHttpsUrl(_alipay.notifyUrl) || IsLoopbackHttpUrl(_alipay.notifyUrl);
+    return _enabled && _alipay.enabled && !_alipay.appId.empty() && IsHttpsUrl(_alipay.gateway) && notifyOk &&
            !_alipay.privateKeyPem.empty() && !_alipay.publicKeyPem.empty();
 }
 
 bool PaymentConfig::WechatReady()
 {
-    const bool notifyOk = _wechat.notifyUrl.rfind("http://", 0) == 0 || _wechat.notifyUrl.rfind("https://", 0) == 0;
+    const bool notifyOk = IsHttpsUrl(_wechat.notifyUrl) || IsLoopbackHttpUrl(_wechat.notifyUrl);
     return _enabled && _wechat.enabled && !_wechat.mchId.empty() && !_wechat.appId.empty() &&
            !_wechat.serialNo.empty() && _wechat.apiV3Key.size() == 32 && notifyOk &&
-           !_wechat.privateKeyPem.empty() && !_wechat.publicKeyPem.empty() && !_wechat.apiBase.empty();
+           !_wechat.privateKeyPem.empty() && !_wechat.publicKeyPem.empty() &&
+           IsHttpsUrl(_wechat.apiBase);
 }
 
 bool PaymentConfig::ChannelReady(int channel)

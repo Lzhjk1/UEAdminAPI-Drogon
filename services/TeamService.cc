@@ -51,6 +51,17 @@ bool IsSuperAdmin(const std::shared_ptr<drogon::orm::DbClient> &db, int userId)
     return !rows.empty() && rows[0]["is_super_admin"].as<bool>();
 }
 
+// 只有真正持有 Admin 位的账号才能授予/回收 Admin 位或处置 Admin 位账号。
+// 单纯通过 user_system_role 拿到 super_admin 的账号不具备扩散能力。
+bool HasAdminBit(const std::shared_ptr<drogon::orm::DbClient> &db, int userId)
+{
+    auto rows = db->execSqlSync(
+        "select (coalesce(privilege, 0) & $2::int) <> 0 as bit_admin "
+        "from \"user\" where id = $1",
+        userId, static_cast<int>(UserPrivileges::Admin));
+    return !rows.empty() && rows[0]["bit_admin"].as<bool>();
+}
+
 bool ResolveSuperAdminRoleId(const std::shared_ptr<drogon::orm::DbClient> &db, int &roleId)
 {
     roleId = 0;
@@ -721,10 +732,10 @@ HttpResult TeamService::CreateMemberInTeam(int operatorUserId,
                                  "只有厂商团队可以配置超级管理员");
                 return result;
             }
-            if (!IsSuperAdmin(db, operatorUserId))
+            if (!HasAdminBit(db, operatorUserId))
             {
                 result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
-                                 "只有超级管理员可以授予超级管理员");
+                                 "只有持有 Admin 位的账号可以授予超级管理员");
                 return result;
             }
         }
@@ -960,10 +971,10 @@ HttpResult TeamService::UpdateMemberRolesInTeam(int operatorUserId,
             {
                 const bool targetIsSuper = IsSuperAdmin(db, memberUserId);
                 changeSystemRole = (grantSuper != targetIsSuper);
-                if (changeSystemRole && !IsSuperAdmin(db, operatorUserId))
+                if (changeSystemRole && !HasAdminBit(db, operatorUserId))
                 {
                     result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
-                                     "只有超级管理员可以配置超级管理员");
+                                     "只有持有 Admin 位的账号可以配置超级管理员");
                     return result;
                 }
             }
@@ -1800,10 +1811,10 @@ HttpResult TeamService::RemoveMemberInTeam(int operatorUserId, int teamId, int m
         }
         const std::string memberName = memberRows[0]["name"].as<std::string>();
 
-        if (IsSuperAdmin(db, memberUserId) && !IsSuperAdmin(db, operatorUserId))
+        if (IsSuperAdmin(db, memberUserId) && !HasAdminBit(db, operatorUserId))
         {
             result.setResult(ApiErrorCode::ApiError_AdminPrivilegeRequired,
-                             "只有超级管理员可以移除超级管理员");
+                             "只有持有 Admin 位的账号可以移除超级管理员");
             return result;
         }
         if (IsTeamAdminOf(db, memberUserId, teamId) && CountTeamAdmins(db, teamId) <= 1)
@@ -1916,7 +1927,6 @@ HttpResult TeamService::VendorMoveMembers(int operatorUserId,
             return result;
         }
 
-        const bool operatorIsSuper = IsSuperAdmin(db, operatorUserId);
         Json::Value results(Json::arrayValue);
         int moved = 0;
         int failed = 0;
@@ -1970,9 +1980,9 @@ HttpResult TeamService::VendorMoveMembers(int operatorUserId,
                 results.append(item);
                 continue;
             }
-            if (IsSuperAdmin(db, targetUserId) && !operatorIsSuper)
+            if (IsSuperAdmin(db, targetUserId) && !HasAdminBit(db, operatorUserId))
             {
-                item["message"] = "只有超级管理员可以移动超级管理员";
+                item["message"] = "只有持有 Admin 位的账号可以移动超级管理员";
                 failed++;
                 results.append(item);
                 continue;

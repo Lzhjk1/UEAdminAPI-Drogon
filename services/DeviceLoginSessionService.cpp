@@ -1,90 +1,227 @@
 #include "DeviceLoginSessionService.h"
+
 #include <drogon/utils/Utilities.h>
+#include <openssl/rand.h>
 #include <algorithm>
+#include <cctype>
+#include <random>
 #include <trantor/utils/Logger.h>
 
 namespace UEAdminAPI {
 namespace Services {
 
+namespace {
+
+constexpr const char *kUserCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+std::string GenerateDeviceCode() {
+    std::string code = drogon::utils::getUuid();
+    code.erase(std::remove(code.begin(), code.end(), '-'), code.end());
+    return code;
+}
+
+std::string GenerateUserCode() {
+    unsigned char bytes[8] = {0};
+    if (RAND_bytes(bytes, sizeof(bytes)) != 1) {
+        for (auto &b : bytes) {
+            b = static_cast<unsigned char>(std::random_device{}());
+        }
+    }
+    std::string code;
+    code.reserve(8);
+    for (unsigned char b : bytes) {
+        code.push_back(kUserCodeAlphabet[b % (sizeof(kUserCodeAlphabet) - 1)]);
+    }
+    return code;
+}
+
+std::string FormatUserCode(const std::string &raw) {
+    if (raw.size() != 8) {
+        return raw;
+    }
+    return raw.substr(0, 4) + "-" + raw.substr(4);
+}
+
+} // namespace
+
 DeviceLoginSessionService::DeviceLoginSessionService(const Json::Value &config) {
-    if (config.isMember("UserManage") &&
-        config["UserManage"].isMember("DeviceLoginSec") &&
-        config["UserManage"]["DeviceLoginSec"].isInt()) {
-        _expireSeconds = config["UserManage"]["DeviceLoginSec"].asInt();
-        if (_expireSeconds <= 0) {
-            _expireSeconds = 600;
+    if (config.isMember("UserManage")) {
+        const auto &userManage = config["UserManage"];
+        if (userManage.isMember("DeviceLoginSec") && userManage["DeviceLoginSec"].isInt()) {
+            _expireSeconds = userManage["DeviceLoginSec"].asInt();
+            if (_expireSeconds <= 0) {
+                _expireSeconds = 600;
+            }
+        }
+        if (userManage.isMember("DeviceLoginIntervalSec") &&
+            userManage["DeviceLoginIntervalSec"].isInt()) {
+            _intervalSeconds = userManage["DeviceLoginIntervalSec"].asInt();
+            if (_intervalSeconds <= 0) {
+                _intervalSeconds = 5;
+            }
         }
     }
 
-    // Drogon CacheMap：主事件循环自动清理过期项，线程安全
     _sessionCache = std::make_unique<drogon::CacheMap<std::string, DeviceLoginSessionInfo>>(
-        drogon::app().getLoop(),
-        1.0 // 清理步长（秒）
-    );
+        drogon::app().getLoop(), 1.0);
+    _userCodeIndex = std::make_unique<drogon::CacheMap<std::string, std::string>>(
+        drogon::app().getLoop(), 1.0);
 
-    LOG_INFO << "DeviceLoginSessionService 初始化完成, TTL=" << _expireSeconds << "s";
+    LOG_INFO << "DeviceLoginSessionService 初始化完成, TTL=" << _expireSeconds
+             << "s, interval=" << _intervalSeconds << "s";
 }
 
-std::string DeviceLoginSessionService::CreateSession(const std::string &redirectUri) {
-    std::string state = drogon::utils::getUuid();
-    state.erase(std::remove(state.begin(), state.end(), '-'), state.end());
+std::string DeviceLoginSessionService::NormalizeUserCode(const std::string &userCode) {
+    std::string normalized;
+    normalized.reserve(userCode.size());
+    for (unsigned char ch : userCode) {
+        if (std::isalnum(ch)) {
+            normalized.push_back(static_cast<char>(std::toupper(ch)));
+        }
+    }
+    if (normalized.size() > 16) {
+        normalized.resize(16);
+    }
+    return normalized;
+}
+
+bool DeviceLoginSessionService::IsExpired(const DeviceLoginSessionInfo &info) const {
+    return info.expiresAt <= std::chrono::system_clock::now();
+}
+
+void DeviceLoginSessionService::SaveSessionLocked(const std::string &deviceCode,
+                                                  const DeviceLoginSessionInfo &info) {
+    _sessionCache->erase(deviceCode);
+    _sessionCache->insert(deviceCode, info, _expireSeconds);
+}
+
+void DeviceLoginSessionService::EraseSessionLocked(const std::string &deviceCode,
+                                                   const std::string &userCode) {
+    _sessionCache->erase(deviceCode);
+    if (!userCode.empty()) {
+        _userCodeIndex->erase(userCode);
+    }
+}
+
+DeviceAuthorization DeviceLoginSessionService::CreateSession(const std::string &redirectUri) {
+    std::lock_guard<std::mutex> lock(_mutex);
+
+    DeviceAuthorization authorization;
+    authorization.deviceCode = GenerateDeviceCode();
+    authorization.expiresIn = _expireSeconds;
+    authorization.interval = _intervalSeconds;
+
+    // user_code 不是秘密，但必须唯一，避免两个设备覆盖同一个浏览器会话。
+    std::string normalized;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        normalized = GenerateUserCode();
+        std::string existing;
+        if (!_userCodeIndex->findAndFetch(normalized, existing)) {
+            break;
+        }
+        normalized.clear();
+    }
+    if (normalized.empty()) {
+        LOG_ERROR << "DeviceLoginSessionService: 无法生成唯一 user_code";
+        return authorization;
+    }
 
     DeviceLoginSessionInfo info;
-    info.state = state;
+    info.userCode = normalized;
     info.redirectUri = redirectUri;
     info.userId = -1;
+    info.intervalSec = _intervalSeconds;
+    info.expiresAt = std::chrono::system_clock::now() + std::chrono::seconds(_expireSeconds);
 
-    _sessionCache->insert(state, info, _expireSeconds);
-    return state;
+    SaveSessionLocked(authorization.deviceCode, info);
+    _userCodeIndex->insert(normalized, authorization.deviceCode, _expireSeconds);
+
+    authorization.userCode = FormatUserCode(normalized);
+    return authorization;
 }
 
-std::optional<DeviceLoginSessionInfo> DeviceLoginSessionService::FindSession(const std::string &state) const {
-    if (state.empty()) {
+std::optional<DeviceLoginSessionInfo> DeviceLoginSessionService::FindByUserCode(
+    const std::string &userCode) const {
+    const std::string normalized = NormalizeUserCode(userCode);
+    if (normalized.empty()) {
         return std::nullopt;
     }
-    DeviceLoginSessionInfo info;
-    if (_sessionCache->findAndFetch(state, info)) {
-        return info;
+
+    std::lock_guard<std::mutex> lock(_mutex);
+    std::string deviceCode;
+    if (!_userCodeIndex->findAndFetch(normalized, deviceCode)) {
+        return std::nullopt;
     }
-    return std::nullopt;
+
+    DeviceLoginSessionInfo info;
+    if (!_sessionCache->findAndFetch(deviceCode, info) || IsExpired(info)) {
+        _sessionCache->erase(deviceCode);
+        _userCodeIndex->erase(normalized);
+        return std::nullopt;
+    }
+    return info;
 }
 
-bool DeviceLoginSessionService::MarkLoggedIn(const std::string &state, int userId) {
-    if (state.empty() || userId <= 0) {
+bool DeviceLoginSessionService::MarkLoggedInByUserCode(const std::string &userCode, int userId) {
+    if (userId <= 0) {
+        return false;
+    }
+    const std::string normalized = NormalizeUserCode(userCode);
+    if (normalized.empty()) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(_mutex);
+    std::string deviceCode;
+    if (!_userCodeIndex->findAndFetch(normalized, deviceCode)) {
         return false;
     }
 
     DeviceLoginSessionInfo info;
-    if (!_sessionCache->findAndFetch(state, info)) {
+    if (!_sessionCache->findAndFetch(deviceCode, info) || IsExpired(info)) {
+        EraseSessionLocked(deviceCode, normalized);
         return false;
     }
     if (info.userId > 0) {
-        return false; // 已登录完成，不允许重复绑定
+        return false;
     }
 
     info.userId = userId;
-    // CacheMap::insert 不覆盖已存在 key，必须先 erase 再 insert
-    _sessionCache->erase(state);
-    _sessionCache->insert(state, info, _expireSeconds);
+    SaveSessionLocked(deviceCode, info);
     return true;
 }
 
-std::optional<DeviceLoginSessionInfo> DeviceLoginSessionService::ConsumeSession(const std::string &state) {
-    if (state.empty()) {
-        return std::nullopt;
+DeviceLoginSessionService::PollStatus DeviceLoginSessionService::PollAndConsume(
+    const std::string &deviceCode, DeviceLoginSessionInfo &out) {
+    if (deviceCode.empty()) {
+        return PollStatus::NotFound;
     }
 
+    std::lock_guard<std::mutex> lock(_mutex);
     DeviceLoginSessionInfo info;
-    if (!_sessionCache->findAndFetch(state, info)) {
-        return std::nullopt;
-    }
-    if (info.userId <= 0) {
-        return std::nullopt;
+    if (!_sessionCache->findAndFetch(deviceCode, info) || IsExpired(info)) {
+        EraseSessionLocked(deviceCode, info.userCode);
+        return PollStatus::NotFound;
     }
 
-    // 只有已登录会话才允许消费；消费即删除，避免并发 check 重复领取。
-    _sessionCache->erase(state);
-    return info;
+    const auto now = std::chrono::steady_clock::now();
+    if (info.lastPoll != std::chrono::steady_clock::time_point{} &&
+        now - info.lastPoll < std::chrono::seconds(info.intervalSec)) {
+        // RFC 8628: slow_down 后客户端应把间隔增加 5 秒。
+        info.intervalSec = std::min(info.intervalSec + 5, 60);
+        SaveSessionLocked(deviceCode, info);
+        out = info;
+        return PollStatus::SlowDown;
+    }
+    info.lastPoll = now;
+    SaveSessionLocked(deviceCode, info);
+
+    out = info;
+    if (info.userId > 0) {
+        EraseSessionLocked(deviceCode, info.userCode);
+        return PollStatus::Authorized;
+    }
+    return PollStatus::Pending;
 }
 
 } // namespace Services

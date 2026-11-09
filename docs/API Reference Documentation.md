@@ -742,7 +742,11 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
-### 7.4 设备登录发起 (Device Login Start)
+> **RFC 8628 变更（重要）**：下面 7.4–7.7 的 `state` 流程已废弃，`state` 不再能换 token。
+> 新契约是 `device_code` + `user_code` + `POST /api/oauth2/token`，详见
+> [UEADMIN-OAUTH2-RFC8628.md](UEADMIN-OAUTH2-RFC8628.md)。以下内容仅保留为历史参考。
+
+### 7.4 设备登录发起 (Device Login Start，历史)
 - **URL**: `/api/oauth2/login/start`
 - **Method**: `POST`
 - **Body**: `{ "redirect_uri": "http://127.0.0.1:45678/cb" }`

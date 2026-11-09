@@ -27,11 +27,42 @@ using namespace UEAdminAPI::utils;
 namespace UEAdminAPI {
 namespace Controllers {
 
-Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req,
-                                 const std::string platform,
-                                 const std::string ueadmin_state) {
+namespace {
+std::string ReadJsonOrQuery(const HttpRequestPtr &req, const char *key) {
+    auto json = req->getJsonObject();
+    if (json && json->isMember(key) && (*json)[key].isString()) {
+        return (*json)[key].asString();
+    }
+    auto param = req->getParameter(key);
+    if (!param.empty()) {
+        return param;
+    }
+    if (json && json->isMember(key)) {
+        const auto &node = (*json)[key];
+        if (node.isBool()) {
+            return node.asBool() ? "true" : "false";
+        }
+        if (node.isInt()) {
+            return std::to_string(node.asInt());
+        }
+    }
+    return "";
+}
+
+bool ReadBoolJsonOrQuery(const HttpRequestPtr &req, const char *key) {
+    const std::string value = ReadJsonOrQuery(req, key);
+    return value == "true" || value == "1";
+}
+} // namespace
+
+Task<HttpResponsePtr> ThirdPartyLogin::getLoginUrl(HttpRequestPtr req) {
+    const std::string platform = req->getParameter("platform");
+    std::string userCode = req->getParameter("user_code");
+    if (userCode.empty()) {
+        userCode = req->getParameter("ueadmin_state");
+    }
     auto _thirdPartyLoginService = ThirdPartyLoginService::Instance();
-    auto result = co_await _thirdPartyLoginService->GetLoginUrl(platform, ueadmin_state);
+    auto result = co_await _thirdPartyLoginService->GetLoginUrl(platform, userCode);
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
@@ -86,6 +117,35 @@ Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdParty(HttpRequestPtr r
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;
+}
+
+Task<HttpResponsePtr> ThirdPartyLogin::verifyLoginPost(HttpRequestPtr req) {
+    co_return co_await verifyLogin(req,
+                                   ReadJsonOrQuery(req, "platform"),
+                                   ReadJsonOrQuery(req, "code"),
+                                   ReadJsonOrQuery(req, "verifyCode"),
+                                   ReadBoolJsonOrQuery(req, "onlyCheck"));
+}
+
+Task<HttpResponsePtr> ThirdPartyLogin::loginWithThirdPartyPost(HttpRequestPtr req) {
+    co_return co_await loginWithThirdParty(req,
+                                          ReadJsonOrQuery(req, "platform"),
+                                          ReadJsonOrQuery(req, "code"),
+                                          ReadJsonOrQuery(req, "verifyCode"));
+}
+
+Task<HttpResponsePtr> ThirdPartyLogin::bindAccountPost(HttpRequestPtr req) {
+    co_return co_await bindAccount(req,
+                                   ReadJsonOrQuery(req, "platform"),
+                                   ReadJsonOrQuery(req, "code"),
+                                   ReadJsonOrQuery(req, "verifyCode"));
+}
+
+Task<HttpResponsePtr> ThirdPartyLogin::createUserFromThirdPartyPost(HttpRequestPtr req) {
+    co_return co_await createUserFromThirdParty(req,
+                                                ReadJsonOrQuery(req, "platform"),
+                                                ReadJsonOrQuery(req, "code"),
+                                                ReadJsonOrQuery(req, "verifyCode"));
 }
 
 Task<HttpResponsePtr> ThirdPartyLogin::unbindAccount(HttpRequestPtr req,

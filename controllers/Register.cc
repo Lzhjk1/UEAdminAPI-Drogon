@@ -39,7 +39,6 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
     // 设置需要的参数
     paramMap.addParam("username", true)
         .addParam("password", true)
-        .addParam("privilege", false, "User")
         .addParam("nickname", false)
         .addParam("isMale", false, "true")
         .addParam("email", false)
@@ -83,16 +82,8 @@ Task<HttpResponsePtr> Register::RegisterUser(HttpRequestPtr req) {
         co_return resp;
     }
 
-    UserPrivileges privileges;
-    try{
-        privileges = stringToUserPrivileges(paramMap.getParam("privilege"));
-    }
-    catch(const std::invalid_argument& e){
-        result.setResult(ApiErrorCode::ApiError_InvalidOperation, e.what());
-        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
-        resp->setStatusCode(k200OK);
-        co_return resp;
-    }
+    // 自助注册固定为普通用户；privilege 绝不允许由请求体控制。
+    const UserPrivileges privileges = UserPrivileges::User;
 
     if(isEmailRegister) {
         if(isWithThirdPlatform){

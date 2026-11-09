@@ -33,10 +33,10 @@ public:
     std::string openId;
     std::string nickName;
     std::string avatarImgUrl;
-    // 发起本次第三方登录的设备登录会话 state (可为空, 旧 ueclient 流程不传)。
-    // 第三方平台只会回传 code/state, 任何附加到授权 URL 上的自定义参数都会丢失,
-    // 所以设备 state 必须存在服务端, 回调时按第三方 code 反查。
-    std::string deviceState;
+    // 发起本次第三方登录的设备 user_code（公开短码，可为空；旧 ueclient 流程不传）。
+    // 第三方平台只会回传 code/state，附加参数会丢失，所以 user_code 必须存服务端，
+    // 回调时按第三方 code 反查；它只用于定位设备会话，不能换 token。
+    std::string userCode;
     std::chrono::system_clock::time_point expireTime;
     bool consumed = false;
     bool ready = false; // 表示第三方登录流程是否完全结束(包括获取Token, OpenId等)
@@ -164,7 +164,7 @@ public:
     drogon::Task<void> deletePlatform(UEAdminAPI::utils::EnumThirdPartyPlatform platform);
     drogon::Task<void> clearExpired();
 
-    drogon::Task<UEAdminAPI::utils::HttpResult> GetLoginUrl(const std::string &platform, const std::string &deviceState = "");
+    drogon::Task<UEAdminAPI::utils::HttpResult> GetLoginUrl(const std::string &platform, const std::string &userCode = "");
     drogon::Task<UEAdminAPI::utils::HttpResult> Callback(const std::string &platform, const std::string &code, const std::string &state);
     drogon::Task<drogon::HttpResponsePtr> CallbackRedirect(const std::string &platform, const std::string &code, const std::string &state);
     drogon::Task<UEAdminAPI::utils::HttpResult> BindAccount(int userId, const std::string &platform, const std::string &code, const std::string &verifyCode);

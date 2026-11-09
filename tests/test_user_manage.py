@@ -124,3 +124,28 @@ def test_delete_user(fresh_email_account):
 
     # 已删除, 避免 fixture teardown 再次尝试删除
     fresh_email_account.email = None
+
+
+def test_self_registration_cannot_choose_admin_privilege(client, test_domain):
+    """请求体里的 privilege 不能用于自助注册管理员"""
+    email = _gen_email(test_domain)
+    username = f"pwn_{uuid.uuid4().hex[:8]}"
+    password = "Pwd@12345678"
+
+    code = fetch_code(client, email, "Register")
+    at = client.action_token_anonymous("Register", code, email)["data"]["actionToken"]
+    client.set_action_token(at)
+    body = client.register(username=username, password=password, email=email, privilege="Admin")
+    client.set_action_token(None)
+    assert body["code"] == 0
+
+    login_client = ApiClient(client.base_url)
+    account = TestAccount(username, password, email=email)
+    account.login(login_client)
+    account.client = login_client
+    try:
+        assert login_client.bootstrap()["data"]["isSuperAdmin"] is False
+        with pytest.raises(ApiError):
+            login_client.admin_list_teams()
+    finally:
+        _delete_account(account)

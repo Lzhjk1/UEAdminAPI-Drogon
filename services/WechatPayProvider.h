@@ -2,6 +2,7 @@
 
 #include "PaymentTypes.h"
 
+#include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
 
 #include <map>
@@ -40,6 +41,11 @@ private:
     static std::string BuildAuthorization(const std::string &method,
                                           const std::string &pathWithQuery,
                                           const std::string &body);
+
+    // APIv3 的查单/退款/关单响应同样必须验签，不能只信任 HTTPS。
+    static bool VerifyResponse(const drogon::HttpResponsePtr &resp,
+                               const std::string &body,
+                               std::string &error);
     static bool VerifySignature(const std::string &timestamp,
                                 const std::string &nonce,
                                 const std::string &body,

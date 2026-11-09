@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <chrono>
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <regex>
@@ -22,6 +23,7 @@ protected:
    std::string _code;
    eMFAType _mfaType = eMFAType::Default;
    std::chrono::system_clock::time_point _expireTime;
+   std::atomic<int> _failureCount{0};
 
 public:
    CodePairBase();
@@ -34,6 +36,8 @@ public:
    bool IsExpired() const override;
    virtual bool IsEverythingAllSet() const override;
    virtual std::string BaseInfo() const override = 0;
+   bool RecordFailure(int maxFailures) override;
+   int FailureCount() const override;
 
    // code留空时自动生成
    static std::shared_ptr<ICodePair> CreateCodePair(const std::string& target, const std::string& code, eMFAType type, std::string& errorMsg);

@@ -2,50 +2,73 @@
 
 #include <drogon/drogon.h>
 #include <drogon/CacheMap.h>
-#include <string>
+#include <chrono>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <string>
 #include "utils/SingletonWithInit.h"
 
 namespace UEAdminAPI {
 namespace Services {
 
-/// @brief 设备登录会话信息（OAuth2 device-like flow）
+/// @brief 设备登录会话（RFC 8628 device authorization grant）
 struct DeviceLoginSessionInfo {
-    std::string state;        ///< 一次性随机 state
-    std::string redirectUri;  ///< 登录完成后的 loopback 通知地址（可为空，空则保留 ueloginreturn 兼容路径）
-    int userId = -1;          ///< 登录完成后写入用户ID；未登录为 -1
+    std::string userCode;      ///< 用户在浏览器输入的短码（不是取 token 的凭证）
+    std::string redirectUri;   ///< 完成后的 loopback 通知地址（可为空）
+    int userId = -1;           ///< 完成授权后的用户 ID；未授权为 -1
+    int intervalSec = 5;       ///< 客户端轮询间隔（slow_down 会递增）
+    std::chrono::steady_clock::time_point lastPoll{};
+    std::chrono::system_clock::time_point expiresAt;
 };
 
-/// @brief 设备登录会话服务：创建 / 查询 / 标记完成 / 一次性消费
-/// 使用 Drogon CacheMap 自动处理过期与线程安全。
+/// @brief device_authorization 端点的返回值
+struct DeviceAuthorization {
+    std::string deviceCode;    ///< 仅返回给发起请求的客户端，轮询 token 时必须提交
+    std::string userCode;      ///< 给用户在浏览器输入的短码
+    int expiresIn = 600;
+    int interval = 5;
+};
+
+/// @brief RFC 8628 设备会话：device_code 是秘密，user_code 只用于浏览器确认
 class DeviceLoginSessionService : public SingletonWithInit<DeviceLoginSessionService> {
 public:
     explicit DeviceLoginSessionService(const Json::Value &config);
 
-    /// @brief 创建一次性设备登录会话
-    /// @param redirectUri loopback 通知地址（可为空）
-    /// @return 生成的 state
-    std::string CreateSession(const std::string &redirectUri);
+    /// @brief 创建会话。deviceCode 只返回一次，服务端按它轮询；userCode 给浏览器。
+    DeviceAuthorization CreateSession(const std::string &redirectUri);
 
-    /// @brief 查询会话（不消费）
-    /// @return 会话存在且未过期返回信息，否则 std::nullopt
-    std::optional<DeviceLoginSessionInfo> FindSession(const std::string &state) const;
+    /// @brief 按用户短码查询（登录页用），不消费
+    std::optional<DeviceLoginSessionInfo> FindByUserCode(const std::string &userCode) const;
 
-    /// @brief 标记会话登录完成
-    /// @return 会话存在且未消费返回 true；否则 false
-    bool MarkLoggedIn(const std::string &state, int userId);
+    /// @brief 浏览器完成认证后标记会话已授权
+    bool MarkLoggedInByUserCode(const std::string &userCode, int userId);
 
-    /// @brief 消费已登录会话（取后即废）
-    /// @return 成功返回已登录会话信息并删除；不存在/未登录/已消费返回 std::nullopt
-    std::optional<DeviceLoginSessionInfo> ConsumeSession(const std::string &state);
+    /// @brief 客户端轮询 token：pending / slow_down / authorized（authorized 时一次性消费）
+    enum class PollStatus {
+        NotFound,
+        Pending,
+        SlowDown,
+        Authorized
+    };
+    PollStatus PollAndConsume(const std::string &deviceCode, DeviceLoginSessionInfo &out);
 
-    /// @brief 会话有效期（秒）
     int GetExpireSeconds() const { return _expireSeconds; }
+    int GetIntervalSeconds() const { return _intervalSeconds; }
+
+    /// @brief 去空格/连字符、转大写，兼容用户输入 "abcd-efgh" / "ABCD EFGH"
+    static std::string NormalizeUserCode(const std::string &userCode);
 
 private:
-    int _expireSeconds = 600; ///< 默认 10 分钟
+    bool IsExpired(const DeviceLoginSessionInfo &info) const;
+    void SaveSessionLocked(const std::string &deviceCode, const DeviceLoginSessionInfo &info);
+    void EraseSessionLocked(const std::string &deviceCode, const std::string &userCode);
+
+    int _expireSeconds = 600;
+    int _intervalSeconds = 5;
+    mutable std::mutex _mutex;
     std::unique_ptr<drogon::CacheMap<std::string, DeviceLoginSessionInfo>> _sessionCache;
+    std::unique_ptr<drogon::CacheMap<std::string, std::string>> _userCodeIndex;
 };
 
 } // namespace Services
