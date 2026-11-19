@@ -20,7 +20,7 @@ WORKDIR /mnt/project/ueadmin-api-drogon
 COPY --chmod=755 ./ueadmin-api-drogon/build/UEAdminAPI_drogon /usr/local/bin/UEAdminAPI_drogon
 
 # 差量自动生成：NSIS 主模板与许可协议（与 ObjectPRX 打包侧的 NSI 同步）
-COPY --chmod=755 ./ueadmin-api-drogon/assets /opt/ueadmin/assets
+COPY --chmod=755 ./ueadmin-api-drogon/assets/delta /opt/ueadmin/assets
 
 # 暴露 drogon 服务端口
 EXPOSE 6666
