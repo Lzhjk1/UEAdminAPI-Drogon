@@ -1329,3 +1329,47 @@ GitLab 相关接口目前使用独立的响应格式：
 - **错误码**：`-819` 反馈不存在。
 
 > 登录器里的「导出 Markdown」在客户端本地完成（含截图下载到 `<文件名>_images/`），不新增服务端接口。
+
+## 13. 客户端环境信息
+
+> 登录器在登录成功后自动采集本机环境并上报，成功静默、失败不影响登录。
+> 提交需要登录态；管理接口只允许厂商超级管理员（`AuthFilter + SuperAdminFilter`，团队管理员不放行）。
+> 同一 `(user_id, deviceKey)` 重复上报只覆盖更新（保留 `first_seen`），`userName` 为上报时快照。
+> `deviceKey` 是客户端本地计算的加盐 SHA256（MachineGuid），服务端不接收计算机名、Windows 账号、文件路径。
+> 建表迁移：`0014_client_env_report.sql`。
+
+### 13.1 上报环境信息
+- **URL**: `/api/client/env`
+- **Method**: `POST`，`Authorization: Bearer {token}`
+- **Body**（字段均可缺省，服务端只强校验 `deviceKey`）:
+```json
+{
+  "schemaVersion": 1,
+  "deviceKey": "3f9c2a71...（16-64 位十六进制）",
+  "productVersion": "11.7.125",
+  "cad":     { "product": "AutoCAD 2024", "version": "24.3s", "bits": "64", "lang": "简体中文" },
+  "os":      { "name": "Windows 11 企业版", "version": "24H2", "build": "26100.2314",
+               "arch": "x64", "lang": "中文（简体，中国）", "timezone": "UTC+08:00" },
+  "cpu":     { "name": "Intel Core i7-12700", "cores": 12, "logical": 20 },
+  "memory":  { "totalMb": 32768, "availMb": 18300 },
+  "disk":    { "installFreeGb": 168 },
+  "gpu":     { "name": "NVIDIA RTX A2000", "driver": "553.62" },
+  "screen":  { "width": 2560, "height": 1440, "dpi": 120, "scale": "125%" },
+  "boot":    { "loginMs": 1200, "cadMs": 4800, "dbMs": 2100 },
+  "machine": { "admin": true, "dirWritable": true, "vm": false },
+  "deps":    { "vcRuntime": "14.38", "dotnet": "4.8", "jetAce": true, "wps": "12.1", "office": "" },
+  "modules": { "count": 12, "names": ["APPipeCommand.arx", "..."] }
+}
+```
+- `deviceKey` 必填：16-64 位十六进制；`productVersion` 超长截断为 64 字节；整个请求体序列化后 ≤ 256KB。
+- **Response**: `data = { ok: true }`
+- **错误码**：`-102` deviceKey 缺失或不合法 / `-105` 环境信息过大 / `-302` 用户不存在 / `-104` 数据库错误。
+
+### 13.2 环境上报列表（厂商，仅超级管理员）
+- **URL**: `/api/admin/client/env/list?keyword=&page=1&size=50`
+- `keyword` 为空表示全部，匹配用户名与客户端版本（服务端 LIKE）；`size` 取值 1~200。
+- **Response**: `data = { total, page, size, items[] }`，按 `lastSeen` 倒序。
+- `items[]` 字段：`id/userId/userName/deviceKey/productVersion/cadProduct/cadVersion/osName/cpuName/memoryMb/firstSeen/lastSeen/payload`。
+- `firstSeen/lastSeen` 为东八区格式化字符串；`payload` 是上报时的完整环境 JSON 文本，客户端详情面板与 Markdown 导出都从这里取字段。
+- **错误码**：`-807` 非厂商超管。
+- 登录器里的「导出 Markdown」在客户端本地完成，不新增服务端接口。
