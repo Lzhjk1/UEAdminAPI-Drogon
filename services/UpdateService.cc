@@ -1,8 +1,10 @@
-#include "UpdateService.h"
+﻿#include "UpdateService.h"
 
 #include <drogon/drogon.h>
 
 #include "utils/ApiErrorCodes.h"
+
+#include "DeltaBuilder.h"
 
 #include <openssl/sha.h>
 #include <openssl/evp.h>
@@ -1288,6 +1290,9 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
             "temp_name = '', uploaded_bytes = file_size, updated_at = now() where id = $1",
             uploadId, newId);
 
+        // 全量包落库后自动生成与上一版本的文件级差量（后台任务，失败不影响上传结果）
+        DeltaBuilder::EnqueueAutoBuild(newId);
+
         FillInstallerJson(result.jsondata, newId, version, buildNo, safeName, fileSize,
                           actualSha, minVersion, 0);
         result.setResult(ApiErrorCode::ApiError_Success, "上传完成，待发布");
@@ -1378,7 +1383,11 @@ HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
             return result;
         }
 
-        result.jsondata["id"] = rows[0]["id"].as<int>();
+        const int uploadedId = rows[0]["id"].as<int>();
+        // 一次性上传（管理页）同样触发自动差量生成
+        DeltaBuilder::EnqueueAutoBuild(uploadedId);
+
+        result.jsondata["id"] = uploadedId;
         result.jsondata["version"] = version;
         result.jsondata["buildNo"] = static_cast<Json::Int64>(buildNo);
         result.jsondata["fileName"] = safeName;
@@ -1416,8 +1425,12 @@ HttpResult UpdateService::AdminPublishInstaller(int installerId)
             "update installer_version set status = 1, published_at = now() where id = $1",
             installerId);
 
+        // 自动生成的差量包随全量一起生效；还没生成完则在任务完成时按发布状态落库
+        const std::string publishedVersion = rows[0]["version"].as<std::string>();
+        DeltaBuilder::PublishAutoDelta(publishedVersion);
+
         result.jsondata["id"] = installerId;
-        result.jsondata["version"] = rows[0]["version"].as<std::string>();
+        result.jsondata["version"] = publishedVersion;
         result.jsondata["status"] = 1;
         result.setResult(ApiErrorCode::ApiError_Success, "已发布");
     }
@@ -1456,7 +1469,7 @@ HttpResult UpdateService::AdminUpdateInstaller(int installerId,
     try
     {
         auto rows = db->execSqlSync(
-            "select id, version from installer_version where id = $1", installerId);
+            "select id, version, status from installer_version where id = $1", installerId);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
@@ -1476,10 +1489,22 @@ HttpResult UpdateService::AdminUpdateInstaller(int installerId,
         }
 
         // 只改元数据：磁盘文件与 file_path 保持不动，下载时仍按这条记录取文件
+        const std::string oldVersion = rows[0]["version"].as<std::string>();
+        const int oldStatus = rows[0]["status"].as<int>();
         db->execSqlSync(
             "update installer_version set version = $2, build_no = $3::bigint, "
             "       notes = $4, min_version = $5 where id = $1",
             installerId, version, buildNo, notes, minVersion);
+        if (version != oldVersion)
+        {
+            // 版本号变了，按旧版本自动生成的差量已无意义
+            DeltaBuilder::RemoveAutoDeltasForVersion(oldVersion);
+            if (oldStatus == 1)
+            {
+                // 正在发布的版本改了号，按新号重新生成差量
+                DeltaBuilder::EnqueueAutoBuild(installerId);
+            }
+        }
 
         result.jsondata["id"] = installerId;
         result.jsondata["version"] = version;
@@ -1579,6 +1604,8 @@ HttpResult UpdateService::AdminDeleteInstaller(int installerId)
     }
     const std::filesystem::path dir = std::filesystem::path(StoreDir()) / version;
     std::filesystem::remove_all(dir, ec);
+
+    DeltaBuilder::RemoveAutoDeltasForVersion(version);
 
     result.jsondata["id"] = installerId;
     result.jsondata["version"] = version;

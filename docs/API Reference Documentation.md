@@ -1199,9 +1199,21 @@ GitLab 相关接口目前使用独立的响应格式：
     "version": "11.7.121", "buildNo": 202610271350,
     "fileName": "UEAP_PRJ_11.7.121_Setup.exe", "sizeBytes": 123456789,
     "sha256": "…", "notes": "…", "publishedAt": "2026-10-26 17:00:00",
-    "downloadUrl": "https://im.uesoft.com/api/update/download/11.7.121"
+    "downloadUrl": "https://im.uesoft.com/api/update/download/11.7.121",
+
+    "packageKind": "delta",
+    "deltaFromVersion": "11.7.120",
+    "deltaFileName": "UEAP_PRJ_11.7.121_Delta_from_11.7.120_Win32.exe",
+    "deltaSizeBytes": 5242880,
+    "deltaSha256": "…",
+    "deltaInstallBytes": 12345678,
+    "deltaDownloadUrl": "https://im.uesoft.com/api/update/download/11.7.121?kind=delta&fromVersion=11.7.120",
+    "deltaManifestUrl": "https://im.uesoft.com/api/update/delta/11.7.121/manifest?fromVersion=11.7.120"
 } }
 ```
+- `packageKind`：`full`（默认）/ `delta`。只有存在**基线精确等于** `currentVersion` 且已发布的差量时才为 `delta`；
+  `downloadUrl` **始终是全量包**，老客户端不认识新字段仍走全量，行为不变。
+- `deltaInstallBytes` 是差量解压后需落盘的总字节数（客户端预检磁盘空间用）。
 - `reason` 取值：`ok` / `not_paid` / `expired`（曾付费但已过期）/ `no_auth`（未开通云端更新授权）/
   `no_package`（没有已发布安装包）/ `no_update`（已是最新）/ `below_min_version`（低于该包的最低版本要求）。
   除 `ok` 外一律 `hasUpdate=false`；`below_min_version` 时额外返回 `minVersion`。
@@ -1214,15 +1226,23 @@ GitLab 相关接口目前使用独立的响应格式：
   升级一次后版本号统一为 `11.7.x`，后续按数字段正常比较。
 
 ### 11.2 下载安装包
-- **URL**: `/api/update/download/{version}`
+- **URL**: `/api/update/download/{version}`（全量）
+- **URL**: `/api/update/download/{version}?kind=delta&fromVersion=11.7.120`（差量，两个参数都必填）
 - **Method**: `GET`，`Authorization: Bearer {token}`
 - **Response**: 二进制流，`Content-Disposition: attachment; filename="…"`
-- **错误码**: `-808` 团队未付费、`-809` 未开通更新授权、`-817` 安装包不存在或未发布
+- **错误码**: `-808` 团队未付费、`-809` 未开通更新授权、`-817` 安装包/差量不存在或未发布、
+  `-102` 差量下载缺少 `fromVersion`
+
+### 11.2.1 差量清单（客户端预检）
+- **URL**: `GET /api/update/delta/{toVersion}/manifest?fromVersion=11.7.120`
+- **Response**: `data` 即差量清单：`{ schemaVersion, fromVersion, toVersion, files[], deletes[], forceGroups[], baseFiles[], totalInstallBytes }`
+- `baseFiles` 为不超过 20 个基线关键文件（path + sha256），客户端安装前抽查本地文件，不一致自动改拉全量。
+- 权限与下载一致（登录 + 团队付费 + `online_update` 授权）。
 
 ### 11.3 厂商后台：安装包管理
 | 接口 | 说明 |
 |---|---|
-| `POST /api/admin/installer/upload` | `multipart/form-data`：`version`(可空)、`buildNo`(可空)、`notes`、`minVersion`、`file`(必填, 仅 `.exe`)；落盘并计算 sha256，状态为**草稿(0)**；版本号重复 → `-815` |
+| `POST /api/admin/installer/upload` | `multipart/form-data`：`version`(可空)、`buildNo`(可空)、`notes`、`minVersion`、`file`(必填, 仅 `.exe`)；落盘并计算 sha256，状态为**草稿(0)**；版本号重复 → `-815`。上传完成即触发差量自动生成（见 11.5） |
 | `PATCH /api/admin/installer/{id}` | 编辑版本信息：Body `{ "version": "...", "buildNo": 0, "notes": "", "minVersion": "" }`（四项整体覆盖，`version` 必填）。只改库里的元数据，磁盘文件与 `file_path` 不动，下载仍按该记录取文件 |
 | `POST /api/admin/installer/{id}/publish` | 发布：把该条置为已发布(1)，**其余已发布版本自动转为下线(2)**，保证同一时刻只有一个现行版本 |
 | `POST /api/admin/installer/{id}/offline` | 下线：状态置为 2（记录保留，不再对外提供更新） |
@@ -1285,9 +1305,31 @@ GitLab 相关接口目前使用独立的响应格式：
 > 注意：`main.cc` 的 `setClientMaxBodySize / setClientMaxMemoryBodySize` 必须在 `loadConfigFile` 之后设置；
 > 否则配置默认的 1MB 上限会让分片/大请求在 90% 左右被断开（客户端表现为错误码 12031）。
 
-### 11.5 上传页
+### 11.5 差量包自动生成
+
+> 不再需要人工上传差量包：全量包上传完成后，服务端在后台解包「上一版本」与「本版本」两个全量安装器，
+> 逐文件 sha256 比对，生成清单驱动的 NSIS 差量安装器。全量包发布时差量自动生效。
+> 依赖运行环境安装 `p7zip-full`（`7z`）与 `nsis`（`makensis`），资产在 `assets/delta/`。
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/admin/update/delta/list` | 差量列表：id/fromVersion/toVersion/buildNo/fileName/sizeBytes/sha256/status/createdAt/publishedAt |
+| `GET /api/admin/update/delta/jobs` | 最近 50 条生成任务：id/fromVersion/toVersion/status(0 排队/1 生成中/2 成功/3 失败/4 跳过)/message/createdAt/updatedAt |
+| `GET /api/admin/update/delta/health` | 运行环境自检：`{ ok, autoEnabled, sevenZip{path,ok,version}, makensis{path,ok,version}, assetsDir, assetsOk, assetsMissing[], tempDir, tempFreeBytes, tempSpaceOk, forceGroups[] }`；`ok=false` 时按字段定位缺 7z/缺 makensis/缺资产/临时盘<10GB |
+| `POST /api/admin/update/delta/rebuild` | Body `{ "fromVersion": "11.7.120", "toVersion": "11.7.121" }`，重新生成（会清掉该基线-目标已有的自动差量） |
+| `POST /api/admin/update/delta/{id}/publish|offline` | 手工调整差量发布状态（自动流程通常不需要） |
+| `DELETE /api/admin/update/delta/{id}` | 删除已下线的差量记录与磁盘文件 |
+
+- 基线选择：优先最近一个**已发布**全量版本；没有已发布版本时取最近一个已上传且版本号更小的全量包。
+- 强制整组替换目录（`project\UHS\UHS000`、`PHSPrjDB`、`AI\MCP\python`）有变化时，任务记为「已跳过」并提示只发全量包。
+- 相关配置（`custom_config.Installer`）：`DeltaAuto`（默认 true）、`DeltaAssetsDir`（默认 `./assets/delta`）、
+  `SevenZipPath`、`MakensisPath`、`DeltaTempDir`（留空用系统临时目录；需能放下两份约 4GB 安装树，
+  也可用环境变量 `UEADMIN_DELTA_TEMP_DIR` 指定）。
+- 迁移：`0016_update_delta.sql`（差量表）、`0017_delta_auto_build.sql`（任务表 + origin）。
+
+### 11.6 上传页
 - **URL**: `/admin/installer`（`GET`，无需登录即可打开页面，但页面内所有操作都要填厂商超管 token）
-- 页面提供：粘贴 token → 加载列表 → 选 `.exe` 上传 → 发布。仅作内部工具，未做额外的会话管理。
+- 页面提供：粘贴 token → 加载列表 → 选 `.exe` 上传 → 查看差量生成任务 → 发布。仅作内部工具，未做额外的会话管理。
 
 ## 12. 用户意见反馈
 

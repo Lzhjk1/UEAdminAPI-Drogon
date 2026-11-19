@@ -263,11 +263,130 @@ class ApiClient:
         return self._request("GET", "/api/update/check",
                              params={"currentVersion": current_version, "platform": platform})
 
-    def update_download_raw(self, version: str):
-        return self._raw_request("GET", f"/api/update/download/{version}")
+    def update_download_raw(self, version: str, kind: str | None = None,
+                            from_version: str | None = None):
+        params = {}
+        if kind is not None:
+            params["kind"] = kind
+        if from_version is not None:
+            params["fromVersion"] = from_version
+        return self._raw_request("GET", f"/api/update/download/{version}", params=params)
+
+    def update_manifest(self, version: str, from_version: str):
+        return self._request("GET", f"/api/update/delta/{version}/manifest",
+                             params={"fromVersion": from_version})
+
+    def update_manifest_raw(self, version: str, from_version: str):
+        return self._raw_request("GET", f"/api/update/delta/{version}/manifest",
+                                 params={"fromVersion": from_version})
 
     def admin_list_installers(self):
         return self._request("GET", "/api/admin/installer/list")
+
+    # ---------- 差量更新包（复用分片上传会话） ----------
+    def admin_upload_delta(self, from_version: str, to_version: str, file_bytes: bytes,
+                           manifest: dict | None = None,
+                           file_name: str = "UEAP_PRJ_delta_Setup.Win32.exe",
+                           build_no: int | None = None):
+        import hashlib
+        body = {
+            "version": to_version,
+            "kind": "delta",
+            "fromVersion": from_version,
+            "fileName": file_name,
+            "fileSize": len(file_bytes),
+            "fileSha256": hashlib.sha256(file_bytes).hexdigest(),
+            "manifest": manifest if manifest is not None else {
+                "fromVersion": from_version,
+                "toVersion": to_version,
+                "files": [],
+                "deletes": [],
+            },
+        }
+        if build_no is not None:
+            body["buildNo"] = build_no
+        init_body = self._request("POST", "/api/admin/installer/upload/init", json_body=body)
+        init = init_body.get("data") or {}
+        if "uploadId" not in init:
+            raise ApiError(-1, f"差量上传初始化失败: {init_body}")
+        upload_id = init["uploadId"]
+        offset = int(init.get("offset", 0))
+        if offset < len(file_bytes):
+            self._request("POST", f"/api/admin/installer/upload/{upload_id}/chunk",
+                          params={"offset": offset},
+                          data=file_bytes[offset:],
+                          headers={"Content-Type": "application/octet-stream"})
+        complete_body = self._request(
+            "POST", f"/api/admin/installer/upload/{upload_id}/complete")
+        if "data" not in complete_body:
+            raise ApiError(-1, f"差量上传完成失败: {complete_body}")
+        return complete_body["data"]
+
+    def admin_upload_installer_chunked(self, version: str, file_path, file_name: str | None = None,
+                                       notes: str = "", build_no: int | None = None,
+                                       min_version: str | None = None,
+                                       chunk_size: int = 4 * 1024 * 1024):
+        """全量安装包分片上传（大文件不整体读入内存），返回 complete 的 data。"""
+        import hashlib
+        from pathlib import Path
+
+        path = Path(file_path)
+        name = file_name or path.name
+        size = path.stat().st_size
+        digest = hashlib.sha256()
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                digest.update(chunk)
+
+        body = {"version": version, "fileName": name, "fileSize": size,
+                "fileSha256": digest.hexdigest(), "notes": notes}
+        if build_no is not None:
+            body["buildNo"] = build_no
+        if min_version:
+            body["minVersion"] = min_version
+
+        init = self._request("POST", "/api/admin/installer/upload/init", json_body=body)
+        data = init.get("data") or {}
+        upload_id = data.get("uploadId")
+        if not upload_id:
+            raise ApiError(-1, f"全量上传初始化失败: {init}")
+        offset = int(data.get("offset", 0))
+        with path.open("rb") as f:
+            f.seek(offset)
+            while offset < size:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                resp = self._request(
+                    "POST", f"/api/admin/installer/upload/{upload_id}/chunk",
+                    params={"offset": offset}, data=chunk,
+                    headers={"Content-Type": "application/octet-stream"})
+                offset = int(resp["data"]["offset"])
+
+        done = self._request("POST", f"/api/admin/installer/upload/{upload_id}/complete")
+        result = done.get("data") or {}
+        if not result.get("id"):
+            raise ApiError(-1, f"全量上传完成失败: {done}")
+        return result
+
+    def admin_list_deltas(self):
+        return self._request("GET", "/api/admin/update/delta/list")
+
+    def admin_publish_delta(self, delta_id: int):
+        return self._request("POST", f"/api/admin/update/delta/{delta_id}/publish")
+
+    def admin_offline_delta(self, delta_id: int):
+        return self._request("POST", f"/api/admin/update/delta/{delta_id}/offline")
+
+    def admin_delete_delta(self, delta_id: int):
+        return self._request("DELETE", f"/api/admin/update/delta/{delta_id}")
+
+    def admin_delta_jobs(self):
+        return self._request("GET", "/api/admin/update/delta/jobs")
+
+    def admin_rebuild_delta(self, from_version: str, to_version: str):
+        return self._request("POST", "/api/admin/update/delta/rebuild",
+                             json_body={"fromVersion": from_version, "toVersion": to_version})
 
     def admin_publish_installer(self, installer_id: int):
         return self._request("POST", f"/api/admin/installer/{installer_id}/publish")

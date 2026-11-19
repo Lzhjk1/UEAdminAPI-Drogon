@@ -1,6 +1,7 @@
-#include "UpdateController.h"
+﻿#include "UpdateController.h"
 
 #include "services/UpdateService.h"
+#include "services/DeltaBuilder.h"
 #include "utils/ApiErrorCodes.h"
 #include "utils/HttpResult.h"
 
@@ -517,6 +518,32 @@ Task<HttpResponsePtr> UpdateController::listDeltas(HttpRequestPtr req)
 {
     (void)req;
     co_return JsonResponse(UpdateService::AdminListDeltas());
+}
+
+Task<HttpResponsePtr> UpdateController::deltaJobs(HttpRequestPtr req)
+{
+    (void)req;
+    co_return JsonResponse(DeltaBuilder::AdminListJobs(50));
+}
+
+Task<HttpResponsePtr> UpdateController::deltaHealth(HttpRequestPtr req)
+{
+    (void)req;
+    co_return JsonResponse(DeltaBuilder::AdminHealth());
+}
+
+Task<HttpResponsePtr> UpdateController::deltaRebuild(HttpRequestPtr req)
+{
+    HttpResult result;
+    auto json = req->getJsonObject();
+    if (!json)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return JsonResponse(result);
+    }
+    const std::string fromVersion = JsonString(*json, "fromVersion");
+    const std::string toVersion = JsonString(*json, "toVersion");
+    co_return JsonResponse(DeltaBuilder::AdminRebuild(fromVersion, toVersion));
 }
 
 Task<HttpResponsePtr> UpdateController::adminPage(HttpRequestPtr req)

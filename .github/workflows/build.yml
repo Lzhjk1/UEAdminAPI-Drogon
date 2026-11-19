@@ -70,6 +70,8 @@ jobs:
           # 将编译产物放到 Dockerfile.run 期望的 context 路径下
           mkdir -p build_docker/ueadmin-api-drogon/build
           cp build/UEAdminAPI_drogon build_docker/ueadmin-api-drogon/build/
+          mkdir -p build_docker/ueadmin-api-drogon/assets
+          cp -r assets/delta build_docker/ueadmin-api-drogon/assets/
           docker build \
             -t ueadmin-api-drogon-run:ci \
             -t ${{ vars.DOCKERHUB_REPO }}:latest \

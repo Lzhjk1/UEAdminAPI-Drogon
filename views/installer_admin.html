@@ -6,11 +6,12 @@
 <style>
   body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 24px; color: #222; }
   h1 { font-size: 20px; margin-bottom: 4px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
   .hint { color: #666; font-size: 12px; margin-bottom: 16px; }
-  fieldset { border: 1px solid #ccc; padding: 12px 16px; margin-bottom: 20px; max-width: 720px; }
+  fieldset { border: 1px solid #ccc; padding: 12px 16px; margin-bottom: 20px; max-width: 760px; }
   legend { font-weight: bold; padding: 0 6px; }
-  label { display: inline-block; width: 90px; }
-  input[type=text], input[type=password], input[type=file] { width: 360px; margin-bottom: 8px; }
+  label { display: inline-block; width: 110px; }
+  input[type=text], input[type=password], input[type=file] { width: 380px; margin-bottom: 8px; }
   button { padding: 4px 12px; cursor: pointer; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
@@ -22,30 +23,33 @@
   .tag-pub { background: #c8e6c9; }
   .tag-draft { background: #ffe0b2; }
   .tag-off { background: #e0e0e0; }
+  .spacer { height: 20px; }
 </style>
 </head>
 <body>
 <h1>安装包发布</h1>
 <div class="hint">
   需要厂商超管（privilege 含 Admin 位）的<b>登录 token</b>；token 只在浏览器内存中使用，不落盘。
-  接口：<code>/api/admin/installer/*</code>，发布后客户端 <code>/api/update/check</code> 才能看到。
+  接口：<code>/api/admin/installer/*</code>、<code>/api/admin/update/delta/*</code>，发布后客户端 <code>/api/update/check</code> 才能看到。
 </div>
 
 <fieldset>
   <legend>登录 token</legend>
   <label>Token</label>
   <input type="password" id="token" placeholder="粘贴 Authorization Bearer 后面的 token">
-  <button onclick="loadList()">加载列表</button>
+  <button onclick="loadAll()">加载列表</button>
 </fieldset>
 
 <fieldset>
-  <legend>上传安装包（草稿）</legend>
+  <legend>上传安装包（全量，草稿）</legend>
   <label>版本号</label><input type="text" id="version" placeholder="11.7.121"><br>
   <label>Build</label><input type="text" id="buildNo" placeholder="121（可空）"><br>
   <label>说明</label><input type="text" id="notes" placeholder="本次更新内容（可空）"><br>
   <label>文件</label><input type="file" id="file" accept=".exe"><br>
   <button onclick="upload()">上传</button>
 </fieldset>
+
+
 
 <div id="msg"></div>
 
@@ -54,6 +58,30 @@
     <tr><th>ID</th><th>版本</th><th>Build</th><th>文件</th><th>大小</th><th>SHA256</th><th>状态</th><th>发布时间</th><th>操作</th></tr>
   </thead>
   <tbody id="rows"><tr><td colspan="9" style="color:#888">填写 token 后点「加载列表」</td></tr></tbody>
+</table>
+
+<div class="spacer"></div>
+<h2>差量生成任务</h2>
+<div class="hint" style="margin-bottom:8px">
+  全量包上传完成后自动在本机解包新旧安装器并编译差量包，无需再手工上传；
+  全量包发布后对应差量自动生效。强制整组替换目录有变化时会跳过并提示改发全量。
+  <button onclick="loadJobs()">刷新任务</button>
+  <span id="deltaHealth" style="margin-left:12px;color:#888">检查中…</span>
+</div>
+<table>
+  <thead>
+    <tr><th>ID</th><th>基线</th><th>目标</th><th>状态</th><th>说明</th><th>更新时间</th><th>操作</th></tr>
+  </thead>
+  <tbody id="jobRows"><tr><td colspan="7" style="color:#888">暂无任务</td></tr></tbody>
+</table>
+
+<div class="spacer"></div>
+<h2>增量包</h2>
+<table>
+  <thead>
+    <tr><th>ID</th><th>基线</th><th>目标</th><th>文件</th><th>大小</th><th>状态</th><th>发布时间</th><th>操作</th></tr>
+  </thead>
+  <tbody id="deltaRows"><tr><td colspan="8" style="color:#888">暂无增量包</td></tr></tbody>
 </table>
 
 <script>
@@ -72,7 +100,9 @@ function show(text, ok) {
 
 async function call(method, path, body) {
   const headers = { 'Authorization': 'Bearer ' + token() };
-  if (body && !(body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  if (body && !(body instanceof FormData) && !(body instanceof Uint8Array)) {
+    headers['Content-Type'] = 'application/json';
+  }
   const resp = await fetch(api(path), { method, headers, body });
   let data;
   try { data = await resp.json(); } catch (e) { data = { code: -1, msg: 'HTTP ' + resp.status + ' 非 JSON 响应' }; }
@@ -91,6 +121,13 @@ function statusTag(s) {
 function fmtSize(n) {
   if (!n) return '-';
   return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+async function loadAll() {
+  await loadList();
+  await loadDeltas();
+  await loadJobs();
+  await loadHealth();
 }
 
 async function loadList() {
@@ -114,15 +151,45 @@ async function loadList() {
         <td>${r.publishedAt || '-'}</td>
         <td>${r.status === 1 ? '' : `<button onclick="publish(${r.id})">发布</button>`}</td>
       </tr>`).join('');
-    show('已加载 ' + rows.length + ' 条记录', true);
+    show('已加载 ' + rows.length + ' 个安装包', true);
   } catch (e) {
     show('加载失败：' + e.message, false);
   }
 }
 
-// 选中安装包后按打包命名预填版本号：
+async function loadDeltas() {
+  try {
+    const data = await call('GET', '/api/admin/update/delta/list');
+    const rows = data.data.deltas || [];
+    const tbody = document.getElementById('deltaRows');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="color:#888">暂无增量包</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      let ops = '';
+      if (r.status !== 1) ops += `<button onclick="publishDelta(${r.id})">发布</button> `;
+      if (r.status === 1) ops += `<button onclick="offlineDelta(${r.id})">下线</button> `;
+      if (r.status !== 1) ops += `<button onclick="deleteDelta(${r.id})">删除</button>`;
+      return `
+        <tr>
+          <td>${r.id}</td>
+          <td>${r.fromVersion}</td>
+          <td>${r.toVersion}</td>
+          <td title="${r.fileName}">${r.fileName}</td>
+          <td>${fmtSize(r.sizeBytes)}</td>
+          <td>${statusTag(r.status)}</td>
+          <td>${r.publishedAt || '-'}</td>
+          <td>${ops}</td>
+        </tr>`;
+    }).join('');
+  } catch (e) {
+    show('加载增量包失败：' + e.message, false);
+  }
+}
+
+// 选全量安装包后按打包命名预填版本号：
 //   UEAP_PRJ_11.7.120_Setup.Win32.build_202610271350.exe
-// buildNo 是 32 位整数，12 位时间戳放不下，只有位数够短时才填。
 document.getElementById('file').addEventListener('change', () => {
   const f = document.getElementById('file').files[0];
   if (!f) return;
@@ -147,9 +214,11 @@ async function upload() {
   show('上传中…（大包请耐心等待）', true);
   try {
     const data = await call('POST', '/api/admin/installer/upload', form);
-    show('上传成功：id=' + data.data.id + '，sha256=' + data.data.sha256 + '\n请在下方点「发布」', true);
+    show('上传成功：id=' + data.data.id + '，sha256=' + data.data.sha256
+         + '\n差量包正在后台生成，请在「差量生成任务」查看进度；确认无误后点「发布」', true);
     document.getElementById('file').value = '';
     await loadList();
+    await loadJobs();
   } catch (e) {
     show('上传失败：' + e.message, false);
   }
@@ -163,6 +232,107 @@ async function publish(id) {
     await loadList();
   } catch (e) {
     show('发布失败：' + e.message, false);
+  }
+}
+
+async function loadHealth() {
+  const el = document.getElementById('deltaHealth');
+  try {
+    const d = (await call('GET', '/api/admin/update/delta/health')).data;
+    if (d.ok) {
+      const gb = ((d.tempFreeBytes || 0) / 1073741824).toFixed(1);
+      el.textContent = '✅ 自动生成就绪：' + (d.sevenZip.version || '7z') + ' / '
+        + (d.makensis.version || 'makensis') + ' / 临时盘 ' + gb + ' GB';
+      el.style.color = '#2e7d32';
+    } else {
+      const parts = [];
+      if (!d.autoEnabled) parts.push('自动生成已关闭');
+      if ((d.assetsMissing || []).length) parts.push('缺少资产：' + d.assetsMissing.join('、'));
+      if (!d.sevenZip.ok) parts.push('7z 不可用');
+      if (!d.makensis.ok) parts.push('makensis 不可用');
+      if (!d.tempSpaceOk) parts.push('临时盘可用空间 < 10GB');
+      el.textContent = '⚠️ 未就绪：' + parts.join('；');
+      el.style.color = '#c62828';
+    }
+  } catch (e) {
+    el.textContent = '健康检查失败：' + e.message;
+    el.style.color = '#c62828';
+  }
+}
+
+async function loadJobs() {
+  try {
+    const data = await call('GET', '/api/admin/update/delta/jobs');
+    const rows = data.data.jobs || [];
+    const tbody = document.getElementById('jobRows');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="color:#888">暂无任务</td></tr>';
+      return;
+    }
+    const jobStatus = (s) => {
+      if (s === 0) return '<span class="tag tag-draft">排队中</span>';
+      if (s === 1) return '<span class="tag tag-draft">生成中</span>';
+      if (s === 2) return '<span class="tag tag-pub">成功</span>';
+      if (s === 3) return '<span class="tag" style="background:#ffcdd2">失败</span>';
+      return '<span class="tag tag-off">已跳过</span>';
+    };
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.id}</td>
+        <td>${r.fromVersion || '-'}</td>
+        <td>${r.toVersion}</td>
+        <td>${jobStatus(r.status)}</td>
+        <td title="${r.message || ''}">${r.message || '-'}</td>
+        <td>${r.updatedAt || '-'}</td>
+        <td><button onclick="rebuildJob('${r.fromVersion}', '${r.toVersion}')">重新生成</button></td>
+      </tr>`).join('');
+    if (rows.some(r => r.status === 0 || r.status === 1)) {
+      clearTimeout(window.__jobTimer);
+      window.__jobTimer = setTimeout(loadJobs, 5000);
+    }
+  } catch (e) {
+    show('加载差量任务失败：' + e.message, false);
+  }
+}
+
+async function rebuildJob(fromVersion, toVersion) {
+  try {
+    await call('POST', '/api/admin/update/delta/rebuild', JSON.stringify({ fromVersion, toVersion }));
+    show('已加入差量生成队列：' + (fromVersion || '自动') + ' -> ' + toVersion, true);
+    await loadJobs();
+  } catch (e) {
+    show('重新生成失败：' + e.message, false);
+  }
+}
+
+async function publishDelta(id) {
+  try {
+    await call('POST', '/api/admin/update/delta/' + id + '/publish');
+    show('增量包已发布 id=' + id, true);
+    await loadDeltas();
+  } catch (e) {
+    show('发布增量包失败：' + e.message, false);
+  }
+}
+
+async function offlineDelta(id) {
+  try {
+    await call('POST', '/api/admin/update/delta/' + id + '/offline');
+    show('增量包已下线 id=' + id, true);
+    await loadDeltas();
+  } catch (e) {
+    show('下线增量包失败：' + e.message, false);
+  }
+}
+
+async function deleteDelta(id) {
+  if (!confirm('删除增量包 id=' + id + '（含磁盘文件）？')) return;
+  try {
+    await call('DELETE', '/api/admin/update/delta/' + id);
+    show('增量包已删除 id=' + id, true);
+    await loadDeltas();
+  } catch (e) {
+    show('删除增量包失败：' + e.message, false);
   }
 }
 </script>
