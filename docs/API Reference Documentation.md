@@ -1327,10 +1327,6 @@ GitLab 相关接口目前使用独立的响应格式：
   也可用环境变量 `UEADMIN_DELTA_TEMP_DIR` 指定）。
 - 迁移：`0016_update_delta.sql`（差量表）、`0017_delta_auto_build.sql`（任务表 + origin）。
 
-### 11.6 上传页
-- **URL**: `/admin/installer`（`GET`，无需登录即可打开页面，但页面内所有操作都要填厂商超管 token）
-- 页面提供：粘贴 token → 加载列表 → 选 `.exe` 上传 → 查看差量生成任务 → 发布。仅作内部工具，未做额外的会话管理。
-
 ## 12. 用户意见反馈
 
 > 登录器「我的 → 意见反馈」使用。提交需要登录态；管理接口额外要求厂商超管（`AuthFilter + AdminFilter`）。

@@ -8,9 +8,6 @@
 #include <drogon/MultiPart.h>
 
 #include <cctype>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
 
 using namespace drogon;
 using namespace UEAdminAPI;
@@ -544,29 +541,4 @@ Task<HttpResponsePtr> UpdateController::deltaRebuild(HttpRequestPtr req)
     const std::string fromVersion = JsonString(*json, "fromVersion");
     const std::string toVersion = JsonString(*json, "toVersion");
     co_return JsonResponse(DeltaBuilder::AdminRebuild(fromVersion, toVersion));
-}
-
-Task<HttpResponsePtr> UpdateController::adminPage(HttpRequestPtr req)
-{
-    (void)req;
-    // 页面在源码 views/ 下；服务以仓库根目录启动时可直接找到
-    const std::string pagePath = "./views/installer_admin.html";
-    std::error_code ec;
-    if (!std::filesystem::exists(pagePath, ec))
-    {
-        HttpResult result;
-        result.setResult(ApiErrorCode::ApiError_InstallerNotFound, "上传页不存在: " + pagePath);
-        co_return JsonResponse(result);
-    }
-
-    std::ifstream ifs(pagePath, std::ios::binary);
-    std::ostringstream oss;
-    oss << ifs.rdbuf();
-
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-    resp->setContentTypeCode(CT_TEXT_HTML);
-    resp->setBody(oss.str());
-    // 不设 charset 时浏览器按 UTF-8 解析，页面内已用 meta 声明
-    co_return resp;
 }

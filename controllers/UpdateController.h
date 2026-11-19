@@ -35,8 +35,6 @@ public:
     ADD_METHOD_TO(UpdateController::deltaHealth, "/api/admin/update/delta/health", Get, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(UpdateController::deltaRebuild, "/api/admin/update/delta/rebuild", Post, "AuthFilter", "AdminFilter");
 
-    // 极简上传页（页面本身不含数据，接口仍要求 Admin 权限）
-    ADD_METHOD_TO(UpdateController::adminPage, "/admin/installer", Get);
     METHOD_LIST_END
 
     Task<HttpResponsePtr> check(HttpRequestPtr req);
@@ -60,5 +58,4 @@ public:
     Task<HttpResponsePtr> deltaJobs(HttpRequestPtr req);
     Task<HttpResponsePtr> deltaHealth(HttpRequestPtr req);
     Task<HttpResponsePtr> deltaRebuild(HttpRequestPtr req);
-    Task<HttpResponsePtr> adminPage(HttpRequestPtr req);
 };
