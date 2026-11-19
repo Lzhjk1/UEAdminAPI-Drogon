@@ -15,6 +15,6 @@ Copy-Item ..\ObjectPRX\AutoBuildPRX\AutoPDMS-project-setup.nsi . -Force
 Copy-Item ..\ObjectPRX\AutoBuildPRX\UESoftMYRMAgreement.txt . -Force
 ```
 
-运行时依赖（见 `build_docker/Dockerfile.run`）：`p7zip-full`（`7z` 解包 NSIS 安装器）、
-`nsis`（`makensis` 编译 Windows 安装器）。工具路径与资产目录可在 `config.yaml` 的
+运行时依赖（见 `build_docker/Dockerfile.run`）：官方 `7-Zip 26.x`（`/usr/local/bin/7z`，解包 NSIS 安装器）、
+`nsis`（`makensis` 编译 Windows 安装器）。Ubuntu 22.04 自带的 p7zip 16.02 无法正确解出 NSIS-3 中文文件名，不要换回去。工具路径与资产目录可在 `config.yaml` 的
 `Installer.DeltaAssetsDir / SevenZipPath / MakensisPath` 覆盖。

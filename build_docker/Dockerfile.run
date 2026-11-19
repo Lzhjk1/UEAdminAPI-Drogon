@@ -8,10 +8,17 @@ RUN apt update && \
     apt install -y software-properties-common && \
     add-apt-repository ppa:ubuntu-toolchain-r/test && \
     apt update && \
-    apt install -y libstdc++6 tzdata p7zip-full nsis && \
+    apt install -y libstdc++6 tzdata nsis curl xz-utils ca-certificates && \
     apt remove -y software-properties-common && \
     apt autoremove -y && \
     rm -rf /var/lib/apt/lists/*
+
+# 官方 7-Zip：Ubuntu 22.04 的 p7zip 16.02 解不出 NSIS-3 的中文文件名
+RUN curl -fsSL -o /tmp/7z.tar.xz https://github.com/ip7z/7zip/releases/download/26.06/7z2606-linux-x64.tar.xz && \
+    echo "2b539cf067b2ad48e1baa5093dbaa8818b73542d1222a0ffde9dc5f2922ea62e  /tmp/7z.tar.xz" | sha256sum -c - && \
+    tar -xJf /tmp/7z.tar.xz -C /usr/local && \
+    ln -sf /usr/local/7zz /usr/local/bin/7z && \
+    rm -f /tmp/7z.tar.xz
 
 # 设置工作目录
 WORKDIR /mnt/project/ueadmin-api-drogon
