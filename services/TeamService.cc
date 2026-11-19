@@ -21,6 +21,40 @@ namespace Services {
 
 namespace {
 
+constexpr int kDefaultTrialDays = 30;
+
+int SubscriptionTrialDays()
+{
+    const auto &cfg = drogon::app().getCustomConfig();
+    if (cfg.isMember("Subscription") && cfg["Subscription"].isObject())
+    {
+        const auto &node = cfg["Subscription"]["TrialDays"];
+        if (node.isInt() && node.asInt() > 0)
+        {
+            return std::min(node.asInt(), 3650);
+        }
+    }
+    return kDefaultTrialDays;
+}
+
+std::string SubscriptionExpiredMessage(bool trial)
+{
+    const char *key = trial ? "TrialExpiredMessage" : "ExpiredMessage";
+    const char *fallback = trial
+        ? "试用期已结束，请联系销售开通：0731-88808590 / 19918074079（微信同号）"
+        : "团队订阅已到期，请联系销售续费：0731-88808590 / 19918074079（微信同号）";
+    const auto &cfg = drogon::app().getCustomConfig();
+    if (cfg.isMember("Subscription") && cfg["Subscription"].isObject())
+    {
+        const auto &node = cfg["Subscription"][key];
+        if (node.isString() && !node.asString().empty())
+        {
+            return node.asString();
+        }
+    }
+    return fallback;
+}
+
 // 取当前用户所在团队与角色；不在团队时返回 false
 bool GetMembership(const std::shared_ptr<drogon::orm::DbClient> &db, int userId, int &teamId, std::string &roleCode)
 {
@@ -350,7 +384,10 @@ Json::Value LoadSubscription(const std::shared_ptr<drogon::orm::DbClient> &db, i
     auto rows = db->execSqlSync(
         "select to_char(s.start_date, 'YYYY-MM-DD') as sub_start, "
         "       to_char(s.end_date, 'YYYY-MM-DD') as sub_end, "
-        "       (s.end_date >= current_date) as paid "
+        "       coalesce(s.is_trial, false) as is_trial, "
+        "       s.plan, "
+        "       (s.end_date >= (now() at time zone 'Asia/Shanghai')::date) as paid, "
+        "       (s.end_date - (now() at time zone 'Asia/Shanghai')::date) as remaining_days "
         "from team_subscription s "
         "where s.team_id = $1 and s.status = 1 "
         "order by s.end_date desc limit 1",
@@ -360,12 +397,18 @@ Json::Value LoadSubscription(const std::shared_ptr<drogon::orm::DbClient> &db, i
         sub["startDate"] = rows[0]["sub_start"].as<std::string>();
         sub["endDate"] = rows[0]["sub_end"].as<std::string>();
         sub["active"] = rows[0]["paid"].as<bool>();
+        sub["plan"] = rows[0]["plan"].isNull() ? "" : rows[0]["plan"].as<std::string>();
+        sub["isTrial"] = rows[0]["is_trial"].as<bool>();
+        sub["remainingDays"] = rows[0]["remaining_days"].isNull() ? 0 : rows[0]["remaining_days"].as<int>();
     }
     else
     {
         sub["startDate"] = "";
         sub["endDate"] = "";
         sub["active"] = false;
+        sub["plan"] = "";
+        sub["isTrial"] = false;
+        sub["remainingDays"] = 0;
     }
     return sub;
 }
@@ -517,13 +560,16 @@ HttpResult TeamService::GetBootstrap(int userId)
             "       t.id as team_id, t.name as team_name, t.status as team_status, r.code as role_code, "
             "       to_char(s.start_date, 'YYYY-MM-DD') as sub_start, "
             "       to_char(s.end_date, 'YYYY-MM-DD') as sub_end, "
-            "       (s.end_date is not null and s.end_date >= current_date) as paid "
+            "       coalesce(s.is_trial, false) as sub_is_trial, "
+            "       s.plan as sub_plan, "
+            "       (s.end_date is not null and s.end_date >= (now() at time zone 'Asia/Shanghai')::date) as paid, "
+            "       (s.end_date - (now() at time zone 'Asia/Shanghai')::date) as sub_remaining_days "
             "from \"user\" u "
             "left join user_balance b on b.user_id = u.id "
             "left join team_member tm on tm.user_id = u.id and tm.status = 1 "
             "left join team t on t.id = tm.team_id "
             "left join role r on r.id = tm.role_id "
-            "left join lateral (select start_date, end_date from team_subscription ts "
+            "left join lateral (select start_date, end_date, plan, is_trial from team_subscription ts "
             "                   where ts.team_id = t.id and ts.status = 1 "
             "                   order by ts.end_date desc limit 1) s on true "
             "where u.id = $1",
@@ -561,6 +607,11 @@ HttpResult TeamService::GetBootstrap(int userId)
             row["sub_end"].isNull() ? "" : row["sub_end"].as<std::string>();
         result.jsondata["subscription"]["active"] =
             !row["paid"].isNull() && row["paid"].as<bool>();
+        result.jsondata["subscription"]["plan"] =
+            row["sub_plan"].isNull() ? "" : row["sub_plan"].as<std::string>();
+        result.jsondata["subscription"]["isTrial"] = row["sub_is_trial"].as<bool>();
+        result.jsondata["subscription"]["remainingDays"] =
+            row["sub_remaining_days"].isNull() ? 0 : row["sub_remaining_days"].as<int>();
 
         // 功能授权：账号级覆盖团队级，缺失视为关闭；团队停用时一律关闭
         bool cloudAuth = false;
@@ -1085,6 +1136,24 @@ bool TeamService::ProvisionPersonalTeam(int userId, const std::string &userName)
         }
         db->execSqlSync("insert into user_balance (user_id) values ($1) on conflict do nothing",
                         userId);
+
+        // 新注册用户赠送试用期。end_date 当天仍可用，所以按“含注册当天共 N 天”倒推。
+        // 已有订阅记录的团队不覆盖（重复开通 / 后台已提前开通）。
+        const int trialDays = SubscriptionTrialDays();
+        db->execSqlSync(
+            "insert into team_subscription (team_id, plan, start_date, end_date, status, is_trial) "
+            "select $1, 'trial', (now() at time zone 'Asia/Shanghai')::date, "
+            "       (now() at time zone 'Asia/Shanghai')::date + $2, 1, true "
+            "where not exists (select 1 from team_subscription where team_id = $1)",
+            teamId, trialDays - 1);
+
+        // 试用期内与付费用户一致：开通云工程与在线更新。
+        // do nothing 避免覆盖厂商后台已做的单独授权。
+        db->execSqlSync(
+            "insert into team_feature_auth (team_id, feature_code, enabled) "
+            "values ($1, 'cloud_project', true), ($1, 'online_update', true) "
+            "on conflict (team_id, feature_code) do nothing",
+            teamId);
         return true;
     }
     catch (const drogon::orm::DrogonDbException &e)
@@ -1092,6 +1161,74 @@ bool TeamService::ProvisionPersonalTeam(int userId, const std::string &userName)
         LOG_ERROR << "ProvisionPersonalTeam 失败: " << e.base().what();
         return false;
     }
+}
+
+TeamService::SubscriptionAccess TeamService::CheckSubscriptionAccess(int userId)
+{
+    SubscriptionAccess access;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select coalesce(t.is_vendor, false) as is_vendor, "
+            "       ((coalesce(u.privilege, 0) & $2::int) <> 0) as is_admin, "
+            "       exists(select 1 from user_system_role usr "
+            "               join role sr on sr.id = usr.role_id "
+            "               where usr.user_id = u.id and sr.code = 'super_admin') as is_super_admin, "
+            "       s.plan, coalesce(s.is_trial, false) as is_trial, "
+            "       to_char(s.end_date, 'YYYY-MM-DD') as sub_end, "
+            "       (s.end_date >= (now() at time zone 'Asia/Shanghai')::date) as sub_active, "
+            "       (s.end_date - (now() at time zone 'Asia/Shanghai')::date) as remaining_days "
+            "from \"user\" u "
+            "left join team_member tm on tm.user_id = u.id and tm.status = 1 "
+            "left join team t on t.id = tm.team_id "
+            "left join lateral (select plan, end_date, is_trial from team_subscription ts "
+            "                   where ts.team_id = t.id and ts.status = 1 "
+            "                   order by ts.end_date desc limit 1) s on true "
+            "where u.id = $1",
+            userId, static_cast<int>(UserPrivileges::Admin));
+        if (rows.empty())
+        {
+            access.allowed = false;
+            access.denyMessage = "用户不存在";
+            return access;
+        }
+
+        const auto &r = rows[0];
+        // 厂商团队与超管账号不参与试用/订阅限制
+        if (r["is_vendor"].as<bool>() || r["is_admin"].as<bool>() || r["is_super_admin"].as<bool>())
+        {
+            return access;
+        }
+
+        access.hasSubscription = !r["sub_end"].isNull();
+        if (!access.hasSubscription)
+        {
+            // 试用上线前注册的存量用户没有订阅记录：保持原有行为，不追溯
+            return access;
+        }
+
+        access.isTrial = r["is_trial"].as<bool>();
+        access.plan = r["plan"].isNull() ? "" : r["plan"].as<std::string>();
+        access.endDate = r["sub_end"].as<std::string>();
+        access.remainingDays = r["remaining_days"].isNull() ? 0 : r["remaining_days"].as<int>();
+        access.allowed = r["sub_active"].as<bool>();
+        if (!access.allowed)
+        {
+            access.denyMessage = SubscriptionExpiredMessage(access.isTrial);
+            LOG_INFO << "[Subscription] 拒绝登录 userId=" << userId
+                     << " endDate=" << access.endDate
+                     << " trial=" << (access.isTrial ? 1 : 0);
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "CheckSubscriptionAccess 失败: " << e.base().what();
+        // 查询失败时拒绝放行，避免绕过订阅限制
+        access.allowed = false;
+        access.denyMessage = "订阅状态查询失败，请稍后重试";
+    }
+    return access;
 }
 
 HttpResult TeamService::AdminListTeams(bool paidOnly, bool expiredOnly)
@@ -1103,21 +1240,24 @@ HttpResult TeamService::AdminListTeams(bool paidOnly, bool expiredOnly)
         std::string having = "";
         if (paidOnly)
         {
-            having = " and (s.end_date is not null and s.end_date >= current_date)";
+            having = " and (s.end_date is not null and s.end_date >= (now() at time zone 'Asia/Shanghai')::date)";
         }
         else if (expiredOnly)
         {
-            having = " and (s.end_date is null or s.end_date < current_date)";
+            having = " and (s.end_date is null or s.end_date < (now() at time zone 'Asia/Shanghai')::date)";
         }
 
         auto rows = db->execSqlSync(
             "select t.id, t.name, t.status, to_char(t.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') as created_at, "
             "       to_char(s.start_date, 'YYYY-MM-DD') as sub_start, "
             "       to_char(s.end_date, 'YYYY-MM-DD') as sub_end, "
-            "       (s.end_date is not null and s.end_date >= current_date) as paid, "
+            "       coalesce(s.is_trial, false) as is_trial, "
+            "       s.plan as sub_plan, "
+            "       (s.end_date is not null and s.end_date >= (now() at time zone 'Asia/Shanghai')::date) as paid, "
+            "       (s.end_date - (now() at time zone 'Asia/Shanghai')::date) as remaining_days, "
             "       (select count(*) from team_member m where m.team_id = t.id and m.status = 1) as member_count "
             "from team t "
-            "left join lateral (select start_date, end_date from team_subscription ts "
+            "left join lateral (select start_date, end_date, plan, is_trial from team_subscription ts "
             "                   where ts.team_id = t.id and ts.status = 1 "
             "                   order by ts.end_date desc limit 1) s on true "
             "where 1 = 1" + having +
@@ -1134,6 +1274,10 @@ HttpResult TeamService::AdminListTeams(bool paidOnly, bool expiredOnly)
             t["subscription"]["startDate"] = r["sub_start"].isNull() ? "" : r["sub_start"].as<std::string>();
             t["subscription"]["endDate"] = r["sub_end"].isNull() ? "" : r["sub_end"].as<std::string>();
             t["subscription"]["active"] = !r["paid"].isNull() && r["paid"].as<bool>();
+            t["subscription"]["plan"] = r["sub_plan"].isNull() ? "" : r["sub_plan"].as<std::string>();
+            t["subscription"]["isTrial"] = r["is_trial"].as<bool>();
+            t["subscription"]["remainingDays"] =
+                r["remaining_days"].isNull() ? 0 : r["remaining_days"].as<int>();
             t["memberCount"] = r["member_count"].as<int>();
             teams.append(t);
         }
@@ -1190,13 +1334,14 @@ HttpResult TeamService::AdminSetSubscription(int adminUserId,
 
         const std::string planValue = plan.empty() ? "standard" : plan;
         db->execSqlSync(
-            "insert into team_subscription (team_id, plan, start_date, end_date, status, updated_by) "
-            "values ($1, $2, $3::date, $4::date, 1, $5)",
+            "insert into team_subscription (team_id, plan, start_date, end_date, status, updated_by, is_trial) "
+            "values ($1, $2, $3::date, $4::date, 1, $5, false)",
             teamId, planValue, startDate, endDate, adminUserId);
 
         result.jsondata["teamId"] = teamId;
         result.jsondata["startDate"] = startDate;
         result.jsondata["endDate"] = endDate;
+        result.jsondata["isTrial"] = false;
         result.setResult(ApiErrorCode::ApiError_Success, "付费期已更新");
     }
     catch (const drogon::orm::DrogonDbException &e)

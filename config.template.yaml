@@ -83,6 +83,14 @@ custom_config:
       NotifyUrl: ""                   # 留空 = ServerHost + /api/bill/notify/wechat
       ApiBase: "https://api.mch.weixin.qq.com"
 
+  # 新用户试用与订阅到期提示
+  # 注册成功时自动给个人团队写入试用订阅并开通云工程/在线更新；
+  # 试用或付费到期后拒绝签发新 Token，文案里的联系方式在这里配置。
+  Subscription:
+    TrialDays: 30
+    TrialExpiredMessage: "试用期已结束，请联系销售开通：0731-88808590 / 19918074079（微信同号）"
+    ExpiredMessage: "团队订阅已到期，请联系销售续费：0731-88808590 / 19918074079（微信同号）"
+
   # 第三方登录平台配置
   ThirdPartyPlatformInfo:
     QQ:

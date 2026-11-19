@@ -96,6 +96,8 @@ docker-compose -f build_docker/docker-compose.yml up
 
 详情见 [API Reference Documentation](<docs/API Reference Documentation.md>)
 
+新用户 30 天试用、到期登录拦截与销售开通流程见 [试用与订阅](docs/试用与订阅.md)。
+
 ## 许可证
 
 MIT

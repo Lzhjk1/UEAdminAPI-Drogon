@@ -36,7 +36,22 @@ public:
                                                bool updateSystemRoles);
 
     // 注册成功后开通个人团队（该用户为团队管理员）。失败返回 false，由调用方回滚。
+    // 同时写入试用订阅（Subscription.TrialDays，默认 30 天）并开通联网功能。
     static bool ProvisionPersonalTeam(int userId, const std::string &userName);
+
+    // 登录前订阅检查：试用/付费到期后拒绝签发新 Token。
+    // 超管、厂商团队成员、以及没有订阅记录的存量用户放行。
+    struct SubscriptionAccess
+    {
+        bool allowed = true;
+        bool hasSubscription = false;
+        bool isTrial = false;
+        std::string plan;
+        std::string endDate;
+        int remainingDays = 0;
+        std::string denyMessage;
+    };
+    static SubscriptionAccess CheckSubscriptionAccess(int userId);
 
     // 厂商：团队列表（paidOnly / expiredOnly 二选一，均为 false 表示全部）
     static utils::HttpResult AdminListTeams(bool paidOnly, bool expiredOnly);

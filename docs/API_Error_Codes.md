@@ -11,15 +11,18 @@
 | | -301 | `ApiError_InvalidCredentials` | 用户名或密码错误 |
 | | -307 | `ApiError_PasswordNotSet` | 用户没有设置密码 |
 | | -308 | `ApiError_UserUpdateFailed` | 更新状态失败 |
+| | -808 | `ApiError_UserNotPaid` | 试用或订阅已到期，需联系销售开通 |
 | **/api/user/login/email** (GET)<br>**/api/user/login/phone** (GET) | 0 | `ApiError_Success` | 登录成功 |
 | | -302 | `ApiError_UserNotFound` | 用户不存在 |
 | | -401 | `ApiError_InvalidVerifyCode` | 验证码错误 |
 | | -401 | `ApiError_InvalidVerifyCode` | ActionToken 无效、已过期或无权执行此操作 |
 | | -308 | `ApiError_UserUpdateFailed` | 更新状态失败 |
+| | -808 | `ApiError_UserNotPaid` | 试用或订阅已到期，需联系销售开通 |
 | **/api/user/login/flashtoken** (GET) | 0 | `ApiError_Success` | 刷新成功 |
 | | -204 | `ApiError_FlashTokenInvalidType` | 不是FlashToken |
 | | -205 | `ApiError_FlashTokenVerificationFailed` | FlashToken验证失败 |
 | | -206 | `ApiError_FlashTokenExpired` | FlashToken已失效 |
+| | -808 | `ApiError_UserNotPaid` | 试用或订阅已到期，需联系销售开通 |
 | **/api/user/token/verify/flash** (GET) | 0 | `ApiError_Success` | FlashToken验证成功 |
 | | -101 | `ApiError_InvalidJsonFormat` | invalid token (格式错误) |
 | | -207 | `ApiError_AuthenticationFailed` | FlashToken验证失败 |
@@ -40,6 +43,10 @@
 | | -207 | `ApiError_AuthenticationFailed` | flashToken 不能直接用于认证 |
 | | -207 | `ApiError_AuthenticationFailed` | 未知token类型 |
 | | -308 | `ApiError_UserUpdateFailed` | 注销失败: 数据库更新错误 |
+
+> 2026-11-19 起，所有签发新 Token 的登录路径（密码、邮箱/手机验证码、第三方、OAuth2 设备流、FlashToken 自动登录）
+> 都会先检查团队订阅；试用或付费到期返回 `-808`，`data.reason` 为 `trial_expired` / `subscription_expired`。
+> 厂商团队与超级管理员豁免；没有订阅记录的存量用户放行。规则与销售开通流程见 `docs/试用与订阅.md`。
 
 ### 2. 注册模块 (Register Controller)
 

@@ -175,7 +175,7 @@ AccessState QueryAccess(const std::shared_ptr<drogon::orm::DbClient> &db, int us
     AccessState state;
     auto rows = db->execSqlSync(
         "select t.id as team_id, t.status as team_status, "
-        "       (s.end_date is not null and s.end_date >= current_date) as paid, "
+        "       (s.end_date is not null and s.end_date >= (now() at time zone 'Asia/Shanghai')::date) as paid, "
         "       (s.end_date is not null) as ever_subscribed, "
         "       coalesce(uf.enabled, tf.enabled, false) as update_auth "
         "from team_member tm "
