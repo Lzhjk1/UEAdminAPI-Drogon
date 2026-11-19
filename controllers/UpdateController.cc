@@ -174,7 +174,10 @@ Task<HttpResponsePtr> UpdateController::download(HttpRequestPtr req, std::string
     HttpResult error;
     std::string path;
     std::string fileName;
-    if (!UpdateService::ResolveDownload(CurrentUserId(req), version, path, fileName, error))
+    const std::string kind = req->getParameter("kind");
+    const std::string fromVersion = req->getParameter("fromVersion");
+    if (!UpdateService::ResolveDownload(CurrentUserId(req), version, path, fileName, error,
+                                        kind, fromVersion))
     {
         co_return JsonResponse(error);
     }
@@ -183,6 +186,63 @@ Task<HttpResponsePtr> UpdateController::download(HttpRequestPtr req, std::string
     resp->setStatusCode(k200OK);
     resp->addHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
     co_return resp;
+}
+
+Task<HttpResponsePtr> UpdateController::publicReleases(HttpRequestPtr req)
+{
+    int limit = 2;
+    const std::string value = req->getParameter("limit");
+    if (!value.empty())
+    {
+        try
+        {
+            limit = std::stoi(value);
+        }
+        catch (...)
+        {
+            limit = 2;
+        }
+    }
+    if (limit < 1 || limit > 10)
+    {
+        limit = 2;
+    }
+    co_return JsonResponse(UpdateService::PublicReleases(limit));
+}
+
+Task<HttpResponsePtr> UpdateController::publicDownload(HttpRequestPtr req, std::string version)
+{
+    std::string fileName;
+    HttpResult result = UpdateService::PublicDownloadInfo(version, fileName);
+    if (result.code != 0)
+    {
+        auto resp = HttpResponse::newHttpResponse();
+        resp->setStatusCode(k404NotFound);
+        resp->setContentTypeCode(CT_TEXT_PLAIN);
+        resp->setBody(result.msg);
+        co_return resp;
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->setContentTypeCode(CT_APPLICATION_OCTET_STREAM);
+    resp->addHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+    resp->addHeader("X-Accel-Redirect", "/__installers/" + version + "/" + fileName);
+    co_return resp;
+}
+
+Task<HttpResponsePtr> UpdateController::deltaManifest(HttpRequestPtr req, std::string version)
+{
+    const std::string fromVersion = req->getParameter("fromVersion");
+    HttpResult result;
+    Json::Value manifest;
+    if (!UpdateService::ResolveDeltaManifest(CurrentUserId(req), version, fromVersion, manifest, result))
+    {
+        co_return JsonResponse(result);
+    }
+    result.jsondata = manifest;
+    result.setResult(ApiErrorCode::ApiError_Success, "success");
+    co_return JsonResponse(result);
 }
 
 Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
@@ -258,15 +318,40 @@ Task<HttpResponsePtr> UpdateController::uploadInit(HttpRequestPtr req)
     const std::string minVersion = JsonString(*json, "minVersion");
     const std::string fileName = JsonString(*json, "fileName");
     const std::string fileSha256 = JsonString(*json, "fileSha256");
+    const std::string kind = JsonString(*json, "kind");
+    const std::string fromVersion = JsonString(*json, "fromVersion");
     if (version.empty() || fileName.empty())
     {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少 version / fileName");
         co_return JsonResponse(result);
     }
 
+    // manifest 允许直接给对象，也允许给 JSON 字符串（部分脚本从文件读出来再塞进来）
+    Json::Value manifest(Json::objectValue);
+    if (json->isMember("manifest"))
+    {
+        const auto &node = (*json)["manifest"];
+        if (node.isObject())
+        {
+            manifest = node;
+        }
+        else if (node.isString())
+        {
+            Json::CharReaderBuilder builder;
+            std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+            std::string errors;
+            const std::string text = node.asString();
+            if (!reader->parse(text.data(), text.data() + text.size(), &manifest, &errors))
+            {
+                result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat, "manifest 不是合法 JSON");
+                co_return JsonResponse(result);
+            }
+        }
+    }
+
     co_return JsonResponse(UpdateService::AdminInitUpload(
         CurrentUserId(req), version, JsonInt64(*json, "buildNo", 0), notes, minVersion,
-        fileName, JsonInt64(*json, "fileSize", 0), fileSha256));
+        fileName, JsonInt64(*json, "fileSize", 0), fileSha256, kind, fromVersion, manifest));
 }
 
 Task<HttpResponsePtr> UpdateController::uploadChunk(HttpRequestPtr req, std::string uploadId)
@@ -387,6 +472,51 @@ Task<HttpResponsePtr> UpdateController::list(HttpRequestPtr req)
 {
     (void)req;
     co_return JsonResponse(UpdateService::AdminListInstallers());
+}
+
+Task<HttpResponsePtr> UpdateController::publishDelta(HttpRequestPtr req, std::string deltaId)
+{
+    (void)req;
+    HttpResult result;
+    const int id = ParseId(deltaId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+        co_return JsonResponse(result);
+    }
+    co_return JsonResponse(UpdateService::AdminPublishDelta(id));
+}
+
+Task<HttpResponsePtr> UpdateController::offlineDelta(HttpRequestPtr req, std::string deltaId)
+{
+    (void)req;
+    HttpResult result;
+    const int id = ParseId(deltaId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+        co_return JsonResponse(result);
+    }
+    co_return JsonResponse(UpdateService::AdminOfflineDelta(id));
+}
+
+Task<HttpResponsePtr> UpdateController::removeDelta(HttpRequestPtr req, std::string deltaId)
+{
+    (void)req;
+    HttpResult result;
+    const int id = ParseId(deltaId);
+    if (id <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+        co_return JsonResponse(result);
+    }
+    co_return JsonResponse(UpdateService::AdminDeleteDelta(id));
+}
+
+Task<HttpResponsePtr> UpdateController::listDeltas(HttpRequestPtr req)
+{
+    (void)req;
+    co_return JsonResponse(UpdateService::AdminListDeltas());
 }
 
 Task<HttpResponsePtr> UpdateController::adminPage(HttpRequestPtr req)

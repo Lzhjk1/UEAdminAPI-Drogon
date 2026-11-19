@@ -393,6 +393,86 @@ void FillInstallerJson(Json::Value &data, int id, const std::string &version, in
     data["status"] = status;
 }
 
+void FillDeltaJson(Json::Value &data, int id, const std::string &fromVersion,
+                   const std::string &toVersion, int64_t buildNo, const std::string &fileName,
+                   int64_t sizeBytes, const std::string &sha256, int status)
+{
+    data["id"] = id;
+    data["fromVersion"] = fromVersion;
+    data["toVersion"] = toVersion;
+    data["version"] = toVersion;
+    data["buildNo"] = static_cast<Json::Int64>(buildNo);
+    data["fileName"] = fileName;
+    data["sizeBytes"] = static_cast<Json::Int64>(sizeBytes);
+    data["sha256"] = sha256;
+    data["status"] = status;
+}
+
+std::string NormalizeKind(std::string kind)
+{
+    std::transform(kind.begin(), kind.end(), kind.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return kind;
+}
+
+bool ParseManifest(const std::string &text, Json::Value &out)
+{
+    if (text.empty())
+    {
+        return false;
+    }
+    Json::CharReaderBuilder builder;
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    std::string errors;
+    return reader->parse(text.data(), text.data() + text.size(), &out, &errors) &&
+           out.isObject();
+}
+
+std::string ManifestToText(const Json::Value &manifest)
+{
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    return Json::writeString(builder, manifest);
+}
+
+bool IsValidManifest(const Json::Value &manifest)
+{
+    if (!manifest.isObject())
+    {
+        return false;
+    }
+    if (manifest.isMember("files") && !manifest["files"].isArray())
+    {
+        return false;
+    }
+    if (manifest.isMember("deletes") && !manifest["deletes"].isArray())
+    {
+        return false;
+    }
+    return manifest.isMember("files") || manifest.isMember("deletes") || manifest.size() > 0;
+}
+
+// 差量包解压后需要落盘的字节数：优先 totalInstallBytes，否则累加 files[].size
+int64_t ManifestInstallBytes(const Json::Value &manifest)
+{
+    if (manifest.isMember("totalInstallBytes") && manifest["totalInstallBytes"].isInt64())
+    {
+        return manifest["totalInstallBytes"].asInt64();
+    }
+    int64_t total = 0;
+    if (manifest.isMember("files") && manifest["files"].isArray())
+    {
+        for (const auto &file : manifest["files"])
+        {
+            if (file.isMember("size") && file["size"].isInt64())
+            {
+                total += file["size"].asInt64();
+            }
+        }
+    }
+    return total;
+}
+
 } // namespace
 
 HttpResult UpdateService::CheckUpdate(int userId,
@@ -485,6 +565,43 @@ HttpResult UpdateService::CheckUpdate(int userId,
         result.jsondata["notes"] = row["notes"].isNull() ? "" : row["notes"].as<std::string>();
         result.jsondata["publishedAt"] = row["published_at"].isNull() ? "" : row["published_at"].as<std::string>();
         result.jsondata["downloadUrl"] = ServerHost() + "/api/update/download/" + latestVersion;
+
+        // 差量包：基线精确匹配且已发布才下发；downloadUrl 始终是全量包，老客户端行为不变
+        result.jsondata["packageKind"] = "full";
+        try
+        {
+            const std::string encodedFrom = drogon::utils::urlEncodeComponent(currentVersion);
+            auto deltaRows = db->execSqlSync(
+                "select id, from_version, file_name, size_bytes, sha256, manifest "
+                "from update_delta where from_version = $1 and to_version = $2 and status = 1 "
+                "order by id desc limit 1",
+                currentVersion, latestVersion);
+            if (!deltaRows.empty())
+            {
+                const auto &dr = deltaRows[0];
+                const std::string manifestText =
+                    dr["manifest"].isNull() ? "" : dr["manifest"].as<std::string>();
+                Json::Value manifest;
+                const int64_t installBytes = ParseManifest(manifestText, manifest)
+                    ? ManifestInstallBytes(manifest) : 0;
+                result.jsondata["packageKind"] = "delta";
+                result.jsondata["deltaFromVersion"] = dr["from_version"].as<std::string>();
+                result.jsondata["deltaFileName"] = dr["file_name"].as<std::string>();
+                result.jsondata["deltaSizeBytes"] = dr["size_bytes"].isNull()
+                    ? 0 : static_cast<Json::Int64>(dr["size_bytes"].as<int64_t>());
+                result.jsondata["deltaSha256"] = dr["sha256"].as<std::string>();
+                result.jsondata["deltaInstallBytes"] = static_cast<Json::Int64>(installBytes);
+                result.jsondata["deltaDownloadUrl"] = ServerHost() + "/api/update/download/" +
+                    latestVersion + "?kind=delta&fromVersion=" + encodedFrom;
+                result.jsondata["deltaManifestUrl"] = ServerHost() + "/api/update/delta/" +
+                    latestVersion + "/manifest?fromVersion=" + encodedFrom;
+            }
+        }
+        catch (const drogon::orm::DrogonDbException &e)
+        {
+            // 差量查询失败不影响全量更新
+            LOG_WARN << "查询差量包失败: " << e.base().what();
+        }
         result.setResult(ApiErrorCode::ApiError_Success, "update available");
     }
     catch (const drogon::orm::DrogonDbException &e)
@@ -502,13 +619,46 @@ HttpResult UpdateService::AdminInitUpload(int userId,
                                           const std::string &minVersion,
                                           const std::string &fileName,
                                           int64_t fileSize,
-                                          const std::string &fileSha256)
+                                          const std::string &fileSha256,
+                                          const std::string &kind,
+                                          const std::string &fromVersion,
+                                          const Json::Value &manifest)
 {
     HttpResult result;
     if (version.empty() || fileName.empty())
     {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "version / fileName 不能为空");
         return result;
+    }
+    const std::string normalizedKind = kind.empty() ? std::string("full") : NormalizeKind(kind);
+    const bool isDelta = normalizedKind == "delta";
+    // 三元表达式会产生临时 std::string，Drogon 的参数绑定模板匹配不到 string 重载
+    const std::string fromValue = isDelta ? fromVersion : std::string();
+    const std::string manifestText = isDelta ? ManifestToText(manifest) : std::string("{}");
+    if (normalizedKind != "full" && !isDelta)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "kind 只能是 full 或 delta");
+        return result;
+    }
+    if (isDelta)
+    {
+        if (!IsSafeVersion(fromVersion))
+        {
+            result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs,
+                             "差量包必须提供合法的基线版本 fromVersion");
+            return result;
+        }
+        if (fromVersion == version)
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "基线版本不能等于目标版本");
+            return result;
+        }
+        if (!IsValidManifest(manifest))
+        {
+            result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs,
+                             "差量包必须提供 manifest（files/deletes 清单）");
+            return result;
+        }
     }
     if (version.size() > 64 || minVersion.size() > 64)
     {
@@ -553,41 +703,76 @@ HttpResult UpdateService::AdminInitUpload(int userId,
     auto db = drogon::app().getDbClient();
     try
     {
-        // 同一版本已经传过：sha 相同直接当成功，避免客户端重传
-        auto versionRows = db->execSqlSync(
-            "select id, version, build_no, file_name, size_bytes, coalesce(sha256, '') as sha256, "
-            "       coalesce(min_version, '') as min_version, status "
-            "from installer_version where version = $1",
-            version);
-        if (!versionRows.empty())
+        if (isDelta)
         {
-            const auto &row = versionRows[0];
-            const std::string existingSha = row["sha256"].as<std::string>();
-            if (HexEqualIgnoreCase(existingSha, sha))
+            // 同一基线-目标版本只保留一条；sha 相同直接当成功，避免客户端重传
+            auto deltaRows = db->execSqlSync(
+                "select id, from_version, to_version, build_no, file_name, size_bytes, "
+                "       coalesce(sha256, '') as sha256, status "
+                "from update_delta where from_version = $1 and to_version = $2",
+                fromVersion, version);
+            if (!deltaRows.empty())
             {
-                result.jsondata["alreadyUploaded"] = true;
-                FillInstallerJson(result.jsondata,
+                const auto &row = deltaRows[0];
+                const std::string existingSha = row["sha256"].as<std::string>();
+                if (HexEqualIgnoreCase(existingSha, sha))
+                {
+                    result.jsondata["alreadyUploaded"] = true;
+                    FillDeltaJson(result.jsondata,
                                   row["id"].as<int>(),
-                                  row["version"].as<std::string>(),
+                                  row["from_version"].as<std::string>(),
+                                  row["to_version"].as<std::string>(),
                                   row["build_no"].isNull() ? 0 : row["build_no"].as<int64_t>(),
                                   row["file_name"].as<std::string>(),
                                   row["size_bytes"].isNull() ? 0 : row["size_bytes"].as<int64_t>(),
                                   existingSha,
-                                  row["min_version"].as<std::string>(),
                                   row["status"].as<int>());
-                result.setResult(ApiErrorCode::ApiError_Success, "该版本已上传");
+                    result.setResult(ApiErrorCode::ApiError_Success, "该基线的差量包已上传");
+                    return result;
+                }
+                result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "该基线的差量包已存在");
                 return result;
             }
-            result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "该版本号已存在");
-            return result;
+        }
+        else
+        {
+            // 同一版本已经传过：sha 相同直接当成功，避免客户端重传
+            auto versionRows = db->execSqlSync(
+                "select id, version, build_no, file_name, size_bytes, coalesce(sha256, '') as sha256, "
+                "       coalesce(min_version, '') as min_version, status "
+                "from installer_version where version = $1",
+                version);
+            if (!versionRows.empty())
+            {
+                const auto &row = versionRows[0];
+                const std::string existingSha = row["sha256"].as<std::string>();
+                if (HexEqualIgnoreCase(existingSha, sha))
+                {
+                    result.jsondata["alreadyUploaded"] = true;
+                    FillInstallerJson(result.jsondata,
+                                      row["id"].as<int>(),
+                                      row["version"].as<std::string>(),
+                                      row["build_no"].isNull() ? 0 : row["build_no"].as<int64_t>(),
+                                      row["file_name"].as<std::string>(),
+                                      row["size_bytes"].isNull() ? 0 : row["size_bytes"].as<int64_t>(),
+                                      existingSha,
+                                      row["min_version"].as<std::string>(),
+                                      row["status"].as<int>());
+                    result.setResult(ApiErrorCode::ApiError_Success, "该版本已上传");
+                    return result;
+                }
+                result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "该版本号已存在");
+                return result;
+            }
         }
 
-        // 同一个管理员、同一个文件（sha256+大小）找回未完成会话
+        // 同一个管理员、同一个文件（sha256+大小）找回未完成会话；全量与差量互不混淆
         auto sessionRows = db->execSqlSync(
             "select id, temp_name, uploaded_bytes from installer_upload_session "
             "where user_id = $1 and file_sha256 = $2 and file_size = $3 and status = 0 "
+            "  and kind = $4 and coalesce(from_version, '') = $5 "
             "order by updated_at desc limit 1",
-            userId, sha, fileSize);
+            userId, sha, fileSize, normalizedKind, fromValue);
         if (!sessionRows.empty())
         {
             const std::string uploadId = sessionRows[0]["id"].as<std::string>();
@@ -606,13 +791,20 @@ HttpResult UpdateService::AdminInitUpload(int userId,
             db->execSqlSync(
                 "update installer_upload_session "
                 "set version = $2, build_no = $3, notes = $4, min_version = $5, "
-                "    uploaded_bytes = $6, file_name = $7, updated_at = now() where id = $1",
-                uploadId, version, buildNo, notes, minVersion, actual, safeName);
+                "    uploaded_bytes = $6, file_name = $7, updated_at = now(), "
+                "    kind = $8, from_version = $9, manifest = $10::jsonb where id = $1",
+                uploadId, version, buildNo, notes, minVersion, actual, safeName,
+                normalizedKind, fromValue, manifestText);
 
             result.jsondata["uploadId"] = uploadId;
             result.jsondata["offset"] = static_cast<Json::Int64>(actual);
             result.jsondata["chunkSize"] = static_cast<Json::Int64>(kUploadChunkSize);
             result.jsondata["resumed"] = actual > 0;
+            result.jsondata["kind"] = normalizedKind;
+            if (isDelta)
+            {
+                result.jsondata["fromVersion"] = fromVersion;
+            }
             result.setResult(ApiErrorCode::ApiError_Success, "resume upload");
             return result;
         }
@@ -646,10 +838,10 @@ HttpResult UpdateService::AdminInitUpload(int userId,
             db->execSqlSync(
                 "insert into installer_upload_session "
                 "(id, user_id, version, build_no, notes, min_version, file_name, file_size, "
-                " file_sha256, temp_name, uploaded_bytes, status) "
-                "values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0)",
+                " file_sha256, temp_name, uploaded_bytes, status, kind, from_version, manifest) "
+                "values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, $11, $12, $13::jsonb)",
                 uploadId, userId, version, buildNo, notes, minVersion, safeName, fileSize,
-                sha, tempName);
+                sha, tempName, normalizedKind, fromValue, manifestText);
         }
         catch (...)
         {
@@ -662,6 +854,11 @@ HttpResult UpdateService::AdminInitUpload(int userId,
         result.jsondata["offset"] = static_cast<Json::Int64>(0);
         result.jsondata["chunkSize"] = static_cast<Json::Int64>(kUploadChunkSize);
         result.jsondata["resumed"] = false;
+        result.jsondata["kind"] = normalizedKind;
+        if (isDelta)
+        {
+            result.jsondata["fromVersion"] = fromVersion;
+        }
         result.setResult(ApiErrorCode::ApiError_Success, "upload session created");
     }
     catch (const drogon::orm::DrogonDbException &e)
@@ -775,7 +972,8 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
         std::lock_guard<std::mutex> fileLock(g_uploadFileMutex);
         auto rows = db->execSqlSync(
             "select version, build_no, notes, min_version, file_name, file_size, file_sha256, "
-            "       temp_name, status, installer_id "
+            "       temp_name, status, installer_id, delta_id, coalesce(kind, 'full') as kind, "
+            "       coalesce(from_version, '') as from_version, manifest "
             "from installer_upload_session where id = $1 and user_id = $2",
             uploadId, userId);
         if (rows.empty())
@@ -787,9 +985,36 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
         const auto &session = rows[0];
         const int status = session["status"].as<int>();
         const int installerId = session["installer_id"].isNull() ? 0 : session["installer_id"].as<int>();
+        const int deltaId = session["delta_id"].isNull() ? 0 : session["delta_id"].as<int>();
+        const bool isDelta = session["kind"].as<std::string>() == "delta";
 
-        // 重复 complete（上次响应丢失）直接返回已有安装包
-        if (status == 1 && installerId > 0)
+        // 重复 complete（上次响应丢失）直接返回已有记录
+        if (status == 1 && isDelta && deltaId > 0)
+        {
+            auto deltaRows = db->execSqlSync(
+                "select id, from_version, to_version, build_no, file_name, size_bytes, "
+                "       coalesce(sha256, '') as sha256, status "
+                "from update_delta where id = $1",
+                deltaId);
+            if (deltaRows.empty())
+            {
+                result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+                return result;
+            }
+            const auto &row = deltaRows[0];
+            FillDeltaJson(result.jsondata,
+                          row["id"].as<int>(),
+                          row["from_version"].as<std::string>(),
+                          row["to_version"].as<std::string>(),
+                          row["build_no"].isNull() ? 0 : row["build_no"].as<int64_t>(),
+                          row["file_name"].as<std::string>(),
+                          row["size_bytes"].isNull() ? 0 : row["size_bytes"].as<int64_t>(),
+                          row["sha256"].as<std::string>(),
+                          row["status"].as<int>());
+            result.setResult(ApiErrorCode::ApiError_Success, "上传已完成");
+            return result;
+        }
+        if (status == 1 && !isDelta && installerId > 0)
         {
             auto instRows = db->execSqlSync(
                 "select id, version, build_no, file_name, size_bytes, coalesce(sha256, '') as sha256, "
@@ -817,9 +1042,15 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
 
         const std::string version = session["version"].as<std::string>();
         const std::string safeName = session["file_name"].as<std::string>();
+        const std::string fromVersion = session["from_version"].as<std::string>();
         if (!IsSafeVersion(version) || safeName.empty())
         {
             result.setResult(ApiErrorCode::ApiError_InvalidOperation, "上传会话中的版本号或文件名不合法");
+            return result;
+        }
+        if (isDelta && !IsSafeVersion(fromVersion))
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "差量包基线版本不合法");
             return result;
         }
         const int64_t fileSize = session["file_size"].as<int64_t>();
@@ -850,6 +1081,117 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
             db->execSqlSync("delete from installer_upload_session where id = $1", uploadId);
             result.setResult(ApiErrorCode::ApiError_InvalidOperation,
                              "文件校验失败（sha256 不一致），已清除临时文件，请重新上传");
+            return result;
+        }
+
+        if (isDelta)
+        {
+            const std::string manifestText =
+                session["manifest"].isNull() ? "" : session["manifest"].as<std::string>();
+            Json::Value manifest;
+            if (!ParseManifest(manifestText, manifest) || !IsValidManifest(manifest))
+            {
+                result.setResult(ApiErrorCode::ApiError_InvalidOperation,
+                                 "差量清单缺失或不合法，请重新上传");
+                return result;
+            }
+
+            auto deltaDupRows = db->execSqlSync(
+                "select id, from_version, to_version, build_no, file_name, size_bytes, "
+                "       coalesce(sha256, '') as sha256, status "
+                "from update_delta where from_version = $1 and to_version = $2",
+                fromVersion, version);
+            if (!deltaDupRows.empty())
+            {
+                const auto &row = deltaDupRows[0];
+                if (!HexEqualIgnoreCase(row["sha256"].as<std::string>(), actualSha))
+                {
+                    result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "该基线的差量包已存在");
+                    return result;
+                }
+                std::error_code ec;
+                std::filesystem::remove(tempPath, ec);
+                db->execSqlSync(
+                    "update installer_upload_session set status = 1, delta_id = $2, "
+                    "temp_name = '', uploaded_bytes = file_size, updated_at = now() where id = $1",
+                    uploadId, row["id"].as<int>());
+                FillDeltaJson(result.jsondata,
+                              row["id"].as<int>(),
+                              row["from_version"].as<std::string>(),
+                              row["to_version"].as<std::string>(),
+                              row["build_no"].isNull() ? 0 : row["build_no"].as<int64_t>(),
+                              row["file_name"].as<std::string>(),
+                              row["size_bytes"].isNull() ? 0 : row["size_bytes"].as<int64_t>(),
+                              row["sha256"].as<std::string>(),
+                              row["status"].as<int>());
+                result.setResult(ApiErrorCode::ApiError_Success, "该基线的差量包已上传");
+                return result;
+            }
+
+            const std::filesystem::path deltaDir = std::filesystem::path(StoreDir()) / "delta" /
+                                                   (version + "_from_" + fromVersion);
+            std::error_code ec;
+            std::filesystem::create_directories(deltaDir, ec);
+            if (ec)
+            {
+                LOG_ERROR << "创建差量包目录失败: " << deltaDir << " " << ec.message();
+                result.setResult(ApiErrorCode::ApiError_InternalError, "创建存储目录失败");
+                return result;
+            }
+            const std::filesystem::path deltaTarget = deltaDir / safeName;
+            std::filesystem::remove(deltaTarget, ec);
+            std::filesystem::rename(tempPath, deltaTarget, ec);
+            if (ec)
+            {
+                std::error_code copyEc;
+                std::filesystem::copy_file(tempPath, deltaTarget,
+                                           std::filesystem::copy_options::overwrite_existing, copyEc);
+                if (copyEc)
+                {
+                    LOG_ERROR << "移动差量包失败: " << tempPath << " -> " << deltaTarget
+                              << " " << copyEc.message();
+                    result.setResult(ApiErrorCode::ApiError_InternalError, "保存差量包失败");
+                    return result;
+                }
+                std::error_code removeEc;
+                std::filesystem::remove(tempPath, removeEc);
+            }
+
+            const int64_t deltaBuildNo =
+                session["build_no"].isNull() ? 0 : session["build_no"].as<int64_t>();
+            int newDeltaId = 0;
+            try
+            {
+                auto insertRows = db->execSqlSync(
+                    "insert into update_delta "
+                    "(from_version, to_version, build_no, file_name, file_path, size_bytes, "
+                    " sha256, manifest, status) "
+                    "values ($1, $2, $3::bigint, $4, $5, $6::bigint, $7, $8::jsonb, 0) "
+                    "returning id",
+                    fromVersion, version, deltaBuildNo, safeName, deltaTarget.string(),
+                    fileSize, actualSha, manifestText);
+                if (insertRows.empty())
+                {
+                    result.setResult(ApiErrorCode::ApiError_DatabaseError);
+                    std::filesystem::remove(deltaTarget, ec);
+                    return result;
+                }
+                newDeltaId = insertRows[0]["id"].as<int>();
+            }
+            catch (...)
+            {
+                std::filesystem::remove(deltaTarget, ec);
+                throw;
+            }
+
+            db->execSqlSync(
+                "update installer_upload_session set status = 1, delta_id = $2, "
+                "temp_name = '', uploaded_bytes = file_size, updated_at = now() where id = $1",
+                uploadId, newDeltaId);
+
+            FillDeltaJson(result.jsondata, newDeltaId, fromVersion, version, deltaBuildNo,
+                          safeName, fileSize, actualSha, 0);
+            result.setResult(ApiErrorCode::ApiError_Success, "差量包上传完成，待发布");
             return result;
         }
 
@@ -1285,9 +1627,295 @@ HttpResult UpdateService::AdminListInstallers()
     return result;
 }
 
+HttpResult UpdateService::AdminPublishDelta(int deltaId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select id, from_version, to_version from update_delta where id = $1", deltaId);
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+            return result;
+        }
+
+        // 不同基线可以同时发布（各自服务对应版本的老客户端），不下线其它差量
+        db->execSqlSync(
+            "update update_delta set status = 1, published_at = now() where id = $1", deltaId);
+
+        result.jsondata["id"] = deltaId;
+        result.jsondata["fromVersion"] = rows[0]["from_version"].as<std::string>();
+        result.jsondata["toVersion"] = rows[0]["to_version"].as<std::string>();
+        result.jsondata["status"] = 1;
+        result.setResult(ApiErrorCode::ApiError_Success, "差量包已发布");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminPublishDelta 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult UpdateService::AdminOfflineDelta(int deltaId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select id, from_version, to_version from update_delta where id = $1", deltaId);
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+            return result;
+        }
+
+        db->execSqlSync("update update_delta set status = 2 where id = $1", deltaId);
+
+        result.jsondata["id"] = deltaId;
+        result.jsondata["fromVersion"] = rows[0]["from_version"].as<std::string>();
+        result.jsondata["toVersion"] = rows[0]["to_version"].as<std::string>();
+        result.jsondata["status"] = 2;
+        result.setResult(ApiErrorCode::ApiError_Success, "差量包已下线");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminOfflineDelta 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult UpdateService::AdminDeleteDelta(int deltaId)
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    std::string fromVersion;
+    std::string toVersion;
+    std::string filePath;
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select from_version, to_version, coalesce(file_path, '') as file_path, status "
+            "from update_delta where id = $1",
+            deltaId);
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+            return result;
+        }
+        fromVersion = rows[0]["from_version"].as<std::string>();
+        toVersion = rows[0]["to_version"].as<std::string>();
+        filePath = rows[0]["file_path"].as<std::string>();
+        if (rows[0]["status"].as<int>() == 1)
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "已发布的差量包请先下线再删除");
+            return result;
+        }
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminDeleteDelta 查询失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+
+    try
+    {
+        db->execSqlSync("delete from update_delta where id = $1", deltaId);
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminDeleteDelta 删除记录失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return result;
+    }
+
+    std::error_code ec;
+    if (!filePath.empty())
+    {
+        std::filesystem::remove(filePath, ec);
+    }
+    std::filesystem::remove_all(
+        std::filesystem::path(StoreDir()) / "delta" / (toVersion + "_from_" + fromVersion), ec);
+
+    result.jsondata["id"] = deltaId;
+    result.jsondata["fromVersion"] = fromVersion;
+    result.jsondata["toVersion"] = toVersion;
+    result.setResult(ApiErrorCode::ApiError_Success, "差量包已删除");
+    return result;
+}
+
+HttpResult UpdateService::AdminListDeltas()
+{
+    HttpResult result;
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select id, from_version, to_version, build_no, file_name, size_bytes, sha256, status, "
+            "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
+            "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
+            "from update_delta order by id desc");
+
+        Json::Value items(Json::arrayValue);
+        for (const auto &r : rows)
+        {
+            Json::Value item;
+            FillDeltaJson(item,
+                          r["id"].as<int>(),
+                          r["from_version"].as<std::string>(),
+                          r["to_version"].as<std::string>(),
+                          r["build_no"].isNull() ? 0 : r["build_no"].as<int64_t>(),
+                          r["file_name"].as<std::string>(),
+                          r["size_bytes"].isNull() ? 0 : r["size_bytes"].as<int64_t>(),
+                          r["sha256"].isNull() ? "" : r["sha256"].as<std::string>(),
+                          r["status"].as<int>());
+            item["createdAt"] = r["created_at"].isNull() ? "" : r["created_at"].as<std::string>();
+            item["publishedAt"] = r["published_at"].isNull() ? "" : r["published_at"].as<std::string>();
+            items.append(item);
+        }
+        result.jsondata["deltas"] = items;
+        result.setResult(ApiErrorCode::ApiError_Success, "success");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "AdminListDeltas 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult UpdateService::PublicReleases(int limit)
+{
+    HttpResult result;
+    if (limit < 1 || limit > 2)
+    {
+        limit = 2;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select id, version, build_no, file_name, file_path, size_bytes, "
+            "       coalesce(sha256, '') as sha256, coalesce(notes, '') as notes, "
+            "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
+            "from installer_version "
+            "where status in (1, 2) and file_name is not null and file_name <> '' "
+            "order by id desc limit $1::int",
+            limit);
+
+        Json::Value items(Json::arrayValue);
+        for (const auto &row : rows)
+        {
+            const std::string fileName = row["file_name"].as<std::string>();
+            const std::string filePath = row["file_path"].as<std::string>();
+            std::error_code ec;
+            if (!std::filesystem::exists(filePath, ec))
+            {
+                LOG_WARN << "公开安装包文件缺失，已跳过: " << filePath;
+                continue;
+            }
+
+            const int64_t buildNo = row["build_no"].isNull() ? 0 : row["build_no"].as<int64_t>();
+            std::string buildAt;
+            const std::string buildText = std::to_string(buildNo);
+            if (buildText.size() == 12)
+            {
+                buildAt = buildText.substr(0, 4) + "-" + buildText.substr(4, 2) + "-" +
+                          buildText.substr(6, 2) + " " + buildText.substr(8, 2) + ":" +
+                          buildText.substr(10, 2);
+            }
+
+            Json::Value item;
+            item["version"] = row["version"].as<std::string>();
+            item["buildNo"] = static_cast<Json::Int64>(buildNo);
+            item["buildAt"] = buildAt;
+            item["fileName"] = fileName;
+            item["sizeBytes"] = row["size_bytes"].isNull()
+                ? 0 : static_cast<Json::Int64>(row["size_bytes"].as<int64_t>());
+            item["sha256"] = row["sha256"].as<std::string>();
+            item["notes"] = row["notes"].as<std::string>();
+            item["publishedAt"] = row["published_at"].isNull()
+                ? std::string() : row["published_at"].as<std::string>();
+            item["downloadUrl"] =
+                "/api/update/public/download/" + row["version"].as<std::string>();
+            items.append(item);
+        }
+
+        result.jsondata["items"] = items;
+        result.jsondata["count"] = static_cast<int>(items.size());
+        result.setResult(ApiErrorCode::ApiError_Success, "success");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "PublicReleases 查询失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult UpdateService::PublicDownloadInfo(const std::string &version,
+                                             std::string &outFileName)
+{
+    HttpResult result;
+    if (!IsSafeVersion(version))
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "版本号不合法");
+        return result;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select i.file_name, i.file_path from installer_version i "
+            "join (select id from installer_version where status in (1, 2) "
+            "      order by id desc limit 2) latest on latest.id = i.id "
+            "where i.version = $1 order by i.id desc limit 1",
+            version);
+        if (rows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+            return result;
+        }
+
+        const std::string fileName = rows[0]["file_name"].as<std::string>();
+        const std::string filePath = rows[0]["file_path"].as<std::string>();
+        if (fileName.empty() || fileName.find('/') != std::string::npos ||
+            fileName.find('\\') != std::string::npos || fileName.find("..") != std::string::npos)
+        {
+            result.setResult(ApiErrorCode::ApiError_InternalError, "安装包文件名不合法");
+            return result;
+        }
+        std::error_code ec;
+        if (!std::filesystem::exists(filePath, ec))
+        {
+            LOG_ERROR << "公开安装包文件缺失: " << filePath;
+            result.setResult(ApiErrorCode::ApiError_InternalError, "安装包文件缺失");
+            return result;
+        }
+
+        outFileName = fileName;
+        result.setResult(ApiErrorCode::ApiError_Success, "success");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "PublicDownloadInfo 查询失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
 bool UpdateService::ResolveDownload(int userId, const std::string &version,
                                     std::string &outPath, std::string &outFileName,
-                                    HttpResult &errorResult)
+                                    HttpResult &errorResult,
+                                    const std::string &kind,
+                                    const std::string &fromVersion)
 {
     auto db = drogon::app().getDbClient();
     try
@@ -1304,18 +1932,42 @@ bool UpdateService::ResolveDownload(int userId, const std::string &version,
             return false;
         }
 
-        auto rows = db->execSqlSync(
-            "select file_path, file_name from installer_version "
-            "where version = $1 and status = 1 order by id desc limit 1",
-            version);
-        if (rows.empty())
+        const bool isDelta = NormalizeKind(kind) == "delta";
+        if (isDelta)
         {
-            errorResult.setResult(ApiErrorCode::ApiError_InstallerNotFound);
-            return false;
+            if (!IsSafeVersion(fromVersion) || fromVersion.empty())
+            {
+                errorResult.setResult(ApiErrorCode::ApiError_MissingRequiredArgs,
+                                      "下载差量包必须提供 fromVersion");
+                return false;
+            }
+            auto rows = db->execSqlSync(
+                "select file_path, file_name from update_delta "
+                "where to_version = $1 and from_version = $2 and status = 1 "
+                "order by id desc limit 1",
+                version, fromVersion);
+            if (rows.empty())
+            {
+                errorResult.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+                return false;
+            }
+            outPath = rows[0]["file_path"].as<std::string>();
+            outFileName = rows[0]["file_name"].as<std::string>();
         }
-
-        outPath = rows[0]["file_path"].as<std::string>();
-        outFileName = rows[0]["file_name"].as<std::string>();
+        else
+        {
+            auto rows = db->execSqlSync(
+                "select file_path, file_name from installer_version "
+                "where version = $1 and status = 1 order by id desc limit 1",
+                version);
+            if (rows.empty())
+            {
+                errorResult.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+                return false;
+            }
+            outPath = rows[0]["file_path"].as<std::string>();
+            outFileName = rows[0]["file_name"].as<std::string>();
+        }
 
         std::error_code ec;
         if (!std::filesystem::exists(outPath, ec))
@@ -1329,6 +1981,60 @@ bool UpdateService::ResolveDownload(int userId, const std::string &version,
     catch (const drogon::orm::DrogonDbException &e)
     {
         LOG_ERROR << "ResolveDownload 失败: " << e.base().what();
+        errorResult.setResult(ApiErrorCode::ApiError_DatabaseError);
+        return false;
+    }
+}
+
+bool UpdateService::ResolveDeltaManifest(int userId, const std::string &toVersion,
+                                         const std::string &fromVersion,
+                                         Json::Value &outManifest,
+                                         HttpResult &errorResult)
+{
+    if (!IsSafeVersion(toVersion) || !IsSafeVersion(fromVersion))
+    {
+        errorResult.setResult(ApiErrorCode::ApiError_MissingRequiredArgs,
+                              "版本号不合法");
+        return false;
+    }
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        const AccessState access = QueryAccess(db, userId);
+        if (!access.hasTeam || !access.paid)
+        {
+            errorResult.setResult(ApiErrorCode::ApiError_UserNotPaid);
+            return false;
+        }
+        if (!access.updateAuth)
+        {
+            errorResult.setResult(ApiErrorCode::ApiError_FeatureNotAuthorized);
+            return false;
+        }
+
+        auto rows = db->execSqlSync(
+            "select manifest from update_delta "
+            "where to_version = $1 and from_version = $2 and status = 1 "
+            "order by id desc limit 1",
+            toVersion, fromVersion);
+        if (rows.empty())
+        {
+            errorResult.setResult(ApiErrorCode::ApiError_InstallerNotFound);
+            return false;
+        }
+
+        const std::string text = rows[0]["manifest"].isNull() ? "" : rows[0]["manifest"].as<std::string>();
+        if (!ParseManifest(text, outManifest))
+        {
+            LOG_ERROR << "差量清单解析失败: " << toVersion << " from " << fromVersion;
+            errorResult.setResult(ApiErrorCode::ApiError_InternalError, "差量清单损坏");
+            return false;
+        }
+        return true;
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "ResolveDeltaManifest 失败: " << e.base().what();
         errorResult.setResult(ApiErrorCode::ApiError_DatabaseError);
         return false;
     }

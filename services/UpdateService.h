@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <json/json.h>
 #include "utils/HttpResult.h"
 
 namespace UEAdminAPI {
@@ -20,6 +21,7 @@ public:
                                          const std::string &platform);
 
     // 厂商：分片上传（断点续传）——初始化会话，返回 uploadId / 已上传偏移 / 分片大小
+    // kind=delta 时必须给 fromVersion 与非空 manifest（差量清单）
     static utils::HttpResult AdminInitUpload(int userId,
                                              const std::string &version,
                                              int64_t buildNo,
@@ -27,7 +29,10 @@ public:
                                              const std::string &minVersion,
                                              const std::string &fileName,
                                              int64_t fileSize,
-                                             const std::string &fileSha256);
+                                             const std::string &fileSha256,
+                                             const std::string &kind = "full",
+                                             const std::string &fromVersion = std::string(),
+                                             const Json::Value &manifest = Json::Value(Json::objectValue));
 
     // 厂商：写一个分片（offset 必须等于服务端当前已上传字节数，或返回当前值让客户端重同步）
     static utils::HttpResult AdminUploadChunk(int userId,
@@ -66,10 +71,32 @@ public:
     // 厂商：安装包列表
     static utils::HttpResult AdminListInstallers();
 
+    // 官网：最近发布的安装包（含已下线的历史版本，用于公开下载页）
+    static utils::HttpResult PublicReleases(int limit);
+
+    // 官网：公开下载信息，仅返回文件名；由控制器设置 X-Accel-Redirect
+    static utils::HttpResult PublicDownloadInfo(const std::string &version,
+                                                std::string &outFileName);
+
+    // 厂商：差量包发布 / 下线 / 删除 / 列表
+    static utils::HttpResult AdminPublishDelta(int deltaId);
+    static utils::HttpResult AdminOfflineDelta(int deltaId);
+    static utils::HttpResult AdminDeleteDelta(int deltaId);
+    static utils::HttpResult AdminListDeltas();
+
     // 下载：校验同一套授权后返回磁盘路径（不存在/未授权返回 false 并填充 error）
+    // kind=delta 时按 (to_version, from_version) 定位已发布差量
     static bool ResolveDownload(int userId, const std::string &version,
                                 std::string &outPath, std::string &outFileName,
-                                utils::HttpResult &errorResult);
+                                utils::HttpResult &errorResult,
+                                const std::string &kind = std::string(),
+                                const std::string &fromVersion = std::string());
+
+    // 差量清单：客户端下载前做基线预检（同一套授权）
+    static bool ResolveDeltaManifest(int userId, const std::string &toVersion,
+                                     const std::string &fromVersion,
+                                     Json::Value &outManifest,
+                                     utils::HttpResult &errorResult);
 };
 
 } // namespace Services
