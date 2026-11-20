@@ -517,12 +517,6 @@ HttpResult UpdateService::CheckUpdate(int userId,
             result.setResult(ApiErrorCode::ApiError_Success, "team disabled");
             return result;
         }
-        if (!access.paid)
-        {
-            result.jsondata["reason"] = access.everSubscribed ? "expired" : "not_paid";
-            result.setResult(ApiErrorCode::ApiError_Success, "team not paid");
-            return result;
-        }
         if (!access.updateAuth)
         {
             result.jsondata["reason"] = "no_auth";
@@ -1948,9 +1942,9 @@ bool UpdateService::ResolveDownload(int userId, const std::string &version,
     try
     {
         const AccessState access = QueryAccess(db, userId);
-        if (!access.hasTeam || !access.paid)
+        if (!access.hasTeam)
         {
-            errorResult.setResult(ApiErrorCode::ApiError_UserNotPaid);
+            errorResult.setResult(ApiErrorCode::ApiError_UserNotFound);
             return false;
         }
         if (!access.updateAuth)
@@ -2028,9 +2022,9 @@ bool UpdateService::ResolveDeltaManifest(int userId, const std::string &toVersio
     try
     {
         const AccessState access = QueryAccess(db, userId);
-        if (!access.hasTeam || !access.paid)
+        if (!access.hasTeam)
         {
-            errorResult.setResult(ApiErrorCode::ApiError_UserNotPaid);
+            errorResult.setResult(ApiErrorCode::ApiError_UserNotFound);
             return false;
         }
         if (!access.updateAuth)

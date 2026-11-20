@@ -39,23 +39,6 @@ using namespace UEAdminAPI;
 using namespace UEAdminAPI::Services;
 using namespace UEAdminAPI::utils;
 
-namespace {
-// 订阅到期后拒绝签发 Token；返回 false 时 result 已带好错误码与提示语。
-bool ApplySubscriptionGate(int userId, HttpResult &result)
-{
-    const auto access = TeamService::CheckSubscriptionAccess(userId);
-    if (access.allowed)
-    {
-        return true;
-    }
-    result.setResult(ApiErrorCode::ApiError_UserNotPaid, access.denyMessage);
-    result.jsondata["reason"] = access.isTrial ? "trial_expired" : "subscription_expired";
-    result.jsondata["endDate"] = access.endDate;
-    result.jsondata["remainingDays"] = access.remainingDays;
-    return false;
-}
-} // namespace
-
 // =====================================================================
 // RSA 密钥初始化
 // =====================================================================
@@ -838,10 +821,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByPwd(const std::s
         co_return result;
     }
 
-    if (!ApplySubscriptionGate(targetUser.getValueOfId(), result)) {
-        co_return result;
-    }
-
     auto [token, flashToken, status] = co_await NewTokenPair(targetUser.getValueOfId());
     if (status == -1) {
         result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新状态失败");
@@ -877,10 +856,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByOther(const std:
         result.jsondata["isUserNotExist"] = true;
     }
     if (!userFound) {
-        co_return result;
-    }
-
-    if (!ApplySubscriptionGate(targetUser.getValueOfId(), result)) {
         co_return result;
     }
 
@@ -925,10 +900,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByUserId(int userI
         co_return result;
     }
 
-    if (!ApplySubscriptionGate(targetUser.getValueOfId(), result)) {
-        co_return result;
-    }
-
     auto [token, flashToken, status] = co_await NewTokenPair(targetUser.getValueOfId());
     if (status == -1) {
         result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新状态失败");
@@ -959,10 +930,6 @@ drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::LoginByFlashToken(const
     bool valid = co_await CheckTokenStatus(userId, status, true);
     if(!valid){
         result.setResult(ApiErrorCode::ApiError_FlashTokenExpired);
-        co_return result;
-    }
-
-    if (!ApplySubscriptionGate(userId, result)) {
         co_return result;
     }
 

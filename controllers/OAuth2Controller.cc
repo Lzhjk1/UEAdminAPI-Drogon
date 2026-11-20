@@ -18,7 +18,6 @@
 
 #include "services/AuthService.h"
 #include "services/DeviceLoginSessionService.h"
-#include "services/TeamService.h"
 #include "utils/HttpResult.h"
 #include "utils/DataFormatUtils.h"
 #include "utils/ApiErrorCodes.h"
@@ -442,11 +441,6 @@ Task<HttpResponsePtr> OAuth2Controller::deviceToken(HttpRequestPtr req) {
     }
 
     auto authService = AuthService::Instance();
-
-    const auto access = UEAdminAPI::Services::TeamService::CheckSubscriptionAccess(session.userId);
-    if (!access.allowed) {
-        co_return TokenError(k400BadRequest, "access_denied", access.denyMessage);
-    }
 
     auto [token, flashToken, tokenStatus] = co_await authService->NewTokenPair(session.userId);
     if (tokenStatus == -1) {

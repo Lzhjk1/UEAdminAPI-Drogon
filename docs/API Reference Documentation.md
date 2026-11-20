@@ -65,8 +65,8 @@ GitLab 相关接口目前使用独立的响应格式：
   }
   ```
 
-- 试用或付费到期时返回 `-808`（`ApiError_UserNotPaid`），`msg` 为联系销售提示，
-  `data = { reason: "trial_expired|subscription_expired", endDate, remainingDays }`。
+- 试用或付费到期仍正常签发 Token；登录后 `/api/me/bootstrap` 返回 `subscription.active=false`，
+  客户端按 Free 降级（暂停 AI/云/子账号，保留基础 CAD 与本地工程）。
   密码、邮箱/手机验证码、第三方、设备流、FlashToken 自动登录均适用，详见 `docs/试用与订阅.md`。
 
 #### 2.1.2 邮箱验证码登录
@@ -865,22 +865,33 @@ GitLab 相关接口目前使用独立的响应格式：
       "startDate": "2026-10-26", "endDate": "2027-10-26", "active": true,
       "plan": "standard", "isTrial": false, "remainingDays": 365
     },
+    "hasSubscriptionRecord": true,
+    "products": {
+      "pdms": { "active": true, "source": "implied", "startDate": "2026-10-26",
+                "endDate": "2027-10-26", "remainingDays": 365 },
+      "ueaicad": { "active": true, "source": "subscription", "plan": "standard",
+                   "startDate": "2026-10-26", "endDate": "2027-10-26",
+                   "isTrial": false, "remainingDays": 365 }
+    },
     "featureAuth": { "cloud_project": true, "online_update": false },
     "latestVersion": ""
   }
 }
 ```
+- `subscription` 固定为 **UEAICAD** 视图；`product='pdms'` 的记录不会混入，避免污染 AI 套餐与剩余天数。
+- `products.pdms.source`：`subscription`（本产品有效记录）/ `implied`（由有效 UEAICAD 推导，UEAICAD 隐含 PDMS）/ `vendor` / `legacy`（零记录存量）/ `none`；`products.ueaicad.source` 同理（无 `implied`）。
+- `hasSubscriptionRecord`：是否存在 `status=1` 的订阅记录（含已到期），用于区分“真存量”与“PDMS-only / 已到期”。
 - 无团队时 `team` 字段缺失；无付费记录时 `startDate`/`endDate` 为空串、`active=false`、`plan=""`、`isTrial=false`、`remainingDays=0`；
   功能授权缺失视为关闭（账号级 `user_feature_auth` 覆盖团队级 `team_feature_auth`）。
-- `isTrial=true` 表示注册赠送的试用期（`plan="trial"`）；`remainingDays` 按北京时间自然日计算，到期当天仍为正数。
-- 试用/付费到期后登录会返回 `-808`，详见 `docs/试用与订阅.md`。
+- `isTrial=true` 表示注册赠送的试用期（`plan="trial"`，含 PDMS）；`remainingDays` 按北京时间自然日计算，到期当天仍为正数。
+- 试用/付费到期后仍可登录，客户端按 `subscription.active=false` 降级为 Free，详见 `docs/试用与订阅.md`。
 - `team.status`：1 正常 / 2 停用；团队停用时 `featureAuth` 一律为 `false`（在线更新检查返回 `reason=team_disabled`）。
 - `isSuperAdmin`：`privilege` 的 `Admin` 位或系统角色 `super_admin` 任一成立即为 `true`。
 
 ### 8.2 我的团队 (Get Team)
 - **URL**: `/api/team`
 - **Method**: `GET`，`Authorization: Bearer {token}`
-- **Response**: `data = { team{id,name,roleCode}, subscription{startDate,endDate,active,plan,isTrial,remainingDays}, canGrantTeamAdmin, canGrantSuperAdmin, isVendor, members[] }`，
+- **Response**: `data = { team{id,name,roleCode}, subscription{startDate,endDate,active,plan,isTrial,remainingDays}, hasSubscriptionRecord, products{pdms,ueaicad}, canGrantTeamAdmin, canGrantSuperAdmin, isVendor, members[] }`，
   `members[]` 元素：`userId, userName, nickName, roleCode, roleName, roles[]{code,name}, status(1 正常/2 停用), mustChangePwd, createdAt`
 - `canGrantTeamAdmin`：当前账号能否授予团队管理员（厂商超管或团队所有者）。
 - `canGrantSuperAdmin`：仅厂商团队（`team.is_vendor=true`，当前为优易公司）且当前账号是超管时为 true；
@@ -907,7 +918,8 @@ GitLab 相关接口目前使用独立的响应格式：
 - **说明**: 仅团队管理员可调用；新账号 `must_change_pwd=true`（首次登录强制改密），并自动加入调用者所在团队、余额 0。
 - **Response**: `data = { userId }`
 - **错误码**: `-102` 参数缺失/密码过短/团队角色为空、`-303` 用户名已存在、`-802` 不在团队、
-  `-803` 非团队管理员、`-805` 角色不允许、`-807` 非厂商团队或非超管配置超管、`-804` 创建失败
+  `-803` 非团队管理员、`-805` 角色不允许、`-807` 非厂商团队或非超管配置超管、`-804` 创建失败、
+  `-105` 团队席位已满（提示已用/上限，需升级或增购）
 
 #### 8.3.1 修改成员角色 (Update Member Roles)
 - **URL**: `/api/team/member/{userId}`
@@ -925,16 +937,19 @@ GitLab 相关接口目前使用独立的响应格式：
 ### 8.4 厂商后台：团队列表 (Admin List Teams)
 - **URL**: `/api/admin/teams?paid=1&expired=1`
 - **Method**: `GET`，需要 `Admin` 权限
-- **Response**: `data = { teams[]{ id, name, status, createdAt, subscription{startDate,endDate,active,plan,isTrial,remainingDays}, memberCount } }`
+- **Response**: `data = { teams[]{ id, name, status, createdAt, subscription{startDate,endDate,active,plan,isTrial,remainingDays}, pdmsActive, hasSubscriptionRecord, memberCount } }`
+- `subscription` 为 UEAICAD 视图；`pdmsActive` 为有效 PDMS（自有 PDMS 记录或有效 UEAICAD 推导）；`paid/expired` 过滤仍按 UEAICAD。
 - **错误码**: `-807` 需要管理员权限（HTTP 403）
 
 ### 8.5 厂商后台：设置付费期 (Admin Set Subscription)
 - **URL**: `/api/admin/teams/{teamId}/subscription`
 - **Method**: `PUT`，需要 `Admin` 权限
-- **Body**: `{ "startDate": "2026-10-26", "endDate": "2027-10-26", "plan": "standard" }`
-- **说明**: 追加一条正式订阅记录（`is_trial=false`，保留历史），当前生效记录取 `end_date` 最大且 `status=1` 的一条。
-  新注册用户的 30 天试用由注册流程自动写入（`is_trial=true`），不要用本接口补试用。
-- **错误码**: `-801` 团队不存在、`-806` 日期不合法（格式或 start > end）
+- **Body**: `{ "startDate": "2026-10-26", "endDate": "2027-10-26", "plan": "standard", "product": "ueaicad" }`
+- **说明**: 追加一条正式订阅记录（`is_trial=false`，保留历史），当前生效记录按 `(team_id, product)` 取 `end_date` 最大且 `status=1` 的一条。
+  - `product` 可选，默认 `ueaicad`（AI 工作台，权限上隐含 PDMS）；PDMS-only 传 `pdms`（plan 建议 `network`，按团队一价、不限节点）。
+  - 新注册用户的 30 天试用由注册流程自动写入（`product='ueaicad'`、`is_trial=true`），不要用本接口补试用。
+  - 响应回显 `teamId, product, startDate, endDate, isTrial`。
+- **错误码**: `-801` 团队不存在、`-806` 日期不合法（格式或 start > end）、`-820` 订阅产品不合法
 
 ### 8.6 厂商后台：设置云端功能授权 (Admin Set Feature Auth)
 - **URL**: `/api/admin/teams/{teamId}/feature-auth`

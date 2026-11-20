@@ -25,12 +25,6 @@ def _set_subscription(team_id: int, end_offset_days: int, *, is_trial: bool, pla
     )
 
 
-def _login_error(client: ApiClient, username: str, password: str) -> ApiError:
-    with pytest.raises(ApiError) as ei:
-        client.login_pwd(username, password)
-    return ei.value
-
-
 def test_trial_active_login_and_bootstrap(seeded_org, logged_client):
     _set_subscription(seeded_org.team_id, 5, is_trial=True, plan="trial")
 
@@ -43,27 +37,37 @@ def test_trial_active_login_and_bootstrap(seeded_org, logged_client):
     assert sub["remainingDays"] == 5
 
 
-def test_trial_expired_login_denied(seeded_org, fresh_client):
+def test_trial_expired_login_allowed_free(seeded_org, fresh_client):
+    """试用到期后仍可登录，客户端按 bootstrap 的订阅状态降级为 Free。"""
     _set_subscription(seeded_org.team_id, -1, is_trial=True, plan="trial")
 
-    err = _login_error(fresh_client, seeded_org.admin_name, seeded_org.admin_password)
-    assert err.code == -808
-    assert "联系销售" in err.msg
-    assert (err.data or {}).get("reason") == "trial_expired"
-    assert (err.data or {}).get("endDate")
+    body = fresh_client.login_pwd(seeded_org.admin_name, seeded_org.admin_password)
+    assert body["code"] == 0
+    assert body["data"]["token"]
+
+    boot = fresh_client.bootstrap()
+    sub = boot["data"]["subscription"]
+    assert sub["active"] is False
+    assert sub["isTrial"] is True
+    assert sub["remainingDays"] <= 0
 
 
-def test_paid_subscription_expired_login_denied(seeded_org, fresh_client):
+def test_paid_subscription_expired_login_allowed_free(seeded_org, fresh_client):
     _set_subscription(seeded_org.team_id, -1, is_trial=False, plan="standard")
 
-    err = _login_error(fresh_client, seeded_org.admin_name, seeded_org.admin_password)
-    assert err.code == -808
-    assert "联系销售" in err.msg
-    assert (err.data or {}).get("reason") == "subscription_expired"
+    body = fresh_client.login_pwd(seeded_org.admin_name, seeded_org.admin_password)
+    assert body["code"] == 0
+    assert body["data"]["token"]
+
+    boot = fresh_client.bootstrap()
+    sub = boot["data"]["subscription"]
+    assert sub["active"] is False
+    assert sub["isTrial"] is False
+    assert sub["plan"] == "standard"
 
 
-def test_flash_token_refresh_denied_after_expiry(seeded_org, base_url):
-    """自动登录走 FlashToken 换新 Token，也必须被订阅拦截。"""
+def test_flash_token_refresh_allowed_after_expiry(seeded_org, base_url):
+    """FlashToken 换新 Token 不再被订阅拦截；由客户端按 Free 降级。"""
     _set_subscription(seeded_org.team_id, 5, is_trial=True, plan="trial")
     first = ApiClient(base_url)
     body = first.login_pwd(seeded_org.admin_name, seeded_org.admin_password)
@@ -72,10 +76,12 @@ def test_flash_token_refresh_denied_after_expiry(seeded_org, base_url):
 
     _set_subscription(seeded_org.team_id, -1, is_trial=True, plan="trial")
     second = ApiClient(base_url)
-    with pytest.raises(ApiError) as ei:
-        second.login_flashtoken(flash_token)
-    assert ei.value.code == -808
-    assert (ei.value.data or {}).get("reason") == "trial_expired"
+    refreshed = second.login_flashtoken(flash_token)
+    assert refreshed["code"] == 0
+    assert refreshed["data"]["token"]
+
+    boot = second.bootstrap()
+    assert boot["data"]["subscription"]["active"] is False
 
 
 def test_legacy_user_without_subscription_can_login(seeded_org, fresh_client):
