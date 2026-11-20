@@ -305,10 +305,14 @@ HttpResult MarketService::ListResources(int userId,
         }
 
         const auto totalRows = db->execSqlSync(
-            std::string("select count(*)::bigint as total from market_resource r "
-                        "left join \"user\" u on u.id = r.owner_user_id ") +
-                kItemFilter,
-            userId, cat, kw);
+            "select count(*)::bigint as total from market_resource r "
+            "left join \"user\" u on u.id = r.owner_user_id "
+            "where r.status = 1 "
+            "  and ($1::text = '' or r.category = $1) "
+            "  and ($2::text = '' or r.name ilike '%' || $2 || '%' "
+            "       or r.description ilike '%' || $2 || '%' "
+            "       or coalesce(u.name, '') ilike '%' || $2 || '%')",
+            cat, kw);
 
         Json::Value counts(Json::objectValue);
         counts["component"] = 0;
