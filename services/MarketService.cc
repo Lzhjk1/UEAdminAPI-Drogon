@@ -293,7 +293,8 @@ HttpResult MarketService::ListResources(int userId,
     try
     {
         const auto rows = db->execSqlSync(
-            std::string(kItemSelect) + kItemFilter + "order by r.id desc limit $4 offset $5",
+            std::string(kItemSelect) + kItemFilter +
+                "order by r.id desc limit $4::int offset $5::int",
             userId, cat, kw, pageSize, (page - 1) * pageSize);
         Json::Value items(Json::arrayValue);
         for (const auto &row : rows)
