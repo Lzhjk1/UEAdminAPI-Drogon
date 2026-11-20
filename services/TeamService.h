@@ -61,7 +61,8 @@ public:
                                                   int teamId,
                                                   const std::string &startDate,
                                                   const std::string &endDate,
-                                                  const std::string &plan);
+                                                  const std::string &plan,
+                                                  const std::string &product);
 
     // 厂商：设置团队/账号的云端功能授权（team 级）
     static utils::HttpResult AdminSetFeatureAuth(int adminUserId,

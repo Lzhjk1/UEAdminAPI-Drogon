@@ -118,7 +118,8 @@ Task<HttpResponsePtr> AdminController::setSubscription(HttpRequestPtr req, std::
     PostParamMap pm;
     pm.addParam("startDate", true)
       .addParam("endDate", true)
-      .addParam("plan", false);
+      .addParam("plan", false)
+      .addParam("product", false);
     pm.readParamsFromJson(*reqJson);
 
     auto missings = pm.checkRequiredParams();
@@ -133,7 +134,8 @@ Task<HttpResponsePtr> AdminController::setSubscription(HttpRequestPtr req, std::
     result = TeamService::AdminSetSubscription(CurrentUserId(req), id,
                                                pm.getParam("startDate"),
                                                pm.getParam("endDate"),
-                                               pm.getParam("plan"));
+                                               pm.getParam("plan"),
+                                               pm.getParam("product"));
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;

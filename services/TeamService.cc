@@ -83,19 +83,41 @@ int SeatLimitForTeam(const std::shared_ptr<drogon::orm::DbClient> &db, int teamI
     {
         return 0;
     }
+    // 套餐只认 ueaicad；PDMS-only / 到期 AI + 有效 PDMS 不限制团队账号数。
     auto rows = db->execSqlSync(
-        "select plan, (end_date >= (now() at time zone 'Asia/Shanghai')::date) as active "
-        "from team_subscription where team_id = $1 and status = 1 "
-        "order by end_date desc limit 1",
+        "select "
+        "  (select plan from team_subscription where team_id = $1 and product = 'ueaicad' and status = 1 "
+        "   order by end_date desc limit 1) as plan, "
+        "  (select (end_date >= (now() at time zone 'Asia/Shanghai')::date) "
+        "   from team_subscription where team_id = $1 and product = 'ueaicad' and status = 1 "
+        "   order by end_date desc limit 1) as active, "
+        "  exists(select 1 from team_subscription p where p.team_id = $1 and p.product = 'pdms' "
+        "         and p.status = 1) as has_pdms, "
+        "  exists(select 1 from team_subscription p where p.team_id = $1 and p.product = 'pdms' "
+        "         and p.status = 1 and p.end_date >= (now() at time zone 'Asia/Shanghai')::date) as pdms_active, "
+        "  exists(select 1 from team_subscription x where x.team_id = $1 and x.status = 1) as has_any",
         teamId);
     if (rows.empty())
     {
+        return 0;
+    }
+    const bool hasAny = rows[0]["has_any"].as<bool>();
+    if (!hasAny)
+    {
         return 0; // 没有订阅记录的存量团队不限制
     }
-    const std::string plan = rows[0]["plan"].isNull()
-        ? std::string()
-        : rows[0]["plan"].as<std::string>();
-    return PlanSeatLimit(plan, rows[0]["active"].as<bool>());
+    const bool pdmsActive = rows[0]["pdms_active"].as<bool>();
+    if (rows[0]["plan"].isNull())
+    {
+        return pdmsActive ? 0 : 1; // 只有 PDMS：有效则不限，到期按 Free
+    }
+    const std::string plan = rows[0]["plan"].as<std::string>();
+    const bool active = !rows[0]["active"].isNull() && rows[0]["active"].as<bool>();
+    if (!active)
+    {
+        return pdmsActive ? 0 : 1;
+    }
+    return PlanSeatLimit(plan, true);
 }
 
 // 取当前用户所在团队与角色；不在团队时返回 false
@@ -421,9 +443,12 @@ bool ResolveTeamRoleIds(const std::shared_ptr<drogon::orm::DbClient> &db,
 }
 
 // 团队详情与厂商后台共用：付费期（取 end_date 最大的一条有效订阅）
-Json::Value LoadSubscription(const std::shared_ptr<drogon::orm::DbClient> &db, int teamId)
+Json::Value LoadSubscription(const std::shared_ptr<drogon::orm::DbClient> &db,
+                             int teamId,
+                             const std::string &product = "ueaicad")
 {
     Json::Value sub;
+    // subscription 视图固定为 UEAICAD；PDMS 记录不得混入 AI 套餐/到期天数。
     auto rows = db->execSqlSync(
         "select to_char(s.start_date, 'YYYY-MM-DD') as sub_start, "
         "       to_char(s.end_date, 'YYYY-MM-DD') as sub_end, "
@@ -432,9 +457,9 @@ Json::Value LoadSubscription(const std::shared_ptr<drogon::orm::DbClient> &db, i
         "       (s.end_date >= (now() at time zone 'Asia/Shanghai')::date) as paid, "
         "       (s.end_date - (now() at time zone 'Asia/Shanghai')::date) as remaining_days "
         "from team_subscription s "
-        "where s.team_id = $1 and s.status = 1 "
+        "where s.team_id = $1 and s.status = 1 and s.product = $2 "
         "order by s.end_date desc limit 1",
-        teamId);
+        teamId, product);
     if (!rows.empty())
     {
         sub["startDate"] = rows[0]["sub_start"].as<std::string>();
@@ -454,6 +479,137 @@ Json::Value LoadSubscription(const std::shared_ptr<drogon::orm::DbClient> &db, i
         sub["remainingDays"] = 0;
     }
     return sub;
+}
+
+struct ProductEntitlements
+{
+    Json::Value products;
+    bool hasRecord = false;
+};
+
+// 每产品取最新一条记录；PDMS 可由有效 UEAICAD 推导（ueaicad ⇒ pdms）。
+// hasRecord 含已到期记录，用于区分“真存量”与“PDMS-only/已到期”。
+ProductEntitlements LoadProductEntitlements(const std::shared_ptr<drogon::orm::DbClient> &db,
+                                           int teamId)
+{
+    ProductEntitlements ent;
+    ent.products["pdms"]["active"] = false;
+    ent.products["pdms"]["source"] = "none";
+    ent.products["pdms"]["startDate"] = "";
+    ent.products["pdms"]["endDate"] = "";
+    ent.products["pdms"]["remainingDays"] = 0;
+    ent.products["ueaicad"]["active"] = false;
+    ent.products["ueaicad"]["source"] = "none";
+    ent.products["ueaicad"]["plan"] = "";
+    ent.products["ueaicad"]["startDate"] = "";
+    ent.products["ueaicad"]["endDate"] = "";
+    ent.products["ueaicad"]["isTrial"] = false;
+    ent.products["ueaicad"]["remainingDays"] = 0;
+
+    auto rows = db->execSqlSync(
+        "select * from ("
+        "  select product, plan, coalesce(is_trial, false) as is_trial, "
+        "         to_char(start_date, 'YYYY-MM-DD') as sub_start, "
+        "         to_char(end_date, 'YYYY-MM-DD') as sub_end, "
+        "         (end_date >= (now() at time zone 'Asia/Shanghai')::date) as active, "
+        "         (end_date - (now() at time zone 'Asia/Shanghai')::date) as remaining_days, "
+        "         row_number() over (partition by product order by end_date desc) as rn "
+        "  from team_subscription where team_id = $1 and status = 1) x where rn = 1",
+        teamId);
+    ent.hasRecord = !rows.empty();
+
+    bool hasPdms = false;
+    bool pdmsActive = false;
+    std::string pdmsStart;
+    std::string pdmsEnd;
+    int pdmsRemaining = 0;
+    bool hasUe = false;
+    bool ueActive = false;
+    std::string uePlan;
+    std::string ueStart;
+    std::string ueEnd;
+    bool ueTrial = false;
+    int ueRemaining = 0;
+
+    for (const auto &r : rows)
+    {
+        const std::string product = r["product"].as<std::string>();
+        if (product == "pdms")
+        {
+            hasPdms = true;
+            pdmsActive = r["active"].as<bool>();
+            pdmsStart = r["sub_start"].isNull() ? "" : r["sub_start"].as<std::string>();
+            pdmsEnd = r["sub_end"].isNull() ? "" : r["sub_end"].as<std::string>();
+            pdmsRemaining = r["remaining_days"].isNull() ? 0 : r["remaining_days"].as<int>();
+        }
+        else if (product == "ueaicad")
+        {
+            hasUe = true;
+            ueActive = r["active"].as<bool>();
+            uePlan = r["plan"].isNull() ? "" : r["plan"].as<std::string>();
+            ueStart = r["sub_start"].isNull() ? "" : r["sub_start"].as<std::string>();
+            ueEnd = r["sub_end"].isNull() ? "" : r["sub_end"].as<std::string>();
+            ueTrial = r["is_trial"].as<bool>();
+            ueRemaining = r["remaining_days"].isNull() ? 0 : r["remaining_days"].as<int>();
+        }
+    }
+
+    if (hasUe)
+    {
+        ent.products["ueaicad"]["active"] = ueActive;
+        ent.products["ueaicad"]["source"] = "subscription";
+        ent.products["ueaicad"]["plan"] = uePlan;
+        ent.products["ueaicad"]["startDate"] = ueStart;
+        ent.products["ueaicad"]["endDate"] = ueEnd;
+        ent.products["ueaicad"]["isTrial"] = ueTrial;
+        ent.products["ueaicad"]["remainingDays"] = ueRemaining;
+    }
+    else if (!ent.hasRecord)
+    {
+        ent.products["ueaicad"]["active"] = true;
+        ent.products["ueaicad"]["source"] = "legacy";
+    }
+
+    if (hasPdms && pdmsActive)
+    {
+        ent.products["pdms"]["active"] = true;
+        ent.products["pdms"]["source"] = "subscription";
+        ent.products["pdms"]["startDate"] = pdmsStart;
+        ent.products["pdms"]["endDate"] = pdmsEnd;
+        ent.products["pdms"]["remainingDays"] = pdmsRemaining;
+    }
+    else if (ueActive)
+    {
+        ent.products["pdms"]["active"] = true;
+        ent.products["pdms"]["source"] = "implied";
+        ent.products["pdms"]["startDate"] = ueStart;
+        ent.products["pdms"]["endDate"] = ueEnd;
+        ent.products["pdms"]["remainingDays"] = ueRemaining;
+    }
+    else if (hasPdms)
+    {
+        ent.products["pdms"]["active"] = false;
+        ent.products["pdms"]["source"] = "subscription";
+        ent.products["pdms"]["startDate"] = pdmsStart;
+        ent.products["pdms"]["endDate"] = pdmsEnd;
+        ent.products["pdms"]["remainingDays"] = pdmsRemaining;
+    }
+    else if (!ent.hasRecord)
+    {
+        ent.products["pdms"]["active"] = true;
+        ent.products["pdms"]["source"] = "legacy";
+    }
+    return ent;
+}
+
+void ApplyVendorProducts(Json::Value &products)
+{
+    products["pdms"]["active"] = true;
+    products["pdms"]["source"] = "vendor";
+    products["ueaicad"]["active"] = true;
+    products["ueaicad"]["source"] = "vendor";
+    products["ueaicad"]["plan"] = "max";
+    products["ueaicad"]["isTrial"] = false;
 }
 
 // 团队级功能授权（缺失即关闭）；账号级覆盖只在 GetBootstrap 里叠加
@@ -614,7 +770,7 @@ HttpResult TeamService::GetBootstrap(int userId)
             "left join team t on t.id = tm.team_id "
             "left join role r on r.id = tm.role_id "
             "left join lateral (select start_date, end_date, plan, is_trial from team_subscription ts "
-            "                   where ts.team_id = t.id and ts.status = 1 "
+            "                   where ts.team_id = t.id and ts.status = 1 and ts.product = 'ueaicad' "
             "                   order by ts.end_date desc limit 1) s on true "
             "where u.id = $1",
             userId, static_cast<int>(UserPrivileges::Admin));
@@ -702,6 +858,14 @@ HttpResult TeamService::GetBootstrap(int userId)
         result.jsondata["featureAuth"]["cloud_project"] = cloudAuth;
         result.jsondata["featureAuth"]["online_update"] = updateAuth;
 
+        auto ent = LoadProductEntitlements(db, teamId);
+        if (vendorMax)
+        {
+            ApplyVendorProducts(ent.products);
+        }
+        result.jsondata["hasSubscriptionRecord"] = ent.hasRecord;
+        result.jsondata["products"] = ent.products;
+
         auto versionRows = db->execSqlSync(
             "select version from installer_version where status = 1 "
             "order by published_at desc nulls last, id desc limit 1");
@@ -767,6 +931,15 @@ HttpResult TeamService::GetTeam(int userId)
             companySubscription["remainingDays"] = 0;
         }
         result.jsondata["subscription"] = companySubscription;
+
+        auto ent = LoadProductEntitlements(db, teamId);
+        if (vendorMax)
+        {
+            ApplyVendorProducts(ent.products);
+        }
+        result.jsondata["hasSubscriptionRecord"] = ent.hasRecord;
+        result.jsondata["products"] = ent.products;
+
         result.jsondata["members"] = LoadTeamMembers(db, teamId, isVendor);
 
         result.setResult(ApiErrorCode::ApiError_Success, "success");
@@ -1237,8 +1410,8 @@ bool TeamService::ProvisionPersonalTeam(int userId, const std::string &userName)
         // 已有订阅记录的团队不覆盖（重复开通 / 后台已提前开通）。
         const int trialDays = SubscriptionTrialDays();
         db->execSqlSync(
-            "insert into team_subscription (team_id, plan, start_date, end_date, status, is_trial) "
-            "select $1, 'trial', (now() at time zone 'Asia/Shanghai')::date, "
+            "insert into team_subscription (team_id, product, plan, start_date, end_date, status, is_trial) "
+            "select $1, 'ueaicad', 'trial', (now() at time zone 'Asia/Shanghai')::date, "
             "       (now() at time zone 'Asia/Shanghai')::date + $2, 1, true "
             "where not exists (select 1 from team_subscription where team_id = $1)",
             teamId, trialDays - 1);
@@ -1279,7 +1452,7 @@ TeamService::SubscriptionAccess TeamService::CheckSubscriptionAccess(int userId)
             "left join team_member tm on tm.user_id = u.id and tm.status = 1 "
             "left join team t on t.id = tm.team_id "
             "left join lateral (select plan, end_date, is_trial from team_subscription ts "
-            "                   where ts.team_id = t.id and ts.status = 1 "
+            "                   where ts.team_id = t.id and ts.status = 1 and ts.product = 'ueaicad' "
             "                   order by ts.end_date desc limit 1) s on true "
             "where u.id = $1",
             userId, static_cast<int>(UserPrivileges::Admin));
@@ -1351,10 +1524,14 @@ HttpResult TeamService::AdminListTeams(bool paidOnly, bool expiredOnly)
             "       s.plan as sub_plan, "
             "       (s.end_date is not null and s.end_date >= (now() at time zone 'Asia/Shanghai')::date) as paid, "
             "       (s.end_date - (now() at time zone 'Asia/Shanghai')::date) as remaining_days, "
+            "       exists(select 1 from team_subscription p where p.team_id = t.id "
+            "              and p.product = 'pdms' and p.status = 1 "
+            "              and p.end_date >= (now() at time zone 'Asia/Shanghai')::date) as pdms_active, "
+            "       exists(select 1 from team_subscription x where x.team_id = t.id and x.status = 1) as has_record, "
             "       (select count(*) from team_member m where m.team_id = t.id and m.status = 1) as member_count "
             "from team t "
             "left join lateral (select start_date, end_date, plan, is_trial from team_subscription ts "
-            "                   where ts.team_id = t.id and ts.status = 1 "
+            "                   where ts.team_id = t.id and ts.status = 1 and ts.product = 'ueaicad' "
             "                   order by ts.end_date desc limit 1) s on true "
             "where 1 = 1" + having +
             " order by t.id");
@@ -1374,6 +1551,9 @@ HttpResult TeamService::AdminListTeams(bool paidOnly, bool expiredOnly)
             t["subscription"]["isTrial"] = r["is_trial"].as<bool>();
             t["subscription"]["remainingDays"] =
                 r["remaining_days"].isNull() ? 0 : r["remaining_days"].as<int>();
+            const bool uePaid = !r["paid"].isNull() && r["paid"].as<bool>();
+            t["pdmsActive"] = uePaid || r["pdms_active"].as<bool>();
+            t["hasSubscriptionRecord"] = r["has_record"].as<bool>();
             t["memberCount"] = r["member_count"].as<int>();
             teams.append(t);
         }
@@ -1392,7 +1572,8 @@ HttpResult TeamService::AdminSetSubscription(int adminUserId,
                                              int teamId,
                                              const std::string &startDate,
                                              const std::string &endDate,
-                                             const std::string &plan)
+                                             const std::string &plan,
+                                             const std::string &product)
 {
     HttpResult result;
     auto db = drogon::app().getDbClient();
@@ -1419,6 +1600,13 @@ HttpResult TeamService::AdminSetSubscription(int adminUserId,
         return result;
     }
 
+    const std::string productValue = product.empty() ? "ueaicad" : product;
+    if (productValue != "pdms" && productValue != "ueaicad")
+    {
+        result.setResult(ApiErrorCode::ApiError_SubscriptionProductInvalid);
+        return result;
+    }
+
     try
     {
         auto teamRows = db->execSqlSync("select 1 from team where id = $1", teamId);
@@ -1430,11 +1618,12 @@ HttpResult TeamService::AdminSetSubscription(int adminUserId,
 
         const std::string planValue = plan.empty() ? "standard" : plan;
         db->execSqlSync(
-            "insert into team_subscription (team_id, plan, start_date, end_date, status, updated_by, is_trial) "
-            "values ($1, $2, $3::date, $4::date, 1, $5, false)",
-            teamId, planValue, startDate, endDate, adminUserId);
+            "insert into team_subscription (team_id, product, plan, start_date, end_date, status, updated_by, is_trial) "
+            "values ($1, $2, $3, $4::date, $5::date, 1, $6, false)",
+            teamId, productValue, planValue, startDate, endDate, adminUserId);
 
         result.jsondata["teamId"] = teamId;
+        result.jsondata["product"] = productValue;
         result.jsondata["startDate"] = startDate;
         result.jsondata["endDate"] = endDate;
         result.jsondata["isTrial"] = false;
@@ -1523,6 +1712,9 @@ HttpResult TeamService::AdminGetTeam(int teamId)
 
         result.jsondata["subscription"] = LoadSubscription(db, teamId);
         result.jsondata["featureAuth"] = LoadFeatureAuth(db, teamId);
+        auto ent = LoadProductEntitlements(db, teamId);
+        result.jsondata["hasSubscriptionRecord"] = ent.hasRecord;
+        result.jsondata["products"] = ent.products;
         result.jsondata["members"] = LoadTeamMembers(db, teamId, isVendor);
         result.jsondata["memberCount"] = static_cast<Json::UInt>(result.jsondata["members"].size());
 
