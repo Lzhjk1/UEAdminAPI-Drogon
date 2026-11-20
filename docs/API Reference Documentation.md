@@ -1345,9 +1345,10 @@ GitLab 相关接口目前使用独立的响应格式：
 ## 12. 用户意见反馈
 
 > 登录器「我的 → 意见反馈」使用。提交需要登录态；管理接口额外要求厂商超管（`AuthFilter + AdminFilter`）。
-> 截图存放在 `custom_config.Feedback.StoreDir`（默认 `./uploads/feedback`），一条反馈最多 5 张，
-> 库里 `user_feedback_image(feedback_id, seq, image_name, image_mime)` 保存每张的文件名。
-> 建表迁移：`0005_user_feedback.sql` + `0008_feedback_multi_image.sql`（旧单图会回填为 `seq=0`）。
+> 截图与日志附件都存放在 `custom_config.Feedback.StoreDir`（默认 `./uploads/feedback`）。
+> 一条反馈最多 5 张截图，库里 `user_feedback_image(feedback_id, seq, image_name, image_mime)` 保存每张的文件名；
+> 日志附件最多 8 个，库里 `user_feedback_attachment(feedback_id, seq, file_name, file_mime, file_size, stored_name)`。
+> 建表迁移：`0005_user_feedback.sql` + `0008_feedback_multi_image.sql` + `0020_feedback_attachment.sql`（旧单图会回填为 `seq=0`）。
 
 ### 12.1 提交反馈
 - **URL**: `/api/feedback`
@@ -1363,6 +1364,10 @@ GitLab 相关接口目前使用独立的响应格式：
   "images": [
     { "mime": "image/png", "base64": "iVBORw0KGgo..." },
     { "mime": "image/jpeg", "base64": "/9j/4AAQSkZJRg..." }
+  ],
+  "attachments": [
+    { "name": "APPDMSLogin10_20261120_101500_123.log", "mime": "text/plain", "base64": "..." },
+    { "name": "ACAD_20261120_101500_123.dmp", "mime": "application/octet-stream", "base64": "..." }
   ]
 }
 ```
@@ -1370,16 +1375,21 @@ GitLab 相关接口目前使用独立的响应格式：
 - `content` 必填（去空白后非空、≤ 20000 字节）；`contact` ≤ 200 字节；`appVersion/osInfo` ≤ 200 字节。
 - `images` 可空，最多 5 张；每张只接受 `image/png` / `image/jpeg` / `image/bmp`，单张 ≤ 12MB、
   合计 ≤ 24MB，并校验文件头（PNG/JPEG/BMP）与格式一致。
-- 兼容旧客户端：没有 `images` 数组时仍可传单张 `imageMime + imageBase64`。
-- **Response**: `data = { feedbackId, categoryName, imageCount }`
+- `attachments` 可空（客户端自动附带崩溃报告与运行日志）：最多 8 个，只接受 `.log` / `.txt` / `.dmp`，
+  单文件 ≤ 12MB、合计 ≤ 20MB；`name` 会去路径/控制字符后作为展示名，落盘名由服务端生成。
+  客户端通常附带 PDMS `CrashHandler` 在 `crash` 目录的最近一次 `.dmp + 同名 .log`，以及
+  `ue_startup.log`、`phs_engine_stderr.log`、`phs_dao_errors.log`、`persist_diag.log` 的尾部与 `feedback-logs.txt` 清单。
+- 兼容旧客户端：没有 `images` 数组时仍可传单张 `imageMime + imageBase64`；没有 `attachments` 字段按无附件处理。
+- **Response**: `data = { feedbackId, categoryName, imageCount, attachmentCount }`
 - **错误码**：`-102` 内容为空 / `-105` 截图数量、格式或大小不合法 / `-104` 数据库或落盘失败。
 
 ### 12.2 反馈列表（厂商）
 - **URL**: `/api/admin/feedback/list?status=-1&page=1&size=50`
 - `status`：`-1` 全部（默认）/ `0` 待处理 / `1` 已处理；`size` 取值 1~200。
 - **Response**: `data = { total, page, size, items[] }`，按 `id` 倒序。
-- `items[]` 字段：`id/userId/userName/category/categoryName/content/contact/appVersion/osInfo/hasImage/imageCount/imageMime/status/createdAt/handledAt`。
+- `items[]` 字段：`id/userId/userName/category/categoryName/content/contact/appVersion/osInfo/hasImage/imageCount/imageMime/attachmentCount/attachmentNames/status/createdAt/handledAt`。
 - `imageCount` 为该反馈的截图张数（0~5）；`imageMime` 是第一张的 MIME。
+- `attachmentCount` 为日志附件个数（0~8）；`attachmentNames` 是原始文件名的 `、` 拼接串，供列表/导出展示。
 - `userName` 是提交时的快照，用户改名/注销后仍能看出提交人。
 
 ### 12.3 读取截图（厂商）
@@ -1388,7 +1398,13 @@ GitLab 相关接口目前使用独立的响应格式：
 - **Response**: `data = { mime, base64, index }`
 - **错误码**：`-105` 该反馈没有截图或序号不合法 / `-819` 反馈不存在 / `-103` 截图文件缺失。
 
-### 12.4 标记已处理（厂商）
+### 12.4 读取日志附件（厂商）
+- **URL**: `/api/admin/feedback/{id}/attachment?index=N`
+- `index` 从 0 开始，取值 0~7；缺省为 0。
+- **Response**: `data = { name, mime, size, index, base64 }`
+- **错误码**：`-105` 该反馈没有这个附件或序号不合法 / `-819` 反馈不存在 / `-103` 附件文件缺失。
+
+### 12.5 标记已处理（厂商）
 - **URL**: `/api/admin/feedback/{id}/handle`
 - **Method**: `POST`
 - 置 `status = 1`，同时记录 `handled_at = now()`、`handled_by = 当前管理员`。

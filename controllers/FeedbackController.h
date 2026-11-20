@@ -13,11 +13,13 @@ public:
 
     ADD_METHOD_TO(FeedbackController::list, "/api/admin/feedback/list", Get, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(FeedbackController::image, "/api/admin/feedback/{1}/image", Get, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(FeedbackController::attachment, "/api/admin/feedback/{1}/attachment", Get, "AuthFilter", "AdminFilter");
     ADD_METHOD_TO(FeedbackController::handle, "/api/admin/feedback/{1}/handle", Post, "AuthFilter", "AdminFilter");
     METHOD_LIST_END
 
     Task<HttpResponsePtr> submit(HttpRequestPtr req);
     Task<HttpResponsePtr> list(HttpRequestPtr req);
     Task<HttpResponsePtr> image(HttpRequestPtr req, std::string feedbackId);
+    Task<HttpResponsePtr> attachment(HttpRequestPtr req, std::string feedbackId);
     Task<HttpResponsePtr> handle(HttpRequestPtr req, std::string feedbackId);
 };

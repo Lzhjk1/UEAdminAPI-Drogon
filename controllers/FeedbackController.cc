@@ -139,8 +139,45 @@ Task<HttpResponsePtr> FeedbackController::submit(HttpRequestPtr req)
         }
     }
 
+    std::vector<FeedbackAttachmentData> attachments;
+    if (json->isMember("attachments") && (*json)["attachments"].isArray())
+    {
+        const auto &array = (*json)["attachments"];
+        if (array.size() > 8)
+        {
+            result.setResult(ApiError_InvalidOperation, "最多上传 8 个日志附件");
+            co_return JsonResponse(result);
+        }
+        for (Json::ArrayIndex i = 0; i < array.size(); ++i)
+        {
+            const auto &node = array[i];
+            if (!node.isObject())
+            {
+                continue;
+            }
+            const std::string name = JsonString(node, "name");
+            const std::string mime = JsonString(node, "mime");
+            const std::string base64 = JsonString(node, "base64");
+            if (name.empty() || base64.empty())
+            {
+                continue;
+            }
+            std::string bytes = drogon::utils::base64Decode(base64);
+            if (bytes.empty())
+            {
+                result.setResult(ApiError_InvalidOperation, "附件数据无法解码");
+                co_return JsonResponse(result);
+            }
+            FeedbackAttachmentData attachment;
+            attachment.name = name;
+            attachment.mime = mime;
+            attachment.bytes = std::move(bytes);
+            attachments.push_back(std::move(attachment));
+        }
+    }
+
     co_return JsonResponse(FeedbackService::Submit(
-        userId, category, content, contact, appVersion, osInfo, images));
+        userId, category, content, contact, appVersion, osInfo, images, attachments));
 }
 
 Task<HttpResponsePtr> FeedbackController::list(HttpRequestPtr req)
@@ -162,6 +199,19 @@ Task<HttpResponsePtr> FeedbackController::image(HttpRequestPtr req, std::string 
         co_return JsonResponse(result);
     }
     co_return JsonResponse(FeedbackService::AdminGetImage(id, index));
+}
+
+Task<HttpResponsePtr> FeedbackController::attachment(HttpRequestPtr req, std::string feedbackId)
+{
+    const int id = ParseInt(feedbackId, 0);
+    const int index = ParseInt(req->getParameter("index"), 0);
+    if (id <= 0)
+    {
+        HttpResult result;
+        result.setResult(ApiError_FeedbackNotFound);
+        co_return JsonResponse(result);
+    }
+    co_return JsonResponse(FeedbackService::AdminGetAttachment(id, index));
 }
 
 Task<HttpResponsePtr> FeedbackController::handle(HttpRequestPtr req, std::string feedbackId)

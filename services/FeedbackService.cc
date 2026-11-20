@@ -26,6 +26,9 @@ constexpr size_t kMaxMetaBytes = 200;
 constexpr size_t kMaxImageBytes = 12 * 1024 * 1024;
 constexpr size_t kMaxImages = 5;
 constexpr size_t kMaxTotalImageBytes = 24 * 1024 * 1024;
+constexpr size_t kMaxAttachmentBytes = 12 * 1024 * 1024;
+constexpr size_t kMaxAttachments = 8;
+constexpr size_t kMaxTotalAttachmentBytes = 20 * 1024 * 1024;
 
 std::string StoreDir()
 {
@@ -86,6 +89,69 @@ bool ExtensionForMime(const std::string &mime, std::string &ext)
     return false;
 }
 
+// 附件只收日志与转储：.log / .txt / .dmp
+bool AttachmentExtForName(const std::string &name, std::string &ext)
+{
+    const auto slash = name.find_last_of("/\\");
+    const std::string base = (slash == std::string::npos) ? name : name.substr(slash + 1);
+    const auto dot = base.find_last_of('.');
+    if (dot == std::string::npos || dot + 1 >= base.size())
+    {
+        return false;
+    }
+    ext.clear();
+    for (size_t i = dot; i < base.size(); ++i)
+    {
+        ext.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(base[i]))));
+    }
+    return ext == ".log" || ext == ".txt" || ext == ".dmp";
+}
+
+std::string AttachmentMimeForExt(const std::string &ext)
+{
+    return ext == ".dmp" ? std::string("application/octet-stream") : std::string("text/plain");
+}
+
+// 去掉路径与控制字符，保留中文/字母/数字/._-；截断时不切坏 UTF-8 多字节
+std::string SanitizeAttachmentName(const std::string &name, const std::string &ext)
+{
+    const auto slash = name.find_last_of("/\\");
+    const std::string base = (slash == std::string::npos) ? name : name.substr(slash + 1);
+    const auto dot = base.find_last_of('.');
+    const std::string stem = (dot == std::string::npos) ? base : base.substr(0, dot);
+
+    std::string clean;
+    for (unsigned char ch : stem)
+    {
+        if (ch >= 0x80 || std::isalnum(ch) != 0 || ch == '.' || ch == '_' || ch == '-')
+        {
+            clean.push_back(static_cast<char>(ch));
+        }
+        else
+        {
+            clean.push_back('_');
+        }
+    }
+    const size_t first = clean.find_first_not_of("._-");
+    clean = (first == std::string::npos) ? std::string() : clean.substr(first);
+
+    constexpr size_t kMaxStemBytes = 116;
+    if (clean.size() > kMaxStemBytes)
+    {
+        size_t cut = kMaxStemBytes;
+        while (cut > 0 && (static_cast<unsigned char>(clean[cut]) & 0xC0) == 0x80)
+        {
+            --cut;
+        }
+        clean.resize(cut);
+    }
+    if (clean.empty())
+    {
+        clean = "attachment";
+    }
+    return clean + ext;
+}
+
 // 只允许位图，且按文件头校验，避免把任意文件存下来后被默认看图程序打开
 bool MatchesImageMagic(const std::string &mime, std::string_view bytes)
 {
@@ -139,7 +205,8 @@ HttpResult FeedbackService::Submit(int userId,
                                    const std::string &contact,
                                    const std::string &appVersion,
                                    const std::string &osInfo,
-                                   const std::vector<std::pair<std::string, std::string>> &images)
+                                   const std::vector<std::pair<std::string, std::string>> &images,
+                                   const std::vector<FeedbackAttachmentData> &attachments)
 {
     const std::string trimmedContent = Trim(content);
     if (trimmedContent.empty())
@@ -192,6 +259,41 @@ HttpResult FeedbackService::Submit(int userId,
         exts[i] = ext;
     }
 
+    if (attachments.size() > kMaxAttachments)
+    {
+        return ErrorResult(ApiError_InvalidOperation, "最多上传 8 个日志附件");
+    }
+
+    std::vector<std::string> attachmentNames(attachments.size());
+    std::vector<std::string> attachmentMimes(attachments.size());
+    std::vector<std::string> attachmentExts(attachments.size());
+    size_t totalAttachmentBytes = 0;
+    for (size_t i = 0; i < attachments.size(); ++i)
+    {
+        const std::string &rawName = attachments[i].name;
+        std::string ext;
+        if (!AttachmentExtForName(rawName, ext))
+        {
+            return ErrorResult(ApiError_InvalidOperation, "附件仅支持 .log / .txt / .dmp");
+        }
+        if (attachments[i].bytes.empty())
+        {
+            return ErrorResult(ApiError_InvalidOperation, "附件内容为空");
+        }
+        if (attachments[i].bytes.size() > kMaxAttachmentBytes)
+        {
+            return ErrorResult(ApiError_InvalidOperation, "单个附件超过 12MB，请精简后再试");
+        }
+        totalAttachmentBytes += attachments[i].bytes.size();
+        if (totalAttachmentBytes > kMaxTotalAttachmentBytes)
+        {
+            return ErrorResult(ApiError_InvalidOperation, "附件总大小超过 20MB，请精简后再试");
+        }
+        attachmentNames[i] = SanitizeAttachmentName(rawName, ext);
+        attachmentMimes[i] = AttachmentMimeForExt(ext);
+        attachmentExts[i] = ext;
+    }
+
     auto db = drogon::app().getDbClient();
     std::string userName;
     try
@@ -234,7 +336,7 @@ HttpResult FeedbackService::Submit(int userId,
     std::vector<std::filesystem::path> writtenFiles;
     try
     {
-        if (!images.empty())
+        if (!images.empty() || !attachments.empty())
         {
             std::filesystem::create_directories(dir);
         }
@@ -262,10 +364,36 @@ HttpResult FeedbackService::Submit(int userId,
                 "values ($1, $2::int, $3, $4)",
                 feedbackId, static_cast<int>(i), imageName, mimes[i]);
         }
+        for (size_t i = 0; i < attachments.size(); ++i)
+        {
+            const std::string storedName =
+                "feedback_" + std::to_string(feedbackId) + "_att_" + std::to_string(i) + attachmentExts[i];
+            const std::filesystem::path fullPath = std::filesystem::path(dir) / storedName;
+            {
+                std::ofstream out(fullPath, std::ios::binary | std::ios::trunc);
+                if (!out)
+                {
+                    throw std::runtime_error("open failed");
+                }
+                out.write(attachments[i].bytes.data(),
+                          static_cast<std::streamsize>(attachments[i].bytes.size()));
+                if (!out)
+                {
+                    throw std::runtime_error("write failed");
+                }
+            }
+            writtenFiles.push_back(fullPath);
+            db->execSqlSync(
+                "insert into user_feedback_attachment "
+                "(feedback_id, seq, file_name, file_mime, file_size, stored_name) "
+                "values ($1, $2::int, $3, $4, $5::bigint, $6)",
+                feedbackId, static_cast<int>(i), attachmentNames[i], attachmentMimes[i],
+                static_cast<long long>(attachments[i].bytes.size()), storedName);
+        }
     }
     catch (const std::exception &e)
     {
-        LOG_ERROR << "FeedbackService::Submit 保存截图失败: " << e.what();
+        LOG_ERROR << "FeedbackService::Submit 保存截图或附件失败: " << e.what();
         for (size_t i = 0; i < writtenFiles.size(); ++i)
         {
             std::error_code ec;
@@ -278,13 +406,14 @@ HttpResult FeedbackService::Submit(int userId,
         catch (...)
         {
         }
-        return ErrorResult(ApiError_InternalError, "截图保存失败，请重试");
+        return ErrorResult(ApiError_InternalError, "截图或附件保存失败，请重试");
     }
 
     HttpResult result;
     result.jsondata["feedbackId"] = feedbackId;
     result.jsondata["categoryName"] = CategoryName(category);
     result.jsondata["imageCount"] = static_cast<int>(images.size());
+    result.jsondata["attachmentCount"] = static_cast<int>(attachments.size());
     result.setResult(ApiError_Success);
     return result;
 }
@@ -316,6 +445,11 @@ HttpResult FeedbackService::AdminList(int status, int page, int size)
             "                case when f.image_name is not null and f.image_name <> '' then 1 else 0 end) as image_count, "
             "       coalesce((select image_mime from user_feedback_image i "
             "                 where i.feedback_id = f.id order by seq limit 1), '') as image_mime, "
+            "       (select count(*) from user_feedback_attachment a where a.feedback_id = f.id) "
+            "                as attachment_count, "
+            "       coalesce((select string_agg(a.file_name, '、' order by a.seq) "
+            "                 from user_feedback_attachment a where a.feedback_id = f.id), '') "
+            "                as attachment_names, "
             "       f.status, "
             "       to_char(f.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
             "       coalesce(to_char(f.handled_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS'), '') as handled_at "
@@ -341,6 +475,8 @@ HttpResult FeedbackService::AdminList(int status, int page, int size)
             item["hasImage"] = imageCount > 0;
             item["imageCount"] = imageCount;
             item["imageMime"] = row["image_mime"].as<std::string>();
+            item["attachmentCount"] = row["attachment_count"].as<int>();
+            item["attachmentNames"] = row["attachment_names"].as<std::string>();
             item["status"] = row["status"].as<int>();
             item["createdAt"] = row["created_at"].as<std::string>();
             item["handledAt"] = row["handled_at"].as<std::string>();
@@ -423,6 +559,71 @@ HttpResult FeedbackService::AdminGetImage(int feedbackId, int index)
 
     HttpResult result;
     result.jsondata["mime"] = mime;
+    result.jsondata["index"] = index;
+    result.jsondata["base64"] = drogon::utils::base64Encode(bytes);
+    result.setResult(ApiError_Success);
+    return result;
+}
+
+HttpResult FeedbackService::AdminGetAttachment(int feedbackId, int index)
+{
+    if (index < 0 || index >= static_cast<int>(kMaxAttachments))
+    {
+        return ErrorResult(ApiError_InvalidOperation, "附件序号不合法");
+    }
+
+    auto db = drogon::app().getDbClient();
+    std::string fileName;
+    std::string mime;
+    std::string storedName;
+    long long fileSize = 0;
+    try
+    {
+        auto feedbackRows = db->execSqlSync(
+            "select id from user_feedback where id = $1", feedbackId);
+        if (feedbackRows.empty())
+        {
+            return ErrorResult(ApiError_FeedbackNotFound, "反馈不存在");
+        }
+
+        auto rows = db->execSqlSync(
+            "select file_name, coalesce(file_mime, '') as file_mime, file_size, stored_name "
+            "from user_feedback_attachment where feedback_id = $1 and seq = $2::int",
+            feedbackId, index);
+        if (rows.empty())
+        {
+            return ErrorResult(ApiError_InvalidOperation, "该反馈没有这个日志附件");
+        }
+        fileName = rows[0]["file_name"].as<std::string>();
+        mime = rows[0]["file_mime"].as<std::string>();
+        fileSize = rows[0]["file_size"].as<long long>();
+        storedName = rows[0]["stored_name"].as<std::string>();
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "FeedbackService::AdminGetAttachment 查询失败: " << e.base().what();
+        return ErrorResult(ApiError_DatabaseError, "数据库错误");
+    }
+
+    if (storedName.empty())
+    {
+        return ErrorResult(ApiError_InternalError, "附件文件不存在");
+    }
+
+    const std::filesystem::path fullPath =
+        std::filesystem::path(StoreDir()) / std::filesystem::path(storedName).filename();
+    std::ifstream in(fullPath, std::ios::binary);
+    if (!in)
+    {
+        LOG_ERROR << "FeedbackService::AdminGetAttachment 文件不存在: " << fullPath.string();
+        return ErrorResult(ApiError_InternalError, "附件文件不存在");
+    }
+    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+    HttpResult result;
+    result.jsondata["name"] = fileName;
+    result.jsondata["mime"] = mime;
+    result.jsondata["size"] = static_cast<Json::Int64>(fileSize);
     result.jsondata["index"] = index;
     result.jsondata["base64"] = drogon::utils::base64Encode(bytes);
     result.setResult(ApiError_Success);
