@@ -13,8 +13,11 @@ RUN apt update && \
     apt autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
-# 官方 7-Zip：Ubuntu 22.04 的 p7zip 16.02 解不出 NSIS-3 的中文文件名
-RUN curl -fsSL -o /tmp/7z.tar.xz https://github.com/ip7z/7zip/releases/download/26.06/7z2606-linux-x64.tar.xz && \
+# 官方 7-Zip：Ubuntu 22.04 的 p7zip 16.02 解不出 NSIS-3 的中文文件名。
+# 服务器无法直连 GitHub 时，把 7z2606-linux-x64.tar.xz 放进构建上下文 offline/ 目录即可离线安装。
+COPY offline/ /tmp/offline/
+RUN if [ -s /tmp/offline/7z2606-linux-x64.tar.xz ]; then cp /tmp/offline/7z2606-linux-x64.tar.xz /tmp/7z.tar.xz; \
+    else curl -fsSL -o /tmp/7z.tar.xz https://github.com/ip7z/7zip/releases/download/26.06/7z2606-linux-x64.tar.xz; fi && \
     echo "2b539cf067b2ad48e1baa5093dbaa8818b73542d1222a0ffde9dc5f2922ea62e  /tmp/7z.tar.xz" | sha256sum -c - && \
     tar -xJf /tmp/7z.tar.xz -C /usr/local && \
     ln -sf /usr/local/7zz /usr/local/bin/7z && \

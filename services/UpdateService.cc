@@ -479,7 +479,8 @@ int64_t ManifestInstallBytes(const Json::Value &manifest)
 
 HttpResult UpdateService::CheckUpdate(int userId,
                                       const std::string &currentVersion,
-                                      const std::string &platform)
+                                      const std::string &platform,
+                                      const std::string &product)
 {
     (void)platform; // 目前只有 Win32 一个平台
     HttpResult result;
@@ -492,7 +493,8 @@ HttpResult UpdateService::CheckUpdate(int userId,
             "select id, version, build_no, file_name, size_bytes, sha256, notes, "
             "       coalesce(min_version, '') as min_version, "
             "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
-            "from installer_version where status = 1 order by id desc limit 1");
+            "from installer_version where product = $1 and status = 1 order by id desc limit 1",
+            product);
 
         std::string latestVersion;
         if (!latestRows.empty())
@@ -501,6 +503,7 @@ HttpResult UpdateService::CheckUpdate(int userId,
         }
 
         result.jsondata["currentVersion"] = currentVersion;
+        result.jsondata["product"] = product;
         result.jsondata["latestVersion"] = latestVersion;
         result.jsondata["hasUpdate"] = false;
         result.jsondata["reason"] = "no_update";
@@ -569,9 +572,9 @@ HttpResult UpdateService::CheckUpdate(int userId,
             const std::string encodedFrom = drogon::utils::urlEncodeComponent(currentVersion);
             auto deltaRows = db->execSqlSync(
                 "select id, from_version, file_name, size_bytes, sha256, manifest "
-                "from update_delta where from_version = $1 and to_version = $2 and status = 1 "
-                "order by id desc limit 1",
-                currentVersion, latestVersion);
+                "from update_delta where product = $3 and from_version = $1 and to_version = $2 "
+                "and status = 1 order by id desc limit 1",
+                currentVersion, latestVersion, product);
             if (!deltaRows.empty())
             {
                 const auto &dr = deltaRows[0];
@@ -618,7 +621,8 @@ HttpResult UpdateService::AdminInitUpload(int userId,
                                           const std::string &fileSha256,
                                           const std::string &kind,
                                           const std::string &fromVersion,
-                                          const Json::Value &manifest)
+                                          const Json::Value &manifest,
+                                          const std::string &product)
 {
     HttpResult result;
     if (version.empty() || fileName.empty())
@@ -705,8 +709,8 @@ HttpResult UpdateService::AdminInitUpload(int userId,
             auto deltaRows = db->execSqlSync(
                 "select id, from_version, to_version, build_no, file_name, size_bytes, "
                 "       coalesce(sha256, '') as sha256, status "
-                "from update_delta where from_version = $1 and to_version = $2",
-                fromVersion, version);
+                "from update_delta where product = $3 and from_version = $1 and to_version = $2",
+                fromVersion, version, product);
             if (!deltaRows.empty())
             {
                 const auto &row = deltaRows[0];
@@ -736,8 +740,8 @@ HttpResult UpdateService::AdminInitUpload(int userId,
             auto versionRows = db->execSqlSync(
                 "select id, version, build_no, file_name, size_bytes, coalesce(sha256, '') as sha256, "
                 "       coalesce(min_version, '') as min_version, status "
-                "from installer_version where version = $1",
-                version);
+                "from installer_version where product = $2 and version = $1",
+                version, product);
             if (!versionRows.empty())
             {
                 const auto &row = versionRows[0];
@@ -834,10 +838,10 @@ HttpResult UpdateService::AdminInitUpload(int userId,
             db->execSqlSync(
                 "insert into installer_upload_session "
                 "(id, user_id, version, build_no, notes, min_version, file_name, file_size, "
-                " file_sha256, temp_name, uploaded_bytes, status, kind, from_version, manifest) "
-                "values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, $11, $12, $13::jsonb)",
+                " file_sha256, temp_name, uploaded_bytes, status, kind, from_version, manifest, product) "
+                "values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, $11, $12, $13::jsonb, $14)",
                 uploadId, userId, version, buildNo, notes, minVersion, safeName, fileSize,
-                sha, tempName, normalizedKind, fromValue, manifestText);
+                sha, tempName, normalizedKind, fromValue, manifestText, product);
         }
         catch (...)
         {
@@ -969,7 +973,8 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
         auto rows = db->execSqlSync(
             "select version, build_no, notes, min_version, file_name, file_size, file_sha256, "
             "       temp_name, status, installer_id, delta_id, coalesce(kind, 'full') as kind, "
-            "       coalesce(from_version, '') as from_version, manifest "
+            "       coalesce(from_version, '') as from_version, manifest, "
+            "       coalesce(product, 'pdms') as product "
             "from installer_upload_session where id = $1 and user_id = $2",
             uploadId, userId);
         if (rows.empty())
@@ -983,6 +988,7 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
         const int installerId = session["installer_id"].isNull() ? 0 : session["installer_id"].as<int>();
         const int deltaId = session["delta_id"].isNull() ? 0 : session["delta_id"].as<int>();
         const bool isDelta = session["kind"].as<std::string>() == "delta";
+        const std::string product = session["product"].as<std::string>();
 
         // 重复 complete（上次响应丢失）直接返回已有记录
         if (status == 1 && isDelta && deltaId > 0)
@@ -1095,8 +1101,8 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
             auto deltaDupRows = db->execSqlSync(
                 "select id, from_version, to_version, build_no, file_name, size_bytes, "
                 "       coalesce(sha256, '') as sha256, status "
-                "from update_delta where from_version = $1 and to_version = $2",
-                fromVersion, version);
+                "from update_delta where product = $3 and from_version = $1 and to_version = $2",
+                fromVersion, version, product);
             if (!deltaDupRows.empty())
             {
                 const auto &row = deltaDupRows[0];
@@ -1161,11 +1167,11 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
                 auto insertRows = db->execSqlSync(
                     "insert into update_delta "
                     "(from_version, to_version, build_no, file_name, file_path, size_bytes, "
-                    " sha256, manifest, status) "
-                    "values ($1, $2, $3::bigint, $4, $5, $6::bigint, $7, $8::jsonb, 0) "
+                    " sha256, manifest, status, product) "
+                    "values ($1, $2, $3::bigint, $4, $5, $6::bigint, $7, $8::jsonb, 0, $9) "
                     "returning id",
                     fromVersion, version, deltaBuildNo, safeName, deltaTarget.string(),
-                    fileSize, actualSha, manifestText);
+                    fileSize, actualSha, manifestText, product);
                 if (insertRows.empty())
                 {
                     result.setResult(ApiErrorCode::ApiError_DatabaseError);
@@ -1195,8 +1201,8 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
         auto dupRows = db->execSqlSync(
             "select id, version, build_no, file_name, size_bytes, coalesce(sha256, '') as sha256, "
             "       coalesce(min_version, '') as min_version, status "
-            "from installer_version where version = $1",
-            version);
+            "from installer_version where product = $2 and version = $1",
+            version, product);
         if (!dupRows.empty())
         {
             const auto &dup = dupRows[0];
@@ -1262,9 +1268,10 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
         {
             auto insertRows = db->execSqlSync(
                 "insert into installer_version "
-                "(version, build_no, file_name, file_path, size_bytes, sha256, notes, min_version, status) "
-                "values ($1, $2::bigint, $3, $4, $5::bigint, $6, $7, $8, 0) returning id",
-                version, buildNo, safeName, target.string(), fileSize, actualSha, notes, minVersion);
+                "(version, build_no, file_name, file_path, size_bytes, sha256, notes, min_version, status, product) "
+                "values ($1, $2::bigint, $3, $4, $5::bigint, $6, $7, $8, 0, $9) returning id",
+                version, buildNo, safeName, target.string(), fileSize, actualSha, notes, minVersion,
+                product);
             if (insertRows.empty())
             {
                 result.setResult(ApiErrorCode::ApiError_DatabaseError);
@@ -1285,7 +1292,7 @@ HttpResult UpdateService::AdminCompleteUpload(int userId, const std::string &upl
             uploadId, newId);
 
         // 全量包落库后自动生成与上一版本的文件级差量（后台任务，失败不影响上传结果）
-        DeltaBuilder::EnqueueAutoBuild(newId);
+        DeltaBuilder::EnqueueAutoBuild(newId, product);
 
         FillInstallerJson(result.jsondata, newId, version, buildNo, safeName, fileSize,
                           actualSha, minVersion, 0);
@@ -1304,7 +1311,8 @@ HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
                                                int64_t buildNo,
                                                const std::string &minVersion,
                                                const std::string &fileName,
-                                               std::string_view content)
+                                               std::string_view content,
+                                               const std::string &product)
 {
     HttpResult result;
     if (version.empty() || fileName.empty() || content.empty())
@@ -1336,7 +1344,8 @@ HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
     try
     {
         auto existRows = db->execSqlSync(
-            "select 1 from installer_version where version = $1", version);
+            "select 1 from installer_version where product = $2 and version = $1",
+            version, product);
         if (!existRows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "该版本号已存在");
@@ -1366,11 +1375,12 @@ HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
 
         const std::string sha = Sha256Hex(content);
         auto rows = db->execSqlSync(
-            "insert into installer_version (version, build_no, file_name, file_path, size_bytes, sha256, notes, min_version, status) "
-            "values ($1, $2::bigint, $3, $4, $5::bigint, $6, $7, $8, 0) "
+            "insert into installer_version "
+            "(version, build_no, file_name, file_path, size_bytes, sha256, notes, min_version, status, product) "
+            "values ($1, $2::bigint, $3, $4, $5::bigint, $6, $7, $8, 0, $9) "
             "returning id",
             version, buildNo, safeName, target.string(),
-            static_cast<int64_t>(content.size()), sha, notes, minVersion);
+            static_cast<int64_t>(content.size()), sha, notes, minVersion, product);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_DatabaseError);
@@ -1379,7 +1389,7 @@ HttpResult UpdateService::AdminUploadInstaller(const std::string &version,
 
         const int uploadedId = rows[0]["id"].as<int>();
         // 一次性上传（管理页）同样触发自动差量生成
-        DeltaBuilder::EnqueueAutoBuild(uploadedId);
+        DeltaBuilder::EnqueueAutoBuild(uploadedId, product);
 
         result.jsondata["id"] = uploadedId;
         result.jsondata["version"] = version;
@@ -1406,22 +1416,26 @@ HttpResult UpdateService::AdminPublishInstaller(int installerId)
     try
     {
         auto rows = db->execSqlSync(
-            "select id, version from installer_version where id = $1", installerId);
+            "select id, version, coalesce(product, 'pdms') as product "
+            "from installer_version where id = $1", installerId);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
             return result;
         }
 
+        const std::string publishedVersion = rows[0]["version"].as<std::string>();
+        const std::string product = rows[0]["product"].as<std::string>();
+
         // 同一时刻只保留一个已发布版本，其余置为下线（记录仍保留）
         db->execSqlSync(
-            "with unpublish as (update installer_version set status = 2 where status = 1) "
+            "with unpublish as (update installer_version set status = 2 "
+            " where product = $2 and status = 1) "
             "update installer_version set status = 1, published_at = now() where id = $1",
-            installerId);
+            installerId, product);
 
         // 自动生成的差量包随全量一起生效；还没生成完则在任务完成时按发布状态落库
-        const std::string publishedVersion = rows[0]["version"].as<std::string>();
-        DeltaBuilder::PublishAutoDelta(publishedVersion);
+        DeltaBuilder::PublishAutoDelta(publishedVersion, product);
 
         result.jsondata["id"] = installerId;
         result.jsondata["version"] = publishedVersion;
@@ -1463,18 +1477,20 @@ HttpResult UpdateService::AdminUpdateInstaller(int installerId,
     try
     {
         auto rows = db->execSqlSync(
-            "select id, version, status from installer_version where id = $1", installerId);
+            "select id, version, status, coalesce(product, 'pdms') as product "
+            "from installer_version where id = $1", installerId);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
             return result;
         }
+        const std::string product = rows[0]["product"].as<std::string>();
 
         if (version != rows[0]["version"].as<std::string>())
         {
             auto dupRows = db->execSqlSync(
-                "select 1 from installer_version where version = $1 and id <> $2",
-                version, installerId);
+                "select 1 from installer_version where product = $3 and version = $1 and id <> $2",
+                version, installerId, product);
             if (!dupRows.empty())
             {
                 result.setResult(ApiErrorCode::ApiError_CodeAlreadyExists, "该版本号已存在");
@@ -1492,11 +1508,11 @@ HttpResult UpdateService::AdminUpdateInstaller(int installerId,
         if (version != oldVersion)
         {
             // 版本号变了，按旧版本自动生成的差量已无意义
-            DeltaBuilder::RemoveAutoDeltasForVersion(oldVersion);
+            DeltaBuilder::RemoveAutoDeltasForVersion(oldVersion, product);
             if (oldStatus == 1)
             {
                 // 正在发布的版本改了号，按新号重新生成差量
-                DeltaBuilder::EnqueueAutoBuild(installerId);
+                DeltaBuilder::EnqueueAutoBuild(installerId, product);
             }
         }
 
@@ -1551,10 +1567,12 @@ HttpResult UpdateService::AdminDeleteInstaller(int installerId)
     auto db = drogon::app().getDbClient();
     std::string filePath;
     std::string version;
+    std::string product;
     try
     {
         auto rows = db->execSqlSync(
-            "select version, status, coalesce(file_path, '') as file_path "
+            "select version, status, coalesce(file_path, '') as file_path, "
+            "       coalesce(product, 'pdms') as product "
             "from installer_version where id = $1",
             installerId);
         if (rows.empty())
@@ -1564,6 +1582,7 @@ HttpResult UpdateService::AdminDeleteInstaller(int installerId)
         }
         version = rows[0]["version"].as<std::string>();
         filePath = rows[0]["file_path"].as<std::string>();
+        product = rows[0]["product"].as<std::string>();
 
         // 已发布的版本先下线再删，避免正在检查更新的客户端拿到一个不存在的下载
         if (rows[0]["status"].as<int>() == 1)
@@ -1599,7 +1618,7 @@ HttpResult UpdateService::AdminDeleteInstaller(int installerId)
     const std::filesystem::path dir = std::filesystem::path(StoreDir()) / version;
     std::filesystem::remove_all(dir, ec);
 
-    DeltaBuilder::RemoveAutoDeltasForVersion(version);
+    DeltaBuilder::RemoveAutoDeltasForVersion(version, product);
 
     result.jsondata["id"] = installerId;
     result.jsondata["version"] = version;
@@ -1607,7 +1626,7 @@ HttpResult UpdateService::AdminDeleteInstaller(int installerId)
     return result;
 }
 
-HttpResult UpdateService::AdminListInstallers()
+HttpResult UpdateService::AdminListInstallers(const std::string &product)
 {
     HttpResult result;
     auto db = drogon::app().getDbClient();
@@ -1617,7 +1636,7 @@ HttpResult UpdateService::AdminListInstallers()
             "select id, version, build_no, file_name, size_bytes, sha256, notes, min_version, status, "
             "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
             "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
-            "from installer_version order by id desc");
+            "from installer_version where product = $1 order by id desc", product);
 
         Json::Value items(Json::arrayValue);
         for (const auto &r : rows)
@@ -1770,7 +1789,7 @@ HttpResult UpdateService::AdminDeleteDelta(int deltaId)
     return result;
 }
 
-HttpResult UpdateService::AdminListDeltas()
+HttpResult UpdateService::AdminListDeltas(const std::string &product)
 {
     HttpResult result;
     auto db = drogon::app().getDbClient();
@@ -1780,7 +1799,7 @@ HttpResult UpdateService::AdminListDeltas()
             "select id, from_version, to_version, build_no, file_name, size_bytes, sha256, status, "
             "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
             "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
-            "from update_delta order by id desc");
+            "from update_delta where product = $1 order by id desc", product);
 
         Json::Value items(Json::arrayValue);
         for (const auto &r : rows)
@@ -1810,7 +1829,7 @@ HttpResult UpdateService::AdminListDeltas()
     return result;
 }
 
-HttpResult UpdateService::PublicReleases(int limit)
+HttpResult UpdateService::PublicReleases(int limit, const std::string &product)
 {
     HttpResult result;
     if (limit < 1 || limit > 2)
@@ -1826,9 +1845,10 @@ HttpResult UpdateService::PublicReleases(int limit)
             "       coalesce(sha256, '') as sha256, coalesce(notes, '') as notes, "
             "       to_char(published_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as published_at "
             "from installer_version "
-            "where status in (1, 2) and file_name is not null and file_name <> '' "
+            "where product = $2 and status in (1, 2) "
+            "  and file_name is not null and file_name <> '' "
             "order by id desc limit $1::int",
-            limit);
+            limit, product);
 
         Json::Value items(Json::arrayValue);
         for (const auto &row : rows)
@@ -1881,7 +1901,8 @@ HttpResult UpdateService::PublicReleases(int limit)
 }
 
 HttpResult UpdateService::PublicDownloadInfo(const std::string &version,
-                                             std::string &outFileName)
+                                             std::string &outFileName,
+                                             const std::string &product)
 {
     HttpResult result;
     if (!IsSafeVersion(version))
@@ -1895,10 +1916,10 @@ HttpResult UpdateService::PublicDownloadInfo(const std::string &version,
     {
         auto rows = db->execSqlSync(
             "select i.file_name, i.file_path from installer_version i "
-            "join (select id from installer_version where status in (1, 2) "
-            "      order by id desc limit 2) latest on latest.id = i.id "
+            "join (select id from installer_version where product = $2 "
+            "      and status in (1, 2) order by id desc limit 2) latest on latest.id = i.id "
             "where i.version = $1 order by i.id desc limit 1",
-            version);
+            version, product);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
@@ -1936,7 +1957,8 @@ bool UpdateService::ResolveDownload(int userId, const std::string &version,
                                     std::string &outPath, std::string &outFileName,
                                     HttpResult &errorResult,
                                     const std::string &kind,
-                                    const std::string &fromVersion)
+                                    const std::string &fromVersion,
+                                    const std::string &product)
 {
     auto db = drogon::app().getDbClient();
     try
@@ -1964,9 +1986,9 @@ bool UpdateService::ResolveDownload(int userId, const std::string &version,
             }
             auto rows = db->execSqlSync(
                 "select file_path, file_name from update_delta "
-                "where to_version = $1 and from_version = $2 and status = 1 "
-                "order by id desc limit 1",
-                version, fromVersion);
+                "where product = $3 and to_version = $1 and from_version = $2 "
+                "  and status = 1 order by id desc limit 1",
+                version, fromVersion, product);
             if (rows.empty())
             {
                 errorResult.setResult(ApiErrorCode::ApiError_InstallerNotFound);
@@ -1979,8 +2001,9 @@ bool UpdateService::ResolveDownload(int userId, const std::string &version,
         {
             auto rows = db->execSqlSync(
                 "select file_path, file_name from installer_version "
-                "where version = $1 and status = 1 order by id desc limit 1",
-                version);
+                "where product = $2 and version = $1 and status = 1 "
+                "order by id desc limit 1",
+                version, product);
             if (rows.empty())
             {
                 errorResult.setResult(ApiErrorCode::ApiError_InstallerNotFound);
@@ -2010,7 +2033,8 @@ bool UpdateService::ResolveDownload(int userId, const std::string &version,
 bool UpdateService::ResolveDeltaManifest(int userId, const std::string &toVersion,
                                          const std::string &fromVersion,
                                          Json::Value &outManifest,
-                                         HttpResult &errorResult)
+                                         HttpResult &errorResult,
+                                         const std::string &product)
 {
     if (!IsSafeVersion(toVersion) || !IsSafeVersion(fromVersion))
     {
@@ -2035,9 +2059,9 @@ bool UpdateService::ResolveDeltaManifest(int userId, const std::string &toVersio
 
         auto rows = db->execSqlSync(
             "select manifest from update_delta "
-            "where to_version = $1 and from_version = $2 and status = 1 "
-            "order by id desc limit 1",
-            toVersion, fromVersion);
+            "where product = $3 and to_version = $1 and from_version = $2 "
+            "  and status = 1 order by id desc limit 1",
+            toVersion, fromVersion, product);
         if (rows.empty())
         {
             errorResult.setResult(ApiErrorCode::ApiError_InstallerNotFound);

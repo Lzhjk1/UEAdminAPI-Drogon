@@ -14,18 +14,23 @@ class DeltaBuilder
 {
 public:
     // 全量包上传完成后触发（异步、串行队列）
-    static void EnqueueAutoBuild(int installerId);
+    static void EnqueueAutoBuild(int installerId,
+                                 const std::string &product = "pdms");
 
     // 全量包发布后调用：把对应草稿差量置为已发布；还没有差量时补触发一次生成
-    static void PublishAutoDelta(const std::string &toVersion);
+    static void PublishAutoDelta(const std::string &toVersion,
+                                 const std::string &product = "pdms");
 
     // 全量版本被改名/删除时，清理自动生成的相关差量与文件
-    static void RemoveAutoDeltasForVersion(const std::string &version);
+    static void RemoveAutoDeltasForVersion(const std::string &version,
+                                           const std::string &product = "pdms");
 
     // 管理端：最近任务列表 / 手动重建
-    static utils::HttpResult AdminListJobs(int limit);
+    static utils::HttpResult AdminListJobs(int limit,
+                                           const std::string &product = "pdms");
     static utils::HttpResult AdminRebuild(const std::string &fromVersion,
-                                          const std::string &toVersion);
+                                          const std::string &toVersion,
+                                          const std::string &product = "pdms");
 
     // 管理端：运行环境自检（7z / makensis / 模板资产 / 临时盘空间）
     static utils::HttpResult AdminHealth();

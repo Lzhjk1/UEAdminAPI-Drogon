@@ -34,6 +34,27 @@ HttpResponsePtr JsonResponse(const HttpResult &result)
     return resp;
 }
 
+// 更新通道产品线：缺省 pdms（老客户端不带参数），只接受 pdms / ueaicad
+std::string ReadProduct(const HttpRequestPtr &req)
+{
+    std::string product = req->getParameter("product");
+    if (product.empty())
+    {
+        if (auto json = req->getJsonObject())
+        {
+            if (json->isMember("product") && (*json)["product"].isString())
+            {
+                product = (*json)["product"].asString();
+            }
+        }
+    }
+    if (product != "ueaicad")
+    {
+        product = "pdms";
+    }
+    return product;
+}
+
 int ParseId(const std::string &value)
 {
     try
@@ -164,7 +185,8 @@ Task<HttpResponsePtr> UpdateController::check(HttpRequestPtr req)
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "缺少 currentVersion");
         co_return JsonResponse(result);
     }
-    co_return JsonResponse(UpdateService::CheckUpdate(CurrentUserId(req), currentVersion, platform));
+    co_return JsonResponse(UpdateService::CheckUpdate(CurrentUserId(req), currentVersion, platform,
+                                                      ReadProduct(req)));
 }
 
 Task<HttpResponsePtr> UpdateController::download(HttpRequestPtr req, std::string version)
@@ -175,7 +197,7 @@ Task<HttpResponsePtr> UpdateController::download(HttpRequestPtr req, std::string
     const std::string kind = req->getParameter("kind");
     const std::string fromVersion = req->getParameter("fromVersion");
     if (!UpdateService::ResolveDownload(CurrentUserId(req), version, path, fileName, error,
-                                        kind, fromVersion))
+                                        kind, fromVersion, ReadProduct(req)))
     {
         co_return JsonResponse(error);
     }
@@ -205,13 +227,13 @@ Task<HttpResponsePtr> UpdateController::publicReleases(HttpRequestPtr req)
     {
         limit = 2;
     }
-    co_return JsonResponse(UpdateService::PublicReleases(limit));
+    co_return JsonResponse(UpdateService::PublicReleases(limit, ReadProduct(req)));
 }
 
 Task<HttpResponsePtr> UpdateController::publicDownload(HttpRequestPtr req, std::string version)
 {
     std::string fileName;
-    HttpResult result = UpdateService::PublicDownloadInfo(version, fileName);
+    HttpResult result = UpdateService::PublicDownloadInfo(version, fileName, ReadProduct(req));
     if (result.code != 0)
     {
         auto resp = HttpResponse::newHttpResponse();
@@ -234,7 +256,8 @@ Task<HttpResponsePtr> UpdateController::deltaManifest(HttpRequestPtr req, std::s
     const std::string fromVersion = req->getParameter("fromVersion");
     HttpResult result;
     Json::Value manifest;
-    if (!UpdateService::ResolveDeltaManifest(CurrentUserId(req), version, fromVersion, manifest, result))
+    if (!UpdateService::ResolveDeltaManifest(CurrentUserId(req), version, fromVersion, manifest, result,
+                                             ReadProduct(req)))
     {
         co_return JsonResponse(result);
     }
@@ -298,7 +321,8 @@ Task<HttpResponsePtr> UpdateController::upload(HttpRequestPtr req)
     }
 
     co_return JsonResponse(UpdateService::AdminUploadInstaller(
-        version, notes, buildNo, minVersion, file.getFileName(), file.fileContent()));
+        version, notes, buildNo, minVersion, file.getFileName(), file.fileContent(),
+        ReadProduct(req)));
 }
 
 Task<HttpResponsePtr> UpdateController::uploadInit(HttpRequestPtr req)
@@ -349,7 +373,8 @@ Task<HttpResponsePtr> UpdateController::uploadInit(HttpRequestPtr req)
 
     co_return JsonResponse(UpdateService::AdminInitUpload(
         CurrentUserId(req), version, JsonInt64(*json, "buildNo", 0), notes, minVersion,
-        fileName, JsonInt64(*json, "fileSize", 0), fileSha256, kind, fromVersion, manifest));
+        fileName, JsonInt64(*json, "fileSize", 0), fileSha256, kind, fromVersion, manifest,
+        ReadProduct(req)));
 }
 
 Task<HttpResponsePtr> UpdateController::uploadChunk(HttpRequestPtr req, std::string uploadId)
@@ -469,7 +494,7 @@ Task<HttpResponsePtr> UpdateController::update(HttpRequestPtr req, std::string i
 Task<HttpResponsePtr> UpdateController::list(HttpRequestPtr req)
 {
     (void)req;
-    co_return JsonResponse(UpdateService::AdminListInstallers());
+    co_return JsonResponse(UpdateService::AdminListInstallers(ReadProduct(req)));
 }
 
 Task<HttpResponsePtr> UpdateController::publishDelta(HttpRequestPtr req, std::string deltaId)
@@ -514,13 +539,13 @@ Task<HttpResponsePtr> UpdateController::removeDelta(HttpRequestPtr req, std::str
 Task<HttpResponsePtr> UpdateController::listDeltas(HttpRequestPtr req)
 {
     (void)req;
-    co_return JsonResponse(UpdateService::AdminListDeltas());
+    co_return JsonResponse(UpdateService::AdminListDeltas(ReadProduct(req)));
 }
 
 Task<HttpResponsePtr> UpdateController::deltaJobs(HttpRequestPtr req)
 {
     (void)req;
-    co_return JsonResponse(DeltaBuilder::AdminListJobs(50));
+    co_return JsonResponse(DeltaBuilder::AdminListJobs(50, ReadProduct(req)));
 }
 
 Task<HttpResponsePtr> UpdateController::deltaHealth(HttpRequestPtr req)
@@ -540,5 +565,5 @@ Task<HttpResponsePtr> UpdateController::deltaRebuild(HttpRequestPtr req)
     }
     const std::string fromVersion = JsonString(*json, "fromVersion");
     const std::string toVersion = JsonString(*json, "toVersion");
-    co_return JsonResponse(DeltaBuilder::AdminRebuild(fromVersion, toVersion));
+    co_return JsonResponse(DeltaBuilder::AdminRebuild(fromVersion, toVersion, ReadProduct(req)));
 }

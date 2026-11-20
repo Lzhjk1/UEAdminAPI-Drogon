@@ -103,10 +103,13 @@ std::string AssetsDir()
 std::string SevenZipPath() { return ConfigString("SevenZipPath", "7z"); }
 std::string MakensisPath() { return ConfigString("MakensisPath", "makensis"); }
 
-std::vector<std::string> ForceGroups()
+std::vector<std::string> ForceGroups(const std::string &product)
 {
-    const std::string configured = ConfigString("DeltaForceGroups",
-        "project\\UHS\\UHS000,PHSPrjDB,AI\\MCP\\python");
+    const std::string configured = ConfigString(
+        product == "ueaicad" ? "DeltaForceGroupsUeAiCad" : "DeltaForceGroups",
+        product == "ueaicad"
+            ? "resources\\python"
+            : "project\\UHS\\UHS000,PHSPrjDB,AI\\MCP\\python");
     std::vector<std::string> groups;
     std::stringstream ss(configured);
     std::string item;
@@ -634,12 +637,13 @@ bool VersionLess(const std::string &lhs, const std::string &rhs)
 // ---------- 任务 ----------
 
 int CreateJob(const std::shared_ptr<drogon::orm::DbClient> &db, const std::string &fromVersion,
-              const std::string &toVersion)
+              const std::string &toVersion,
+              const std::string &product)
 {
     auto rows = db->execSqlSync(
-        "insert into update_delta_job (from_version, to_version, status, message) "
-        "values ($1, $2, 0, '') returning id",
-        fromVersion, toVersion);
+        "insert into update_delta_job (from_version, to_version, status, message, product) "
+        "values ($1, $2, 0, '', $3) returning id",
+        fromVersion, toVersion, product);
     return rows.empty() ? 0 : rows[0]["id"].as<int>();
 }
 
@@ -670,6 +674,7 @@ struct InstallerRow
     std::string filePath;
     int status = 0;
     int64_t buildNo = 0;
+    std::string product = "pdms";
 };
 
 bool LoadInstaller(const std::shared_ptr<drogon::orm::DbClient> &db, int installerId,
@@ -677,7 +682,7 @@ bool LoadInstaller(const std::shared_ptr<drogon::orm::DbClient> &db, int install
 {
     auto rows = db->execSqlSync(
         "select id, version, coalesce(file_path, '') as file_path, status, "
-        "       coalesce(build_no, 0) as build_no "
+        "       coalesce(build_no, 0) as build_no, coalesce(product, 'pdms') as product "
         "from installer_version where id = $1",
         installerId);
     if (rows.empty())
@@ -689,6 +694,7 @@ bool LoadInstaller(const std::shared_ptr<drogon::orm::DbClient> &db, int install
     out.filePath = rows[0]["file_path"].as<std::string>();
     out.status = rows[0]["status"].as<int>();
     out.buildNo = rows[0]["build_no"].as<int64_t>();
+    out.product = rows[0]["product"].as<std::string>();
     return !out.filePath.empty();
 }
 
@@ -699,9 +705,9 @@ bool PickBaseInstaller(const std::shared_ptr<drogon::orm::DbClient> &db,
         "select id, version, coalesce(file_path, '') as file_path, status, "
         "       coalesce(build_no, 0) as build_no "
         "from installer_version "
-        "where id <> $1 and coalesce(file_path, '') <> '' "
+        "where product = $2 and id <> $1 and coalesce(file_path, '') <> '' "
         "order by (status = 1) desc, id desc limit 20",
-        target.id);
+        target.id, target.product);
     bool found = false;
     for (const auto &row : rows)
     {
@@ -711,6 +717,7 @@ bool PickBaseInstaller(const std::shared_ptr<drogon::orm::DbClient> &db,
         candidate.filePath = row["file_path"].as<std::string>();
         candidate.status = row["status"].as<int>();
         candidate.buildNo = row["build_no"].as<int64_t>();
+        candidate.product = target.product;
         if (candidate.version == target.version)
         {
             continue;
@@ -727,11 +734,11 @@ bool PickBaseInstaller(const std::shared_ptr<drogon::orm::DbClient> &db,
 }
 
 bool DeltaExists(const std::shared_ptr<drogon::orm::DbClient> &db, const std::string &fromVersion,
-                 const std::string &toVersion)
+                 const std::string &toVersion, const std::string &product)
 {
     auto rows = db->execSqlSync(
-        "select 1 from update_delta where from_version = $1 and to_version = $2",
-        fromVersion, toVersion);
+        "select 1 from update_delta where product = $3 and from_version = $1 and to_version = $2",
+        fromVersion, toVersion, product);
     return !rows.empty();
 }
 
@@ -755,7 +762,7 @@ void RunJob(int installerId)
     InstallerRow base;
     if (!PickBaseInstaller(db, target, base))
     {
-        const int jobId = CreateJob(db, "", target.version);
+        const int jobId = CreateJob(db, "", target.version, target.product);
         if (jobId > 0)
         {
             UpdateJob(db, jobId, JobResult::Skipped, "没有可用的基线全量版本，跳过差量生成");
@@ -763,9 +770,9 @@ void RunJob(int installerId)
         return;
     }
 
-    if (DeltaExists(db, base.version, target.version))
+    if (DeltaExists(db, base.version, target.version, target.product))
     {
-        const int jobId = CreateJob(db, base.version, target.version);
+        const int jobId = CreateJob(db, base.version, target.version, target.product);
         if (jobId > 0)
         {
             UpdateJob(db, jobId, JobResult::Skipped, "该基线-目标版本的差量包已存在");
@@ -773,7 +780,7 @@ void RunJob(int installerId)
         return;
     }
 
-    const int jobId = CreateJob(db, base.version, target.version);
+    const int jobId = CreateJob(db, base.version, target.version, target.product);
     if (jobId <= 0)
     {
         return;
@@ -858,7 +865,7 @@ void RunJob(int installerId)
             targetMap[Lower(entry.path)] = entry;
         }
 
-        const std::vector<std::string> groups = ForceGroups();
+        const std::vector<std::string> groups = ForceGroups(target.product);
         std::vector<FileEntry> changed;
         std::vector<std::string> deletes;
         std::vector<std::string> forceTouched;
@@ -944,9 +951,12 @@ void RunJob(int installerId)
         }
 
         const std::string assets = AssetsDir();
-        const fs::path nsiPath = fs::path(assets) / "AutoPDMS-project-setup.nsi";
+        const fs::path nsiPath = fs::path(assets) /
+            (target.product == "ueaicad" ? "UEAICAD-setup.nsi"
+                                             : "AutoPDMS-project-setup.nsi");
         const fs::path licensePath = fs::path(assets) / "UESoftMYRMAgreement.txt";
-        if (!fs::exists(nsiPath) || !fs::exists(licensePath))
+        if (!fs::exists(nsiPath) ||
+            (target.product != "ueaicad" && !fs::exists(licensePath)))
         {
             FailJob(db, jobId, "服务端缺失 NSIS 模板或许可证文件: " + assets);
             return;
@@ -961,7 +971,9 @@ void RunJob(int installerId)
             return;
         }
         const fs::path deltaExe = deltaDir /
-            ("UEAP_PRJ_" + target.version + "_Delta_from_" + base.version + "_Win32.exe");
+            (target.product == "ueaicad"
+                 ? ("UEAICAD_" + target.version + "_Delta_from_" + base.version + ".exe")
+                 : ("UEAP_PRJ_" + target.version + "_Delta_from_" + base.version + "_Win32.exe"));
         fs::remove(deltaExe, ec);
 
         const std::vector<int> toParts = ParseVersion(target.version);
@@ -1036,11 +1048,11 @@ void RunJob(int installerId)
         auto rows = db->execSqlSync(
             "insert into update_delta "
             "(from_version, to_version, build_no, file_name, file_path, size_bytes, sha256, "
-            " manifest, status, origin, published_at) "
-            "values ($1, $2, $3::bigint, $4, $5, $6::bigint, $7, $8::jsonb, 0, 'auto', null) "
+            " manifest, status, origin, published_at, product) "
+            "values ($1, $2, $3::bigint, $4, $5, $6::bigint, $7, $8::jsonb, 0, 'auto', null, $9) "
             "returning id",
             base.version, target.version, target.buildNo, deltaFileName,
-            deltaPathText, deltaSize, deltaSha, manifestText);
+            deltaPathText, deltaSize, deltaSha, manifestText, target.product);
 
         if (rows.empty())
         {
@@ -1051,7 +1063,7 @@ void RunJob(int installerId)
         }
 
         // 全量可能在上传后、任务完成前被发布：统一走一次"随全量发布"
-        DeltaBuilder::PublishAutoDelta(target.version);
+        DeltaBuilder::PublishAutoDelta(target.version, target.product);
 
         std::ostringstream done;
         done << "差量包已生成（" << (deltaSize / 1048576.0) << " MB，"
@@ -1117,8 +1129,9 @@ void WorkerLoop()
 
 // ---------- 对外接口 ----------
 
-void DeltaBuilder::EnqueueAutoBuild(int installerId)
+void DeltaBuilder::EnqueueAutoBuild(int installerId, const std::string &product)
 {
+    (void)product;  // 队列只存 installerId，产品由 RunJob 从全量包记录读取
     if (!AutoEnabled())
     {
         LOG_INFO << "差量自动生成已关闭（Installer.DeltaAuto=false），跳过 id=" << installerId;
@@ -1132,7 +1145,7 @@ void DeltaBuilder::EnqueueAutoBuild(int installerId)
     g_queueCv.notify_one();
 }
 
-void DeltaBuilder::PublishAutoDelta(const std::string &toVersion)
+void DeltaBuilder::PublishAutoDelta(const std::string &toVersion, const std::string &product)
 {
     try
     {
@@ -1146,25 +1159,27 @@ void DeltaBuilder::PublishAutoDelta(const std::string &toVersion)
 
         // 先看有没有正在跑的任务，避免发布时重复排队
         auto activeRows = db->execSqlSync(
-            "select 1 from update_delta_job where to_version = $1 and status in (0, 1) limit 1",
-            toVersion);
+            "select 1 from update_delta_job where product = $2 and to_version = $1\n"
+            "  and status in (0, 1) limit 1",
+            toVersion, product);
         const bool hasActive = !activeRows.empty();
 
         db->execSqlSync(
             "update update_delta set status = 1, published_at = now() "
-            "where to_version = $1 and status = 0 and origin = 'auto'",
-            toVersion);
+            "where product = $2 and to_version = $1 and status = 0 and origin = 'auto'",
+            toVersion, product);
 
         auto existRows = db->execSqlSync(
-            "select 1 from update_delta where to_version = $1 limit 1", toVersion);
+            "select 1 from update_delta where product = $2 and to_version = $1 limit 1", toVersion);
         if (existRows.empty() && !hasActive)
         {
             auto idRows = db->execSqlSync(
-                "select id from installer_version where version = $1 order by id desc limit 1",
-                toVersion);
+                "select id from installer_version where product = $2 and version = $1 "
+                "order by id desc limit 1",
+                toVersion, product);
             if (!idRows.empty())
             {
-                EnqueueAutoBuild(idRows[0]["id"].as<int>());
+                EnqueueAutoBuild(idRows[0]["id"].as<int>(), product);
             }
         }
     }
@@ -1174,15 +1189,16 @@ void DeltaBuilder::PublishAutoDelta(const std::string &toVersion)
     }
 }
 
-void DeltaBuilder::RemoveAutoDeltasForVersion(const std::string &version)
+void DeltaBuilder::RemoveAutoDeltasForVersion(const std::string &version, const std::string &product)
 {
     try
     {
         auto db = drogon::app().getDbClient();
         auto rows = db->execSqlSync(
             "select id, from_version, to_version, coalesce(file_path, '') as file_path "
-            "from update_delta where origin = 'auto' and (from_version = $1 or to_version = $1)",
-            version);
+            "from update_delta where product = $2 and origin = 'auto' "
+            "  and (from_version = $1 or to_version = $1)",
+            version, product);
         for (const auto &row : rows)
         {
             const std::string fromVersion = row["from_version"].as<std::string>();
@@ -1204,7 +1220,7 @@ void DeltaBuilder::RemoveAutoDeltasForVersion(const std::string &version)
     }
 }
 
-HttpResult DeltaBuilder::AdminListJobs(int limit)
+HttpResult DeltaBuilder::AdminListJobs(int limit, const std::string &product)
 {
     HttpResult result;
     if (limit <= 0 || limit > 200)
@@ -1218,7 +1234,7 @@ HttpResult DeltaBuilder::AdminListJobs(int limit)
             "select id, from_version, to_version, status, message, "
             "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
             "       to_char(updated_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as updated_at "
-            "from update_delta_job order by id desc limit $1::int",
+            "from update_delta_job where product = $2 order by id desc limit $1::int",
             limit);
         Json::Value items(Json::arrayValue);
         for (const auto &row : rows)
@@ -1257,6 +1273,10 @@ HttpResult DeltaBuilder::AdminHealth()
     if (!fs::exists(nsiPath))
     {
         missing.append("AutoPDMS-project-setup.nsi");
+    }
+    if (!fs::exists(fs::path(assets) / "UEAICAD-setup.nsi"))
+    {
+        missing.append("UEAICAD-setup.nsi");
     }
     if (!fs::exists(licensePath))
     {
@@ -1316,7 +1336,7 @@ HttpResult DeltaBuilder::AdminHealth()
     data["tempSpaceOk"] = spaceOk;
 
     Json::Value groups(Json::arrayValue);
-    for (const auto &group : ForceGroups())
+    for (const auto &group : ForceGroups("pdms"))
     {
         groups.append(group);
     }
@@ -1330,7 +1350,8 @@ HttpResult DeltaBuilder::AdminHealth()
     return result;
 }
 
-HttpResult DeltaBuilder::AdminRebuild(const std::string &fromVersion, const std::string &toVersion)
+HttpResult DeltaBuilder::AdminRebuild(const std::string &fromVersion, const std::string &toVersion,
+                                            const std::string &product)
 {
     HttpResult result;
     if (!AutoEnabled())
@@ -1347,8 +1368,9 @@ HttpResult DeltaBuilder::AdminRebuild(const std::string &fromVersion, const std:
     {
         auto db = drogon::app().getDbClient();
         auto rows = db->execSqlSync(
-            "select id from installer_version where version = $1 order by id desc limit 1",
-            toVersion);
+            "select id from installer_version where product = $2 and version = $1 "
+                "order by id desc limit 1",
+            toVersion, product);
         if (rows.empty())
         {
             result.setResult(ApiErrorCode::ApiError_InstallerNotFound);
@@ -1360,8 +1382,8 @@ HttpResult DeltaBuilder::AdminRebuild(const std::string &fromVersion, const std:
         {
             auto oldRows = db->execSqlSync(
                 "select id, coalesce(file_path, '') as file_path from update_delta "
-                "where from_version = $1 and to_version = $2 and origin = 'auto'",
-                fromVersion, toVersion);
+                "where product = $3 and from_version = $1 and to_version = $2 and origin = 'auto'",
+                fromVersion, toVersion, product);
             for (const auto &row : oldRows)
             {
                 db->execSqlSync("delete from update_delta where id = $1", row["id"].as<int>());
@@ -1370,7 +1392,7 @@ HttpResult DeltaBuilder::AdminRebuild(const std::string &fromVersion, const std:
             }
         }
 
-        EnqueueAutoBuild(rows[0]["id"].as<int>());
+        EnqueueAutoBuild(rows[0]["id"].as<int>(), product);
         result.jsondata["queued"] = true;
         result.jsondata["toVersion"] = toVersion;
         result.setResult(ApiErrorCode::ApiError_Success, "已加入差量生成队列");
