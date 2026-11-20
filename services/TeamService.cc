@@ -55,6 +55,49 @@ std::string SubscriptionExpiredMessage(bool trial)
     return fallback;
 }
 
+// 套餐席位上限：0 表示不限制（存量/厂商团队）
+int PlanSeatLimit(const std::string &plan, bool active)
+{
+    if (!active)
+    {
+        return 1; // Free
+    }
+    if (plan == "max")
+    {
+        return 30;
+    }
+    if (plan == "pro" || plan == "standard" || plan == "legacy")
+    {
+        return 10;
+    }
+    if (plan == "plus" || plan == "trial")
+    {
+        return 4;
+    }
+    return 1;
+}
+
+int SeatLimitForTeam(const std::shared_ptr<drogon::orm::DbClient> &db, int teamId, bool isVendor)
+{
+    if (isVendor)
+    {
+        return 0;
+    }
+    auto rows = db->execSqlSync(
+        "select plan, (end_date >= (now() at time zone 'Asia/Shanghai')::date) as active "
+        "from team_subscription where team_id = $1 and status = 1 "
+        "order by end_date desc limit 1",
+        teamId);
+    if (rows.empty())
+    {
+        return 0; // 没有订阅记录的存量团队不限制
+    }
+    const std::string plan = rows[0]["plan"].isNull()
+        ? std::string()
+        : rows[0]["plan"].as<std::string>();
+    return PlanSeatLimit(plan, rows[0]["active"].as<bool>());
+}
+
 // 取当前用户所在团队与角色；不在团队时返回 false
 bool GetMembership(const std::shared_ptr<drogon::orm::DbClient> &db, int userId, int &teamId, std::string &roleCode)
 {
@@ -558,6 +601,7 @@ HttpResult TeamService::GetBootstrap(int userId)
             "                   where usr.user_id = u.id and sr.code = 'super_admin')) as is_super_admin, "
             "       coalesce(b.balance_cents, 0) as balance_cents, "
             "       t.id as team_id, t.name as team_name, t.status as team_status, r.code as role_code, "
+            "       coalesce(t.is_vendor, false) as team_is_vendor, "
             "       to_char(s.start_date, 'YYYY-MM-DD') as sub_start, "
             "       to_char(s.end_date, 'YYYY-MM-DD') as sub_end, "
             "       coalesce(s.is_trial, false) as sub_is_trial, "
@@ -584,7 +628,12 @@ HttpResult TeamService::GetBootstrap(int userId)
         const auto &row = rows[0];
         result.jsondata["userId"] = row["id"].as<int>();
         result.jsondata["privilege"] = row["privilege"].as<int>();
-        result.jsondata["isSuperAdmin"] = row["is_super_admin"].as<bool>();
+        const bool isSuperAdmin = row["is_super_admin"].as<bool>();
+        const bool isVendorTeam = !row["team_is_vendor"].isNull() && row["team_is_vendor"].as<bool>();
+        const bool vendorMax = isVendorTeam && isSuperAdmin;
+        result.jsondata["isSuperAdmin"] = isSuperAdmin;
+        result.jsondata["isVendor"] = isVendorTeam;
+        if (vendorMax) result.jsondata["vendorMax"] = true;
         result.jsondata["mustChangePwd"] = row["must_change_pwd"].as<bool>();
         result.jsondata["balanceCents"] =
             static_cast<Json::Int64>(row["balance_cents"].as<int64_t>());
@@ -599,6 +648,7 @@ HttpResult TeamService::GetBootstrap(int userId)
             result.jsondata["team"]["name"] = row["team_name"].as<std::string>();
             result.jsondata["team"]["status"] = teamActive ? 1 : 2;
             result.jsondata["team"]["roleCode"] = row["role_code"].as<std::string>();
+            result.jsondata["team"]["isVendor"] = isVendorTeam;
         }
 
         result.jsondata["subscription"]["startDate"] =
@@ -612,6 +662,15 @@ HttpResult TeamService::GetBootstrap(int userId)
         result.jsondata["subscription"]["isTrial"] = row["sub_is_trial"].as<bool>();
         result.jsondata["subscription"]["remainingDays"] =
             row["sub_remaining_days"].isNull() ? 0 : row["sub_remaining_days"].as<int>();
+        if (vendorMax)
+        {
+            result.jsondata["subscription"]["startDate"] = "";
+            result.jsondata["subscription"]["endDate"] = "";
+            result.jsondata["subscription"]["active"] = true;
+            result.jsondata["subscription"]["plan"] = "max";
+            result.jsondata["subscription"]["isTrial"] = false;
+            result.jsondata["subscription"]["remainingDays"] = 0;
+        }
 
         // 功能授权：账号级覆盖团队级，缺失视为关闭；团队停用时一律关闭
         bool cloudAuth = false;
@@ -634,6 +693,11 @@ HttpResult TeamService::GetBootstrap(int userId)
             {
                 updateAuth = enabled;
             }
+        }
+        if (vendorMax)
+        {
+            cloudAuth = true;
+            updateAuth = true;
         }
         result.jsondata["featureAuth"]["cloud_project"] = cloudAuth;
         result.jsondata["featureAuth"]["online_update"] = updateAuth;
@@ -683,12 +747,26 @@ HttpResult TeamService::GetTeam(int userId)
         result.jsondata["team"]["ownerUserId"] =
             teamRows[0]["owner_user_id"].isNull() ? 0 : teamRows[0]["owner_user_id"].as<int>();
         const bool isVendor = teamRows[0]["is_vendor"].as<bool>();
+        const bool superAdmin = IsSuperAdmin(db, userId);
+        const bool vendorMax = isVendor && superAdmin;
         result.jsondata["isVendor"] = isVendor;
+        if (vendorMax) result.jsondata["vendorMax"] = true;
         // 客户端据此决定是否把「团队管理员」/「超级管理员」作为可勾选角色
         result.jsondata["canGrantTeamAdmin"] = CanGrantTeamAdmin(db, userId, teamId);
-        result.jsondata["canGrantSuperAdmin"] = isVendor && IsSuperAdmin(db, userId);
+        result.jsondata["canGrantSuperAdmin"] = isVendor && superAdmin;
+        result.jsondata["team"]["isVendor"] = isVendor;
 
-        result.jsondata["subscription"] = LoadSubscription(db, teamId);
+        Json::Value companySubscription = LoadSubscription(db, teamId);
+        if (vendorMax)
+        {
+            companySubscription["startDate"] = "";
+            companySubscription["endDate"] = "";
+            companySubscription["active"] = true;
+            companySubscription["plan"] = "max";
+            companySubscription["isTrial"] = false;
+            companySubscription["remainingDays"] = 0;
+        }
+        result.jsondata["subscription"] = companySubscription;
         result.jsondata["members"] = LoadTeamMembers(db, teamId, isVendor);
 
         result.setResult(ApiErrorCode::ApiError_Success, "success");
@@ -765,6 +843,24 @@ HttpResult TeamService::CreateMemberInTeam(int operatorUserId,
             return result;
         }
         const bool isVendor = teamRows[0]["is_vendor"].as<bool>();
+
+        const int seatLimit = SeatLimitForTeam(db, teamId, isVendor);
+        if (seatLimit > 0)
+        {
+            auto countRows = db->execSqlSync(
+                "select count(*)::int as used from team_member "
+                "where team_id = $1 and status = 1",
+                teamId);
+            const int used = countRows.empty() ? 0 : countRows[0]["used"].as<int>();
+            if (used >= seatLimit)
+            {
+                result.setResult(ApiErrorCode::ApiError_InvalidOperation,
+                                 "团队席位已满（" + std::to_string(used) + "/" +
+                                     std::to_string(seatLimit) +
+                                     "），请升级套餐或增购席位");
+                return result;
+            }
+        }
 
         const bool grantSuper = !systemRoleCodes.empty();
         if (grantSuper)
