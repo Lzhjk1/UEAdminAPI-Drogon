@@ -52,6 +52,28 @@ std::string JsonString(const Json::Value &json, const char *key)
     return std::string();
 }
 
+int64_t JsonInt64(const Json::Value &json, const char *key, int64_t fallback)
+{
+    if (!json.isMember(key))
+    {
+        return fallback;
+    }
+    const auto &node = json[key];
+    if (node.isInt64())
+    {
+        return node.asInt64();
+    }
+    if (node.isUInt64())
+    {
+        return static_cast<int64_t>(node.asUInt64());
+    }
+    if (node.isString())
+    {
+        return ParseInt64(node.asString(), fallback);
+    }
+    return fallback;
+}
+
 } // namespace
 
 Task<HttpResponsePtr> MarketController::list(HttpRequestPtr req)
@@ -98,7 +120,7 @@ Task<HttpResponsePtr> MarketController::uploadInit(HttpRequestPtr req)
         JsonString(*json, "description"),
         JsonString(*json, "category"),
         JsonString(*json, "fileName"),
-        ParseInt64(JsonString(*json, "fileSize"), 0)));
+        JsonInt64(*json, "fileSize", 0)));
 }
 
 Task<HttpResponsePtr> MarketController::uploadChunk(HttpRequestPtr req, std::string uploadId)
