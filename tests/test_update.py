@@ -33,7 +33,7 @@ def _clean_test_installers():
                   f"or from_version like '{TEST_VERSION_PREFIX}%'")
             _psql(f"delete from update_delta where to_version like '{TEST_VERSION_PREFIX}%' "
                   f"or from_version like '{TEST_VERSION_PREFIX}%'")
-            _psql(f"delete from installer_version where version like '{TEST_VERSION_PREFIX}%'")
+            _psql(f"delete from installer_version where version like '{TEST_VERSION_PREFIX}%' or version like '0.9.%'")
         except Exception as e:
             print(f"[WARN] 清理安装包记录失败: {e}")
         for path in (REPO_ROOT / "installers").glob(f"{TEST_VERSION_PREFIX}*"):
@@ -116,6 +116,53 @@ def test_upload_publish_and_download(seeded_org, logged_client):
     assert latest["hasUpdate"] is False
     assert latest["reason"] == "no_update"
     assert latest["latestVersion"] == version
+
+
+def test_ueaicad_channel_isolated(seeded_org, logged_client):
+    """UEAICAD 独立通道：产品之间版本、发布状态与列表互不影响，缺省仍是 pdms。"""
+    admin = logged_client(seeded_org.admin_name, seeded_org.admin_password)
+    vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)
+    _make_paid_with_update_auth(vendor, seeded_org)
+
+    pdms_version = "11.7.970"
+    pdms = vendor.admin_upload_installer(pdms_version, FAKE_EXE + b"P", build_no=970)["data"]
+    vendor.admin_publish_installer(pdms["id"])
+
+    # 默认（不带 product）仍是 PDMS 通道
+    data = admin.update_check("11.7.969")["data"]
+    assert data["hasUpdate"] is True
+    assert data["version"] == pdms_version
+    assert data.get("product", "pdms") == "pdms"
+
+    # UEAICAD 通道独立发布（同一团队）
+    uea_version = "0.9.1"
+    uea = vendor.admin_upload_installer(uea_version, FAKE_EXE + b"U",
+                                        build_no=901, product="ueaicad")["data"]
+    vendor.admin_publish_installer(uea["id"])
+
+    data = admin.update_check("0.9.0", product="ueaicad")["data"]
+    assert data["hasUpdate"] is True
+    assert data["version"] == uea_version
+    assert data["product"] == "ueaicad"
+
+    # PDMS 通道不受 UEAICAD 发布影响
+    data = admin.update_check(pdms_version)["data"]
+    assert data["hasUpdate"] is False
+    assert data["latestVersion"] == pdms_version
+
+    # UEAICAD 已是最新
+    data = admin.update_check(uea_version, product="ueaicad")["data"]
+    assert data["hasUpdate"] is False
+    assert data["reason"] == "no_update"
+
+    # 列表按产品过滤
+    pdms_list = vendor.admin_list_installers()["data"]["installers"]
+    assert any(item["version"] == pdms_version for item in pdms_list)
+    assert all(item["version"] != uea_version for item in pdms_list)
+
+    uea_list = vendor.admin_list_installers(product="ueaicad")["data"]["installers"]
+    assert any(item["version"] == uea_version for item in uea_list)
+    assert all(item["version"] != pdms_version for item in uea_list)
 
 
 def test_upload_requires_admin_and_exe(seeded_org, logged_client):

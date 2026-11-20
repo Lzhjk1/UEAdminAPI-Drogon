@@ -259,9 +259,12 @@ class ApiClient:
         return self._raw_request("GET", "/login/done")
 
     # ---------- 在线更新 ----------
-    def update_check(self, current_version: str, platform: str = "win32"):
-        return self._request("GET", "/api/update/check",
-                             params={"currentVersion": current_version, "platform": platform})
+    def update_check(self, current_version: str, platform: str = "win32",
+                     product: str | None = None):
+        params = {"currentVersion": current_version, "platform": platform}
+        if product is not None:
+            params["product"] = product
+        return self._request("GET", "/api/update/check", params=params)
 
     def update_download_raw(self, version: str, kind: str | None = None,
                             from_version: str | None = None):
@@ -280,8 +283,9 @@ class ApiClient:
         return self._raw_request("GET", f"/api/update/delta/{version}/manifest",
                                  params={"fromVersion": from_version})
 
-    def admin_list_installers(self):
-        return self._request("GET", "/api/admin/installer/list")
+    def admin_list_installers(self, product: str | None = None):
+        params = {"product": product} if product is not None else None
+        return self._request("GET", "/api/admin/installer/list", params=params)
 
     # ---------- 差量更新包（复用分片上传会话） ----------
     def admin_upload_delta(self, from_version: str, to_version: str, file_bytes: bytes,
@@ -369,8 +373,9 @@ class ApiClient:
             raise ApiError(-1, f"全量上传完成失败: {done}")
         return result
 
-    def admin_list_deltas(self):
-        return self._request("GET", "/api/admin/update/delta/list")
+    def admin_list_deltas(self, product: str | None = None):
+        params = {"product": product} if product is not None else None
+        return self._request("GET", "/api/admin/update/delta/list", params=params)
 
     def admin_publish_delta(self, delta_id: int):
         return self._request("POST", f"/api/admin/update/delta/{delta_id}/publish")
@@ -381,8 +386,9 @@ class ApiClient:
     def admin_delete_delta(self, delta_id: int):
         return self._request("DELETE", f"/api/admin/update/delta/{delta_id}")
 
-    def admin_delta_jobs(self):
-        return self._request("GET", "/api/admin/update/delta/jobs")
+    def admin_delta_jobs(self, product: str | None = None):
+        params = {"product": product} if product is not None else None
+        return self._request("GET", "/api/admin/update/delta/jobs", params=params)
 
     def admin_rebuild_delta(self, from_version: str, to_version: str):
         return self._request("POST", "/api/admin/update/delta/rebuild",
@@ -411,7 +417,8 @@ class ApiClient:
     def admin_upload_installer(self, version: str | None, file_bytes: bytes,
                                file_name: str = "setup_fake.exe",
                                notes: str = "", build_no: int | None = None,
-                               min_version: str | None = None):
+                               min_version: str | None = None,
+                               product: str | None = None):
         data = {"notes": notes}
         if version is not None:
             data["version"] = version
@@ -420,8 +427,10 @@ class ApiClient:
         if min_version is not None:
             data["minVersion"] = min_version
         files = {"file": (file_name, file_bytes, "application/octet-stream")}
+        params = {"product": product} if product is not None else None
         resp = self.session.post(f"{self.base_url}/api/admin/installer/upload",
-                                 data=data, files=files, headers=self._headers())
+                                 params=params, data=data, files=files,
+                                 headers=self._headers())
         try:
             body = resp.json()
         except Exception:
