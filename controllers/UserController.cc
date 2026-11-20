@@ -26,6 +26,28 @@ std::string ReadJsonOrQuery(const HttpRequestPtr &req, const char *key) {
 }
 } // namespace
 
+Task<HttpResponsePtr> UserController::updateNickname(HttpRequestPtr req) {
+    auto _authService = AuthService::Instance();
+    HttpResult result;
+    auto reqJson = req->getJsonObject();
+    if (!reqJson) {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+        resp->setStatusCode(k200OK);
+        co_return resp;
+    }
+    const std::string nickname = ReadJsonOrQuery(req, "nickname");
+    int userId = -1;
+    auto attributes = req->getAttributes();
+    if (attributes->find("userId")) {
+        userId = attributes->get<int>("userId");
+    }
+    result = co_await _authService->UpdateNickname(userId, nickname);
+    auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
+    resp->setStatusCode(k200OK);
+    co_return resp;
+}
+
 Task<HttpResponsePtr> UserController::updateUser(HttpRequestPtr req) {
     auto _authService = AuthService::Instance();
     HttpResult result;

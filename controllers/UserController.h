@@ -9,6 +9,8 @@ public:
     // 更新用户信息接口
     // 注意: 修改敏感信息时，需在请求头携带通过 /user/action_token 获取的 X-Action-Token
     ADD_METHOD_TO(UserController::updateUser, "/api/user/update", Post, "AuthFilter", "ActionTokenMiddleware");
+    // 昵称非敏感：仅登录即可直接修改（不需要验证码 / ActionToken）
+    ADD_METHOD_TO(UserController::updateNickname, "/api/user/update/nickname", Post, "AuthFilter");
     ADD_METHOD_TO(UserController::deleteUser, "/api/user/delete", Delete, "AuthFilter", "ActionTokenMiddleware");
     // 登录后使用的 ActionToken 获取接口
     ADD_METHOD_TO(UserController::generateActionToken, "/api/user/action_token?mfaType={1}&mfaCode={2}&target={3}", Get, "AuthFilter");
@@ -19,6 +21,7 @@ public:
     METHOD_LIST_END
 
     Task<HttpResponsePtr> updateUser(HttpRequestPtr req);
+    Task<HttpResponsePtr> updateNickname(HttpRequestPtr req);
 
     // 删除当前登录用户
     // 现在不需要 query 参数了，因为已经被 ActionToken 替代

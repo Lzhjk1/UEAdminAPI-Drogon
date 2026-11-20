@@ -203,6 +203,11 @@ public:
         int userId,
         const UEAdminAPI::PostParamMap &pm);
 
+    // 昵称是非敏感资料：单独接口，仅需登录，不要求 ActionToken/验证码
+    drogon::Task<UEAdminAPI::utils::HttpResult> UpdateNickname(
+        int userId,
+        const std::string &nickname);
+
     // 删除当前登录用户
     drogon::Task<UEAdminAPI::utils::HttpResult> DeleteUser(
         int userId,

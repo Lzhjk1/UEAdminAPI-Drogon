@@ -1123,6 +1123,52 @@ Task<bool> AuthService::CheckIfExist(drogon::orm::Mapper<User> &mapper, const dr
     co_return found;
 }
 
+drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateNickname(
+    int userId,
+    const std::string &nickname)
+{
+    UEAdminAPI::utils::HttpResult result;
+    if (userId <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_AuthenticationFailed, "未登录");
+        co_return result;
+    }
+    if (nickname.empty() || nickname.size() > 64)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "昵称长度需在 1-64 字符之间");
+        co_return result;
+    }
+    auto dbClientPtr = drogon::app().getDbClient();
+    Mapper<User> mapperUser(dbClientPtr);
+    User user;
+    try
+    {
+        user = mapperUser.findByPrimaryKey(userId);
+    }
+    catch (const UnexpectedRows &)
+    {
+        result.setResult(ApiErrorCode::ApiError_UserNotFound);
+        co_return result;
+    }
+    user.setNickName(nickname);
+    try
+    {
+        if (mapperUser.update(user) != 1)
+        {
+            result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新失败");
+            co_return result;
+        }
+    }
+    catch (...)
+    {
+        result.setResult(ApiErrorCode::ApiError_UserUpdateFailed, "更新失败");
+        co_return result;
+    }
+    result.jsondata["nickname"] = nickname;
+    result.setResult(ApiErrorCode::ApiError_Success, "昵称已更新");
+    co_return result;
+}
+
 drogon::Task<UEAdminAPI::utils::HttpResult> AuthService::UpdateUserInfo(
     int userId,
     const UEAdminAPI::PostParamMap &pm)
