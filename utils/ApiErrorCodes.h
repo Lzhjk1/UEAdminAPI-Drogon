@@ -88,6 +88,8 @@
     X(ApiError_PayChannelUnsupported, -904, "不支持的支付渠道 ") \
     X(ApiError_MockPayDisabled, -905, "模拟支付未开启 ") \
     X(ApiError_PayProviderError, -906, "支付渠道下单失败 ") \
+    X(ApiError_AiNotConfigured, -907, "AI 服务未配置 ") \
+    X(ApiError_AiProviderError, -908, "AI 模型调用失败 ") \
     /* --- Refund Errors (-91x) --- */ \
     X(ApiError_RefundNotFound, -909, "退款申请不存在 ") \
     X(ApiError_RefundStateInvalid, -910, "退款状态不允许该操作 ") \

@@ -52,6 +52,34 @@ custom_config:
   # 服务器域名
   ServerHost: "[这里填服务器域名]"
 
+  # 内置 AI 模型代理（/api/ai/chat）
+  # Key 只保存在服务端；客户端登录后凭令牌使用，不再要求用户自备 Key。
+  # BaseUrl 填 OpenAI 兼容地址（含版本前缀），例如 https://api.deepseek.com/v1。
+  AI:
+    Enabled: false
+    BaseUrl: "https://api.deepseek.com/v1"
+    ApiKey: ""                        # 服务端模型 Key（不要下发客户端）
+    Model: "deepseek-chat"
+    TimeoutSec: 180                   # 模型单次调用超时（秒）
+    MaxTokens: 2048                   # 0 表示不限制
+
+  # 云工程：客户端凭预签名 URL 直传/直下存储服务，文件本体不经过业务服务器。
+  # Driver=cos 用于生产；Driver=local 仅用于开发/私有部署（落盘到 LocalStoreDir）。
+  CloudProject:
+    Enabled: false
+    Driver: "cos"                     # cos | local
+    UrlExpireSec: 900                 # 预签名有效期（秒）
+    MaxFileSizeMb: 512                # 单文件上限
+    KeyPrefix: "cloud-projects"       # 对象键前缀
+    LocalStoreDir: "./uploads/cloud"  # Driver=local 的落盘目录
+    LocalSecret: ""                   # Driver=local 的签名密钥，留空则进程内随机（重启失效）
+    Cos:
+      SecretId: ""                    # 子账号密钥，权限仅限目标桶的 GET/PUT/DELETE/HEAD
+      SecretKey: ""
+      Bucket: ""                      # 形如 examplebucket-1250000000
+      Region: "ap-shanghai"
+      Endpoint: ""                    # 留空用 {Bucket}.cos.{Region}.myqcloud.com
+
   # 支付渠道（支付宝 / 微信支付）
   # Enabled 为总开关；任一渠道凭据不完整时该渠道下单返回 -906，不会退回模拟支付。
   # 真实渠道的回调地址默认取 ServerHost + 下列路径，也可用 NotifyUrl 单独覆盖。
@@ -104,6 +132,11 @@ custom_config:
   Installer:
     StoreDir: "./installers"     # 安装包落盘目录（生产建议挂到独立磁盘卷）
     UploadTempDir: "./uploads/installer-tmp"   # 分片上传临时文件目录，需可写
+
+  # 资源市场（Beta）：元件库/标准库文件包
+  Market:
+    StoreDir: "./market"          # 资源文件落盘目录，需可写
+    UploadTempDir: "./uploads/market-tmp"   # 分片上传临时文件目录，需可写
 
   # 意见反馈截图存储（登录器「我的 → 意见反馈」）
   Feedback:

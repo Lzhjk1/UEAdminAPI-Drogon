@@ -399,3 +399,13 @@
 | | -815 | `ApiError_CodeAlreadyExists` | 同版本号已被其它文件占用 |
 | | -103 / -104 | `ApiError_InternalError` / `ApiError_DatabaseError` | 落盘或数据库失败 |
 | 以上接口 | -807 | `ApiError_AdminPrivilegeRequired` | 需要厂商超级管理员 |
+
+## 内置 AI 模型代理
+
+| 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
+| :--- | :--- | :--- | :--- |
+| **/api/ai/chat** (POST) | -808 | `ApiError_UserNotPaid` | 订阅已过期 |
+| | -907 | `ApiError_AiNotConfigured` | AI 服务未配置 |
+| | -908 | `ApiError_AiProviderError` | AI 模型调用失败 |
+
+> `-907` / `-908` 为本轮新增（`utils/ApiErrorCodes.h`）；模型 Key 只在服务端配置，客户端凭登录令牌使用。

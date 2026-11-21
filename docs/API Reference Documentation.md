@@ -1455,3 +1455,86 @@ GitLab 相关接口目前使用独立的响应格式：
 - `firstSeen/lastSeen` 为东八区格式化字符串；`payload` 是上报时的完整环境 JSON 文本，客户端详情面板与 Markdown 导出都从这里取字段。
 - **错误码**：`-807` 非厂商超管。
 - 登录器里的「导出 Markdown」在客户端本地完成，不新增服务端接口。
+
+## 14. 内置 AI 模型代理（阶段 1）
+
+客户端（UE AI CAD 工作台本地桥）在登录后调用本接口；模型 Key 只保存在服务端配置，客户端不接触 Key。
+工具循环在客户端桥执行：客户端把 `messages` 与 `tools` 发来，服务端只负责转发给 OpenAI 兼容模型并把结果原样返回。
+
+**接口**: `POST /api/ai/chat`（需要 `Authorization: Bearer <token>`）
+
+**配置**（`config.yaml` 的 `custom_config.AI`）：
+
+| 字段 | 说明 |
+| --- | --- |
+| `Enabled` | 总开关，false 时返回 -907 |
+| `BaseUrl` | OpenAI 兼容地址（含版本前缀），如 `https://api.deepseek.com/v1` |
+| `ApiKey` | 服务端模型 Key |
+| `Model` | 固定模型名，客户端不能覆盖 |
+| `TimeoutSec` | 单次调用超时（秒），默认 180 |
+| `MaxTokens` | 输出 token 上限，0 表示不限制 |
+
+**请求**：
+
+```json
+{
+  "messages": [{"role": "user", "content": "读取当前卷册"}],
+  "tools": [{"type": "function", "function": {"name": "...", "parameters": {}}}],
+  "tool_choice": "auto",
+  "temperature": 0.2
+}
+```
+
+**响应**：`data` 为模型原生的 OpenAI 响应（含 `choices[0].message.tool_calls`）。
+订阅已过期返回 -808；模型服务不可用返回 -908；未配置返回 -907。
+
+**用量记账**（迁移 `0023_ai_usage.sql`）：
+
+每次成功调用且上游返回 `usage` 时，服务端按一行写入 `ai_usage_log`：
+`user_id`、`team_id`（记账时用户所在团队，无团队为 NULL）、`model`、`prompt_tokens`、
+`completion_tokens`、`total_tokens`、`cache_hit_tokens`、`cache_miss_tokens`、`created_at`。
+缓存命中优先取 DeepSeek 的 `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`，
+其它 OpenAI 兼容厂商用 `prompt_tokens_details.cached_tokens` 折算未命中。
+记账失败只写服务端日志，不影响模型响应。
+
+**用量查询**: `GET /api/ai/usage?month=YYYY-MM`（需要 `Authorization`；`month` 省略取东八区当月）
+
+- 所有成员返回 `self`：本人当月请求数与 token 汇总；
+- 团队管理员 / 超级管理员额外返回 `team`（团队汇总）与 `members`（按席位明细，含 `userId` / `name` / `nickName`）；
+- 返回字段：`month`、`teamId`（无团队为 `null`）、`self`、`team`、`members`；
+- `month` 格式不合法返回 -102，数据库异常返回 -104。
+
+## 15. 云工程（客户端直连存储）
+
+文件本体由客户端凭预签名 URL 直传/直下，业务服务器只保存元数据、校验套餐配额并签发短期链接。
+默认驱动为腾讯云 COS（`Driver=cos`），开发/私有部署可用 `Driver=local` 落盘到 `LocalStoreDir`。
+
+**配置**（`config.yaml` 的 `custom_config.CloudProject`）：
+
+| 字段 | 说明 |
+| --- | --- |
+| `Enabled` | 总开关；false 时 status 返回 `enabled=false`，其余接口 -105 |
+| `Driver` | `cos` / `local` |
+| `UrlExpireSec` | 预签名有效期（秒），最小 60 |
+| `MaxFileSizeMb` | 单文件上限，默认 512 |
+| `KeyPrefix` | 对象键前缀，默认 `cloud-projects` |
+| `LocalStoreDir` / `LocalSecret` | local 驱动的落盘目录与签名密钥；密钥留空则进程内随机（重启后旧链接失效） |
+| `Cos.SecretId` / `SecretKey` / `Bucket` / `Region` / `Endpoint` | COS 凭据；`Endpoint` 留空用 `{Bucket}.cos.{Region}.myqcloud.com` |
+
+**配额**：plus/trial 10GB，pro/standard/legacy 及无订阅记录的存量团队 50GB，max/厂商团队 200GB。
+订阅到期后只读（可下载，不能上传/删除）。只允许 `.db` / `.mdb` 工程文件。
+
+**接口**（均需 `Authorization`）：
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/cloud/status` | `enabled`、`readOnly`、`plan`、`quotaGb/quotaBytes`、`usedBytes`、`fileCount`、`maxFileSizeMb`、`projects` |
+| `POST /api/cloud/files/prepare` | `{projectName, relativePath, size, sha256}` → `{objectKey, method, uploadUrl, expiresIn}` |
+| `POST /api/cloud/files/complete` | 校验对象存在与配额后登记/覆盖，返回文件记录（COS 使用 HEAD 校验） |
+| `GET /api/cloud/files?projectName=` | 团队文件列表 + 合计字节 |
+| `GET /api/cloud/files/download?id=` | 预签名下载地址（订阅到期仍可下载） |
+| `DELETE /api/cloud/files?id=` | 上传者或团队管理员删除；COS 删除失败时保留记录并返回 -105 |
+| `PUT/GET /api/cloud/direct?...` | 仅 `Driver=local`：短期令牌直传/直下，不使用登录令牌 |
+
+对象键为 `{KeyPrefix}/{team_id}/{project_name}/{relative_path}`，同一键重复上传即覆盖。
+配额不足返回 -105 并带已用/配额；订阅到期返回 -808；数据库异常返回 -104。
