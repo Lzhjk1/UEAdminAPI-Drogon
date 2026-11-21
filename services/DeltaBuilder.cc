@@ -1235,7 +1235,7 @@ HttpResult DeltaBuilder::AdminListJobs(int limit, const std::string &product)
             "       to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as created_at, "
             "       to_char(updated_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as updated_at "
             "from update_delta_job where product = $2 order by id desc limit $1::int",
-            limit);
+            limit, product);
         Json::Value items(Json::arrayValue);
         for (const auto &row : rows)
         {

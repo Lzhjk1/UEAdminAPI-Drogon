@@ -66,7 +66,7 @@ def test_create_member_and_first_login_requires_change(seeded_org, logged_client
     assert len(admin.team_info()["data"]["members"]) == 2
 
 
-def test_create_member_duplicate_and_invalid_role(seeded_org, logged_client):
+def test_create_member_duplicate_and_invalid_role(seeded_org, logged_client, base_url):
     admin = logged_client(seeded_org.admin_name, seeded_org.admin_password)
     admin.create_team_member(seeded_org.member_name, seeded_org.member_password, "engineer")
 
@@ -74,9 +74,16 @@ def test_create_member_duplicate_and_invalid_role(seeded_org, logged_client):
         admin.create_team_member(seeded_org.member_name, seeded_org.member_password, "engineer")
     assert dup.value.code == -303  # 用户名已存在
 
+    # 团队所有者可以授予团队管理员；新管理员不能继续授予，避免团队内自我扩权。
+    second_admin = seeded_org.member_name + "_admin"
+    body = admin.create_team_member(second_admin, seeded_org.member_password, "team_admin")
+    assert body["code"] == 0
+
+    non_owner = ApiClient(base_url)
+    non_owner.login_pwd(second_admin, seeded_org.member_password)
     with pytest.raises(ApiError) as bad_role:
-        admin.create_team_member(seeded_org.member_name + "_x", seeded_org.member_password, "team_admin")
-    assert bad_role.value.code == -805  # 不允许分配团队管理员
+        non_owner.create_team_member(seeded_org.member_name + "_x", seeded_org.member_password, "team_admin")
+    assert bad_role.value.code == -803  # 非所有者不允许分配团队管理员
 
 
 def test_member_cannot_manage_team_or_admin(seeded_org, logged_client, base_url):

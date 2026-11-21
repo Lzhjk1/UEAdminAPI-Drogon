@@ -1021,10 +1021,15 @@ Task<HttpResponsePtr> ThirdPartyLoginService::CallbackRedirect(const std::string
     // 绝不能信任回调 query 里的 ueadmin_state（攻击者可伪造，导致会话错绑）。
     std::shared_ptr<ThirdPartyLoginValue> loginValue;
     if (platformService) {
-        loginValue = co_await platformService->getLoginValue(thirdPartyState);
-        // state 可能携带历史 ueadmin_state，必须把原始第三方 state 还原后再交给平台回调
-        co_await platformService->callBack(code, thirdPartyState);
-        // callBack 会把 openId 等写回同一个对象 (shared_ptr)，因此上面拿到的 loginValue 仍然有效
+        try {
+            loginValue = co_await platformService->getLoginValue(thirdPartyState);
+            // state 可能携带历史 ueadmin_state，必须把原始第三方 state 还原后再交给平台回调
+            co_await platformService->callBack(code, thirdPartyState);
+            // callBack 会把 openId 等写回同一个对象 (shared_ptr)，因此上面拿到的 loginValue 仍然有效
+        } catch (const std::exception &e) {
+            // 平台网络不可用/超时时不能抛成 500，继续走下面的“登录未完成”提示页。
+            LOG_WARN << "第三方回调失败: " << e.what();
+        }
     }
     const std::string userCode = loginValue ? loginValue->userCode : "";
 

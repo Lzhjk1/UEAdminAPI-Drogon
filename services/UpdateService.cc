@@ -520,6 +520,12 @@ HttpResult UpdateService::CheckUpdate(int userId,
             result.setResult(ApiErrorCode::ApiError_Success, "team disabled");
             return result;
         }
+        if (!access.paid)
+        {
+            result.jsondata["reason"] = "not_paid";
+            result.setResult(ApiErrorCode::ApiError_Success, "no active subscription");
+            return result;
+        }
         if (!access.updateAuth)
         {
             result.jsondata["reason"] = "no_auth";
