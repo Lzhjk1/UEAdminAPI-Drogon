@@ -123,6 +123,35 @@ Task<HttpResponsePtr> BillController::createOrder(HttpRequestPtr req)
     co_return JsonResponse(result);
 }
 
+Task<HttpResponsePtr> BillController::createAddon(HttpRequestPtr req)
+{
+    UEAdminAPI::utils::HttpResult result;
+    auto reqJson = req->getJsonObject();
+    if (!reqJson)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return JsonResponse(result);
+    }
+    const std::string sku = (*reqJson)["sku"].asString();
+    int channel = 0;
+    const auto &channelNode = (*reqJson)["channel"];
+    if (channelNode.isInt())
+    {
+        channel = channelNode.asInt();
+    }
+    else if (channelNode.isString())
+    {
+        channel = ToInt(channelNode.asString(), 0);
+    }
+    if (channel == 0)
+    {
+        channel = 2;  // 默认微信 Native
+    }
+    const std::string idemKey = (*reqJson)["idemKey"].asString();
+    result = co_await BillService::CreateAddonOrder(CurrentUserId(req), sku, channel, idemKey);
+    co_return JsonResponse(result);
+}
+
 Task<HttpResponsePtr> BillController::createOrderGroup(HttpRequestPtr req)
 {
     UEAdminAPI::utils::HttpResult result;

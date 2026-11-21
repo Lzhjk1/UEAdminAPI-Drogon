@@ -254,25 +254,53 @@ std::string LocalToken(const CloudConfig &config,
                                     method + "\n" + objectKey + "\n" + std::to_string(exp));
 }
 
+int AddonStorageGb(int teamId)
+{
+    if (teamId <= 0)
+    {
+        return 0;
+    }
+    auto db = drogon::app().getDbClient();
+    if (!db)
+    {
+        return 0;
+    }
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select coalesce(sum(amount), 0) as gb from team_addon "
+            "where team_id = $1 and kind = 'storage' and status = 1 and end_at > now()",
+            teamId);
+        return rows.empty() ? 0 : rows[0]["gb"].as<int>();
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_WARN << "读取云空间加购失败: " << e.base().what();
+        return 0;
+    }
+}
+
 int QuotaGb(const TeamContext &context)
 {
     if (context.isVendor || context.isSuperAdmin)
     {
         return 200;
     }
+    int base = 50; // 无订阅记录的存量团队按 Pro 级
     if (context.plan == "max")
     {
-        return 200;
+        base = 200;
     }
-    if (context.plan == "pro" || context.plan == "standard" || context.plan == "legacy")
+    else if (context.plan == "pro" || context.plan == "standard" ||
+             context.plan == "legacy")
     {
-        return 50;
+        base = 50;
     }
-    if (context.plan == "plus" || context.plan == "trial")
+    else if (context.plan == "plus" || context.plan == "trial")
     {
-        return 10;
+        base = 10;
     }
-    return 50; // 无订阅记录的存量团队按 Pro 级
+    return base + AddonStorageGb(context.teamId);
 }
 
 bool Writable(const TeamContext &context)

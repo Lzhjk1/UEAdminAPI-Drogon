@@ -66,6 +66,9 @@ tests/
   test_register.py     # 通用注册、快速注册、检查存在
   test_auth_login.py   # 密码/邮箱/手机/FlashToken 登录、token 校证、注销
   test_user_manage.py  # 修改昵称/性别/邮箱、解绑邮箱、删除用户
+  test_ai_proxy.py     # mock 上游验证 Token Plan 地址/Bearer/工具/用量/额度错误
+  test_ai_quota.py     # 内置 AI 月度积分额度闸门（-914）
+  test_addon_purchase.py # 积分包/云空间在线加购发放、幂等与退款拦截
 ```
 
 ## 说明

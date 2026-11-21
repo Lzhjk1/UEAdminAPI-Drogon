@@ -9,7 +9,9 @@
 #include <drogon/HttpResponse.h>
 #include <trantor/utils/Logger.h>
 
+#include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -51,21 +53,45 @@ struct AiConfig
     int maxTokens = 0;
 };
 
+std::string EnvString(const char *name)
+{
+    const char *value = std::getenv(name);
+    return value ? std::string(value) : std::string();
+}
+
 AiConfig LoadAiConfig()
 {
     AiConfig config;
     const auto custom = drogon::app().getCustomConfig();
-    if (!custom.isMember("AI") || !custom["AI"].isObject())
+    if (custom.isMember("AI") && custom["AI"].isObject())
     {
-        return config;
+        const auto &ai = custom["AI"];
+        config.enabled = ai.get("Enabled", true).asBool();
+        config.baseUrl = ai.get("BaseUrl", "").asString();
+        config.apiKey = ai.get("ApiKey", "").asString();
+        config.model = ai.get("Model", "").asString();
+        config.timeoutSec = ai.get("TimeoutSec", 180).asDouble();
+        config.maxTokens = ai.get("MaxTokens", 0).asInt();
     }
-    const auto &ai = custom["AI"];
-    config.enabled = ai.get("Enabled", true).asBool();
-    config.baseUrl = ai.get("BaseUrl", "").asString();
-    config.apiKey = ai.get("ApiKey", "").asString();
-    config.model = ai.get("Model", "").asString();
-    config.timeoutSec = ai.get("TimeoutSec", 180).asDouble();
-    config.maxTokens = ai.get("MaxTokens", 0).asInt();
+
+    // 部署侧可用环境变量覆盖，密钥不必写进配置文件；测试也用同一入口。
+    const std::string enabledEnv = EnvString("UE_AI_ENABLED");
+    if (!enabledEnv.empty())
+    {
+        config.enabled = (enabledEnv == "1" || enabledEnv == "true" ||
+                          enabledEnv == "yes" || enabledEnv == "on");
+    }
+    const std::string baseEnv = EnvString("UE_AI_BASE_URL");
+    if (!baseEnv.empty()) config.baseUrl = baseEnv;
+    const std::string keyEnv = EnvString("UE_AI_KEY");
+    if (!keyEnv.empty()) config.apiKey = keyEnv;
+    const std::string modelEnv = EnvString("UE_AI_MODEL");
+    if (!modelEnv.empty()) config.model = modelEnv;
+    const std::string timeoutEnv = EnvString("UE_AI_TIMEOUT_SEC");
+    if (!timeoutEnv.empty()) config.timeoutSec = std::atof(timeoutEnv.c_str());
+    const std::string maxTokensEnv = EnvString("UE_AI_MAX_TOKENS");
+    if (!maxTokensEnv.empty()) config.maxTokens = std::atoi(maxTokensEnv.c_str());
+
     if (config.timeoutSec < 10.0)
     {
         config.timeoutSec = 10.0;
@@ -203,6 +229,138 @@ void RecordUsage(int userId, const TokenUsage &usage)
     }
 }
 
+int TokenQuotaForPlan(const std::string &plan, bool trial)
+{
+    Json::Value quota;
+    const auto custom = drogon::app().getCustomConfig();
+    if (custom.isMember("Subscription") && custom["Subscription"].isObject() &&
+        custom["Subscription"].isMember("TokenQuota") &&
+        custom["Subscription"]["TokenQuota"].isObject())
+    {
+        quota = custom["Subscription"]["TokenQuota"];
+    }
+
+    std::string key = trial ? "trial" : plan;
+    if (key == "standard" || key == "legacy")
+    {
+        key = "pro";
+    }
+    if (key.empty())
+    {
+        key = "free";
+    }
+    if (quota.isMember(key) && quota[key].isInt())
+    {
+        return std::max(0, quota[key].asInt());
+    }
+    if (key == "free")
+    {
+        return 10000000;
+    }
+    if (key == "trial")
+    {
+        return 200000000;
+    }
+    if (key == "plus")
+    {
+        return 400000000;
+    }
+    if (key == "pro")
+    {
+        return 1000000000;
+    }
+    if (key == "max")
+    {
+        return 2000000000;
+    }
+    return 0;
+}
+
+long long MonthlyTeamTokens(int userId)
+{
+    auto db = drogon::app().getDbClient();
+    if (!db)
+    {
+        return 0;
+    }
+    auto rows = db->execSqlSync(
+        "select coalesce(sum(u.total_tokens), 0) as used "
+        "from ai_usage_log u "
+        "where u.team_id = (select tm.team_id from team_member tm "
+        "                    where tm.user_id = $1 and tm.status = 1 limit 1) "
+        "  and u.created_at >= (date_trunc('month', now() at time zone 'Asia/Shanghai') "
+        "                       at time zone 'Asia/Shanghai') "
+        "  and u.created_at < ((date_trunc('month', now() at time zone 'Asia/Shanghai') "
+        "                       + interval '1 month') at time zone 'Asia/Shanghai')",
+        userId);
+    return rows.empty() ? 0 : rows[0]["used"].as<long long>();
+}
+
+int TeamIdForUser(int userId)
+{
+    try
+    {
+        auto db = drogon::app().getDbClient();
+        if (!db)
+        {
+            return 0;
+        }
+        auto rows = db->execSqlSync(
+            "select tm.team_id from team_member tm "
+            "join team t on t.id = tm.team_id "
+            "where tm.user_id = $1 and tm.status = 1 and t.status = 1 "
+            "order by tm.team_id limit 1",
+            userId);
+        return rows.empty() ? 0 : rows[0]["team_id"].as<int>();
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_WARN << "读取用户团队失败: " << e.base().what();
+        return 0;
+    }
+}
+
+long long AddonCreditTokens(int teamId)
+{
+    if (teamId <= 0)
+    {
+        return 0;
+    }
+    try
+    {
+        auto db = drogon::app().getDbClient();
+        if (!db)
+        {
+            return 0;
+        }
+        auto rows = db->execSqlSync(
+            "select coalesce(sum(amount), 0) as credits from team_addon "
+            "where team_id = $1 and kind = 'credits' and status = 1 and end_at > now()",
+            teamId);
+        return rows.empty() ? 0 : rows[0]["credits"].as<long long>() * 100000;
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_WARN << "读取加购积分失败: " << e.base().what();
+        return 0;
+    }
+}
+
+Json::Value QuotaJson(const std::string &plan, bool trial, long long monthly, long long used)
+{
+    Json::Value quota;
+    quota["plan"] = plan;
+    quota["trial"] = trial;
+    quota["monthlyTokens"] = static_cast<Json::Int64>(monthly);
+    quota["usedTokens"] = static_cast<Json::Int64>(used);
+    quota["remainingTokens"] = static_cast<Json::Int64>(std::max<long long>(0, monthly - used));
+    quota["monthlyCredits"] = static_cast<Json::Int64>(monthly / 100000);
+    quota["usedCredits"] = static_cast<Json::Int64>(used / 100000);
+    quota["remainingCredits"] =
+        static_cast<Json::Int64>(std::max<long long>(0, monthly - used) / 100000);
+    return quota;
+}
+
 bool ValidMonth(const std::string &month)
 {
     if (month.size() != 7 || month[4] != '-')
@@ -260,6 +418,25 @@ Task<HttpResponsePtr> AiController::chat(HttpRequestPtr req)
     {
         result.setResult(ApiError_UserNotPaid, access.denyMessage);
         co_return JsonResponse(result);
+    }
+
+    if (access.hasSubscription && !access.isVendorOrAdmin)
+    {
+        const int teamId = TeamIdForUser(userId);
+        const long long quotaTokens =
+            static_cast<long long>(TokenQuotaForPlan(access.plan, access.isTrial)) +
+            AddonCreditTokens(teamId);
+        const long long usedTokens = MonthlyTeamTokens(userId);
+        if (usedTokens >= quotaTokens)
+        {
+            result.setResult(ApiError_AiQuotaExceeded,
+                             "本月 AI 额度已用完（已用 " + std::to_string(usedTokens / 100000) +
+                                 " / " + std::to_string(quotaTokens / 100000) +
+                                 " 积分），请升级套餐或购买积分包");
+            result.jsondata["quota"] =
+                QuotaJson(access.plan, access.isTrial, quotaTokens, usedTokens);
+            co_return JsonResponse(result);
+        }
     }
 
     const auto config = LoadAiConfig();
@@ -398,11 +575,13 @@ Task<HttpResponsePtr> AiController::usage(HttpRequestPtr req)
 
     try
     {
+        auto nowRows = db->execSqlSync(
+            "select to_char(now() at time zone 'Asia/Shanghai', 'YYYY-MM') as month");
+        const std::string currentMonth =
+            nowRows.empty() ? "" : nowRows[0]["month"].as<std::string>();
         if (month.empty())
         {
-            auto rows = db->execSqlSync(
-                "select to_char(now() at time zone 'Asia/Shanghai', 'YYYY-MM') as month");
-            month = rows.empty() ? "" : rows[0]["month"].as<std::string>();
+            month = currentMonth;
         }
 
         const std::string bounds =
@@ -440,6 +619,20 @@ Task<HttpResponsePtr> AiController::usage(HttpRequestPtr req)
         const std::string roleCode = memberRows[0]["role_code"].as<std::string>();
         const bool isSuperAdmin = memberRows[0]["is_super_admin"].as<bool>();
         result.jsondata["teamId"] = teamId;
+
+        if (month == currentMonth)
+        {
+            auto access = TeamService::CheckSubscriptionAccess(userId);
+            if (access.hasSubscription && !access.isVendorOrAdmin)
+            {
+                const long long quotaTokens =
+                    static_cast<long long>(TokenQuotaForPlan(access.plan, access.isTrial)) +
+                    AddonCreditTokens(teamId);
+                const long long usedTokens = MonthlyTeamTokens(userId);
+                result.jsondata["quota"] =
+                    QuotaJson(access.plan, access.isTrial, quotaTokens, usedTokens);
+            }
+        }
 
         if (roleCode != "team_admin" && !isSuperAdmin)
         {

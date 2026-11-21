@@ -27,6 +27,13 @@ public:
                                                        int channel,
                                                        const std::string &idemKey);
 
+    // 加购 SKU：credits_5k（积分包）/ storage_100gb / storage_500gb（云空间）。
+    // 结算时发放到 team_addon，不加余额；仅团队管理员可下单。
+    static drogon::Task<utils::HttpResult> CreateAddonOrder(int userId,
+                                                            const std::string &sku,
+                                                            int channel,
+                                                            const std::string &idemKey);
+
     // 支付组：一次下单同时生成微信/支付宝两笔订单，任一方支付成功后关闭另一笔
     static drogon::Task<utils::HttpResult> CreateOrderGroup(int userId,
                                                             int64_t amountCents,

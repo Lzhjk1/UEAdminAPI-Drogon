@@ -95,7 +95,8 @@
     X(ApiError_RefundStateInvalid, -910, "退款状态不允许该操作 ") \
     X(ApiError_BalanceInsufficient, -911, "余额不足，无法退款 ") \
     X(ApiError_RefundProviderError, -912, "渠道退款失败 ") \
-    X(ApiError_RefundNotAllowed, -913, "该订单不符合退款条件 ")
+    X(ApiError_RefundNotAllowed, -913, "该订单不符合退款条件 ") \
+    X(ApiError_AiQuotaExceeded, -914, "本月 AI 额度已用完 ")
 
 namespace UEAdminAPI {
 

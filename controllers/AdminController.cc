@@ -135,7 +135,8 @@ Task<HttpResponsePtr> AdminController::setSubscription(HttpRequestPtr req, std::
                                                pm.getParam("startDate"),
                                                pm.getParam("endDate"),
                                                pm.getParam("plan"),
-                                               pm.getParam("product"));
+                                               pm.getParam("product"),
+                                               (*reqJson)["includePdms"].asBool());
     auto resp = HttpResponse::newHttpJsonResponse(result.toJson());
     resp->setStatusCode(k200OK);
     co_return resp;

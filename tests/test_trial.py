@@ -153,17 +153,21 @@ def test_register_creates_trial_subscription(fresh_client, test_domain):
         team_id = int(team_rows[0])
 
         rows = _psql(
-            "select plan, is_trial, status, end_date - start_date as days, "
-            "       (end_date >= (now() at time zone 'Asia/Shanghai')::date) as active "
-            f"from team_subscription where team_id = {team_id} order by end_date desc limit 1"
+            "select product, plan, is_trial, status, end_date - start_date as days, "
+            "       (end_date >= (now() at time zone 'Asia/Shanghai')::date) as active, "
+            "       to_char(end_date, 'YYYY-MM-DD') as end_date "
+            f"from team_subscription where team_id = {team_id} order by product"
         )
-        assert rows, "注册后应自动写入试用订阅"
-        plan, is_trial, status, days, active = rows[0].split("|")
-        assert plan == "trial"
-        assert is_trial == "t"
-        assert status == "1"
-        assert int(days) == int(os.environ.get("UEADMINAPI_TRIAL_DAYS", "30")) - 1
-        assert active == "t"
+        assert len(rows) == 2, f"注册应同时写入平台与 AutoPDMS 试用: {rows}"
+        parsed = [row.split("|") for row in rows]
+        assert [item[0] for item in parsed] == ["pdms", "ueaicad"]
+        for _product, plan, is_trial, status, days, active, _end in parsed:
+            assert plan == "trial"
+            assert is_trial == "t"
+            assert status == "1"
+            assert int(days) == int(os.environ.get("UEADMINAPI_TRIAL_DAYS", "30")) - 1
+            assert active == "t"
+        assert parsed[0][6] == parsed[1][6], "平台与 AutoPDMS 试用必须同起止日"
 
         features = _psql(
             "select feature_code from team_feature_auth "

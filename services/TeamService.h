@@ -39,12 +39,14 @@ public:
     // 同时写入试用订阅（Subscription.TrialDays，默认 30 天）并开通联网功能。
     static bool ProvisionPersonalTeam(int userId, const std::string &userName);
 
-    // 登录前订阅检查：试用/付费到期后拒绝签发新 Token。
+    // AI 网关订阅检查：平台/试用到期降级为免费版（free 额度），AutoPDMS-only 拦截。
     // 超管、厂商团队成员、以及没有订阅记录的存量用户放行。
     struct SubscriptionAccess
     {
         bool allowed = true;
         bool hasSubscription = false;
+        bool hasAnySubscription = false;
+        bool isVendorOrAdmin = false;
         bool isTrial = false;
         std::string plan;
         std::string endDate;
@@ -56,13 +58,15 @@ public:
     // 厂商：团队列表（paidOnly / expiredOnly 二选一，均为 false 表示全部）
     static utils::HttpResult AdminListTeams(bool paidOnly, bool expiredOnly);
 
-    // 厂商：设置团队付费期（新增一条订阅记录，保留历史）
+    // 厂商：设置团队付费期（新增一条订阅记录，保留历史）。
+    // includePdms=true 且 product=ueaicad 时，同时写一条同起止日的 AutoPDMS 授权。
     static utils::HttpResult AdminSetSubscription(int adminUserId,
                                                   int teamId,
                                                   const std::string &startDate,
                                                   const std::string &endDate,
                                                   const std::string &plan,
-                                                  const std::string &product);
+                                                  const std::string &product,
+                                                  bool includePdms);
 
     // 厂商：设置团队/账号的云端功能授权（team 级）
     static utils::HttpResult AdminSetFeatureAuth(int adminUserId,

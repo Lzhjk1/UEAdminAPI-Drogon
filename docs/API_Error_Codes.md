@@ -42,7 +42,7 @@
 | | -308 | `ApiError_UserUpdateFailed` | 注销失败: 数据库更新错误 |
 
 > 2026-11-20 起，试用/订阅到期不再拒绝登录；登录后由 `/api/me/bootstrap` 返回
-> `subscription.active=false`，客户端/工作台按 Free 降级（AI/云/子账号暂停，基础 CAD 保留）。
+> `subscription.active=false`，客户端/工作台按免费版降级（每月 100 积分，云/子账号暂停，基础 CAD 保留）。
 > 规则与销售开通流程见 `docs/试用与订阅.md`。
 
 ### 2. 注册模块 (Register Controller)
@@ -315,6 +315,11 @@
 | | -913 | `ApiError_RefundNotAllowed` | 未支付/超期/已有有效退款申请 |
 | | -911 | `ApiError_BalanceInsufficient` | 余额不足以整单退款 |
 | **/api/bill/orders** (GET) | 0 | `ApiError_Success` | 已支付订单 + 最近一条退款申请 |
+| **/api/bill/addon** (POST) | 0 | `ApiError_Success` | 加购下单成功（积分包/云空间，返回微信二维码） |
+| | -105 | `ApiError_InvalidOperation` | 未知 SKU 或非团队管理员 |
+| | -904 | `ApiError_PayChannelUnsupported` | 支付渠道不支持 |
+| | -906 | `ApiError_PayProviderError` | 渠道未配置或下单失败 |
+| | -913 | `ApiError_RefundNotAllowed` | 加购订单不支持退款 |
 | **/api/admin/refunds** (GET) 及 `/{id}`、`approve`、`reject`、`sync`、`rollback` | 0 | `ApiError_Success` | 仅超级管理员（`SuperAdminFilter`） |
 | | -807 | `ApiError_AdminPrivilegeRequired` | 非超级管理员（HTTP 403） |
 | | -909 | `ApiError_RefundNotFound` | 退款申请不存在 |
@@ -404,8 +409,9 @@
 
 | 接口路径 (Method) | 错误码 (Code) | 枚举名称 (Enum) | 说明/默认信息 |
 | :--- | :--- | :--- | :--- |
-| **/api/ai/chat** (POST) | -808 | `ApiError_UserNotPaid` | 订阅已过期 |
+| **/api/ai/chat** (POST) | -808 | `ApiError_UserNotPaid` | 平台订阅已到期，或仅开通 AutoPDMS 授权 |
 | | -907 | `ApiError_AiNotConfigured` | AI 服务未配置 |
 | | -908 | `ApiError_AiProviderError` | AI 模型调用失败 |
+| | -914 | `ApiError_AiQuotaExceeded` | 本月 AI 额度已用完（`data.quota` 带已用/总额度） |
 
 > `-907` / `-908` 为本轮新增（`utils/ApiErrorCodes.h`）；模型 Key 只在服务端配置，客户端凭登录令牌使用。

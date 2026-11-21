@@ -211,15 +211,57 @@ bool ShouldQueryProvider(const std::string &orderNo)
     return true;
 }
 
-Task<PayCreateResult> CreateProviderOrder(int channel, const std::string &orderNo, int64_t amountCents)
+struct AddonSkuInfo
+{
+    int64_t amountCents = 0;
+    std::string kind;
+    int amount = 0;
+    int days = 0;
+    std::string description;
+};
+
+bool LookupAddonSku(const std::string &sku, AddonSkuInfo &info)
+{
+    if (sku == "credits_500")
+    {
+        info.amountCents = 10000;
+        info.kind = "credits";
+        info.amount = 500;
+        info.days = 30;
+        info.description = "UEAICAD 积分包 500 积分";
+        return true;
+    }
+    if (sku == "storage_100gb")
+    {
+        info.amountCents = 49900;
+        info.kind = "storage";
+        info.amount = 100;
+        info.days = 365;
+        info.description = "UEAICAD 云工程空间 100GB";
+        return true;
+    }
+    if (sku == "storage_500gb")
+    {
+        info.amountCents = 199900;
+        info.kind = "storage";
+        info.amount = 500;
+        info.days = 365;
+        info.description = "UEAICAD 云工程空间 500GB";
+        return true;
+    }
+    return false;
+}
+
+Task<PayCreateResult> CreateProviderOrder(int channel, const std::string &orderNo,
+                                          int64_t amountCents, const std::string &description)
 {
     if (channel == 1)
     {
-        co_return co_await AlipayProvider::CreateOrder(orderNo, amountCents, "AutoPDMS 余额充值");
+        co_return co_await AlipayProvider::CreateOrder(orderNo, amountCents, description);
     }
     if (channel == 2)
     {
-        co_return co_await WechatPayProvider::CreateNative(orderNo, amountCents, "AutoPDMS 余额充值");
+        co_return co_await WechatPayProvider::CreateNative(orderNo, amountCents, description);
     }
     PayCreateResult result;
     result.error = "不支持的支付渠道";
@@ -364,7 +406,8 @@ bool SettleOrder(const std::string &orderNo,
     try
     {
         auto rows = db->execSqlSync(
-            "select user_id, amount_cents, channel::int as channel, status::int as status "
+            "select user_id, amount_cents, channel::int as channel, status::int as status, "
+            "       product_code, team_id "
             "from payment_order where order_no = $1",
             orderNo);
         if (rows.empty())
@@ -407,6 +450,51 @@ bool SettleOrder(const std::string &orderNo,
             // 关单与用户付款并发：渠道确认已支付，按已支付入账；同组重复支付由退款申请兜底
             LOG_WARN << "[Payment][" << source << "] 订单已关闭但渠道确认已支付，按已支付入账 orderNo="
                      << orderNo;
+        }
+
+        const std::string productCode =
+            r["product_code"].isNull() ? "" : r["product_code"].as<std::string>();
+        if (!productCode.empty())
+        {
+            const int teamId = r["team_id"].isNull() ? 0 : r["team_id"].as<int>();
+            if (teamId <= 0)
+            {
+                error = "加购订单缺少团队";
+                LOG_ERROR << "[Payment][" << source << "] 加购结算失败: orderNo=" << orderNo
+                          << " 缺少 team_id";
+                return false;
+            }
+            auto settled = db->execSqlSync(
+                "with o as ("
+                "    update payment_order set status = 1, paid_at = now(), "
+                "        provider_trade_no = coalesce(nullif($2, ''), provider_trade_no) "
+                "    where order_no = $1 and status in (0, 2) "
+                "    returning id, team_id, product_code"
+                "), a as ("
+                "    insert into team_addon (team_id, kind, amount, order_no, end_at) "
+                "    select o.team_id, "
+                "           case when o.product_code = 'credits_500' then 'credits' else 'storage' end, "
+                "           case o.product_code when 'credits_500' then 500 "
+                "                when 'storage_100gb' then 100 "
+                "                when 'storage_500gb' then 500 else 0 end, "
+                "           $1, case when o.product_code = 'credits_500' "
+                "                then (date_trunc('month', now() at time zone 'Asia/Shanghai') "
+                "                      + interval '1 month') at time zone 'Asia/Shanghai' "
+                "                else now() + interval '365 days' end "
+                "    from o where o.team_id is not null "
+                "    on conflict (order_no) do nothing "
+                "    returning id"
+                ") select id from o",
+                orderNo, providerTradeNo);
+            if (settled.empty())
+            {
+                error.clear();
+                return true;
+            }
+            LOG_INFO << "[Payment][" << source << "] 加购发放成功 orderNo=" << orderNo
+                     << " product=" << productCode << " teamId=" << teamId;
+            error.clear();
+            return true;
         }
 
         const std::string extRef = "order:" + orderNo;
@@ -600,7 +688,7 @@ Task<HttpResult> BillService::CreateOrder(int userId, int64_t amountCents, int c
                     }
                     else
                     {
-                        PayCreateResult created = co_await CreateProviderOrder(channel, orderNo, amountCents);
+                        PayCreateResult created = co_await CreateProviderOrder(channel, orderNo, amountCents, "AutoPDMS 余额充值");
                         if (!created.ok)
                         {
                             db->execSqlSync("update payment_order set status = 2 where order_no = $1 and status = 0",
@@ -660,7 +748,7 @@ Task<HttpResult> BillService::CreateOrder(int userId, int64_t amountCents, int c
         }
         else
         {
-            PayCreateResult created = co_await CreateProviderOrder(channel, orderNo, amountCents);
+            PayCreateResult created = co_await CreateProviderOrder(channel, orderNo, amountCents, "AutoPDMS 余额充值");
             if (!created.ok)
             {
                 db->execSqlSync("update payment_order set status = 2 where order_no = $1 and status = 0", orderNo);
@@ -694,6 +782,203 @@ Task<HttpResult> BillService::CreateOrder(int userId, int64_t amountCents, int c
     catch (const drogon::orm::DrogonDbException &e)
     {
         LOG_ERROR << "CreateOrder 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    co_return result;
+}
+
+Task<HttpResult> BillService::CreateAddonOrder(int userId, const std::string &sku,
+                                              int channel, const std::string &idemKey)
+{
+    HttpResult result;
+    AddonSkuInfo info;
+    if (!LookupAddonSku(sku, info))
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "未知的加购商品");
+        co_return result;
+    }
+    if (channel != 1 && channel != 2 && !(channel == 9 && MockPayEnabled()))
+    {
+        result.setResult(ApiErrorCode::ApiError_PayChannelUnsupported);
+        co_return result;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto teamRows = db->execSqlSync(
+            "select t.id from team_member tm "
+            "join team t on t.id = tm.team_id "
+            "join role r on r.id = tm.role_id "
+            "where tm.user_id = $1 and tm.status = 1 and t.status = 1 "
+            "  and r.code = 'team_admin' order by t.id limit 1",
+            userId);
+        if (teamRows.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation,
+                             "仅团队管理员可购买加购");
+            co_return result;
+        }
+        const int teamId = teamRows[0]["id"].as<int>();
+
+        auto fillOrder = [&](const std::string &orderNo, const std::string &qrContent,
+                             const std::string &payUrl, int status,
+                             const std::string &expireAt) {
+            result.jsondata["orderNo"] = orderNo;
+            result.jsondata["amountCents"] = static_cast<Json::Int64>(info.amountCents);
+            result.jsondata["channel"] = channel;
+            result.jsondata["status"] = status;
+            result.jsondata["qrContent"] = qrContent;
+            result.jsondata["payUrl"] = payUrl;
+            result.jsondata["qrPngUrl"] = BuildQrUrl(orderNo);
+            result.jsondata["qrPngBase64"] = QrBase64For(qrContent, channel);
+            result.jsondata["expireAt"] = expireAt;
+            result.jsondata["productCode"] = sku;
+            result.jsondata["productName"] = info.description;
+            result.jsondata["teamId"] = teamId;
+        };
+
+        if (!idemKey.empty())
+        {
+            auto exist = db->execSqlSync(
+                "select order_no, amount_cents, channel::int as channel, status::int as status, "
+                "       qr_content, pay_url, product_code, "
+                "       (expire_at is not null and expire_at < now()) as expired, "
+                "       to_char(expire_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as expire_at "
+                "from payment_order where user_id = $1 and idem_key = $2",
+                userId, idemKey);
+            if (!exist.empty())
+            {
+                const auto &r = exist[0];
+                if (r["product_code"].isNull() ||
+                    r["product_code"].as<std::string>() != sku)
+                {
+                    result.setResult(ApiErrorCode::ApiError_OrderStateInvalid,
+                                     "幂等键已用于其他订单");
+                    co_return result;
+                }
+                const std::string orderNo = r["order_no"].as<std::string>();
+                const int status = r["status"].as<int>();
+                const bool expired = r["expired"].as<bool>();
+                std::string qrContent =
+                    r["qr_content"].isNull() ? "" : r["qr_content"].as<std::string>();
+                std::string payUrl =
+                    r["pay_url"].isNull() ? "" : r["pay_url"].as<std::string>();
+
+                if (status == 2 || (status == 0 && expired))
+                {
+                    result.setResult(ApiErrorCode::ApiError_OrderStateInvalid,
+                                     "订单已关闭或已过期，请重新下单");
+                    co_return result;
+                }
+                if (status == 0 && qrContent.empty() && payUrl.empty())
+                {
+                    if (ShouldUseMock(channel))
+                    {
+                        qrContent = MockQrContent(orderNo);
+                    }
+                    else if (!PaymentConfig::ChannelReady(channel))
+                    {
+                        result.setResult(ApiErrorCode::ApiError_PayProviderError,
+                                         std::string("支付渠道未配置: ") +
+                                             (channel == 1 ? "支付宝" : "微信支付"));
+                        co_return result;
+                    }
+                    else
+                    {
+                        PayCreateResult created = co_await CreateProviderOrder(
+                            channel, orderNo, info.amountCents, info.description);
+                        if (!created.ok)
+                        {
+                            db->execSqlSync(
+                                "update payment_order set status = 2 where order_no = $1 and status = 0",
+                                orderNo);
+                            result.setResult(ApiErrorCode::ApiError_PayProviderError,
+                                             created.error);
+                            co_return result;
+                        }
+                        qrContent = created.qrContent;
+                        payUrl = created.payUrl;
+                        db->execSqlSync(
+                            "update payment_order set qr_content = nullif($2, ''), "
+                            "       pay_url = nullif($3, ''), "
+                            "       provider_trade_no = coalesce(nullif($4, ''), provider_trade_no) "
+                            "where order_no = $1",
+                            orderNo, qrContent, payUrl, created.providerTradeNo);
+                    }
+                    if (!qrContent.empty() && ShouldUseMock(channel))
+                    {
+                        db->execSqlSync(
+                            "update payment_order set qr_content = $2 where order_no = $1",
+                            orderNo, qrContent);
+                    }
+                }
+                fillOrder(orderNo, qrContent, payUrl, status,
+                          r["expire_at"].isNull() ? "" : r["expire_at"].as<std::string>());
+                result.setResult(ApiErrorCode::ApiError_Success, "order exists");
+                co_return result;
+            }
+        }
+
+        const std::string orderNo = GenerateOrderNo();
+        const std::string idemValue = idemKey.empty() ? orderNo : idemKey;
+        auto rows = db->execSqlSync(
+            "insert into payment_order (order_no, user_id, amount_cents, channel, status, "
+            "                           idem_key, expire_at, product_code, team_id) "
+            "values ($1, $2, $3, $4::int, 0, $5, now() + ($6::int * interval '1 minute'), $7, $8) "
+            "returning to_char(expire_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') as expire_at",
+            orderNo, userId, info.amountCents, channel, idemValue,
+            std::to_string(kOrderExpireMinutes), sku, teamId);
+        const std::string expireAt =
+            rows.empty() ? "" : rows[0]["expire_at"].as<std::string>();
+
+        std::string qrContent;
+        std::string payUrl;
+        if (ShouldUseMock(channel))
+        {
+            qrContent = MockQrContent(orderNo);
+        }
+        else if (!PaymentConfig::ChannelReady(channel))
+        {
+            db->execSqlSync("update payment_order set status = 2 where order_no = $1 and status = 0",
+                            orderNo);
+            result.setResult(ApiErrorCode::ApiError_PayProviderError,
+                             std::string("支付渠道未配置: ") +
+                                 (channel == 1 ? "支付宝" : "微信支付"));
+            co_return result;
+        }
+        else
+        {
+            PayCreateResult created = co_await CreateProviderOrder(
+                channel, orderNo, info.amountCents, info.description);
+            if (!created.ok)
+            {
+                db->execSqlSync("update payment_order set status = 2 where order_no = $1 and status = 0",
+                                orderNo);
+                result.setResult(ApiErrorCode::ApiError_PayProviderError, created.error);
+                co_return result;
+            }
+            qrContent = created.qrContent;
+            payUrl = created.payUrl;
+            db->execSqlSync(
+                "update payment_order set qr_content = nullif($2, ''), "
+                "       pay_url = nullif($3, ''), "
+                "       provider_trade_no = coalesce(nullif($4, ''), provider_trade_no) "
+                "where order_no = $1",
+                orderNo, qrContent, payUrl, created.providerTradeNo);
+        }
+        if (ShouldUseMock(channel))
+        {
+            db->execSqlSync("update payment_order set qr_content = $2 where order_no = $1",
+                            orderNo, qrContent);
+        }
+
+        fillOrder(orderNo, qrContent, payUrl, 0, expireAt);
+        result.setResult(ApiErrorCode::ApiError_Success, "success");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "CreateAddonOrder 失败: " << e.base().what();
         result.setResult(ApiErrorCode::ApiError_DatabaseError);
     }
     co_return result;
@@ -737,7 +1022,7 @@ Task<HttpResult> BillService::CreateOrderGroup(int userId, int64_t amountCents, 
                     }
                     const std::string orderNo = r["order_no"].as<std::string>();
                     PayCreateResult created = co_await CreateProviderOrder(
-                        channel, orderNo, r["amount_cents"].as<int64_t>());
+                        channel, orderNo, r["amount_cents"].as<int64_t>(), "AutoPDMS 余额充值");
                     if (!created.ok)
                     {
                         LOG_WARN << "[Payment] 支付组补建渠道订单失败 orderNo=" << orderNo
@@ -804,7 +1089,7 @@ Task<HttpResult> BillService::CreateOrderGroup(int userId, int64_t amountCents, 
             }
             else
             {
-                PayCreateResult created = co_await CreateProviderOrder(channel, orderNo, amountCents);
+                PayCreateResult created = co_await CreateProviderOrder(channel, orderNo, amountCents, "AutoPDMS 余额充值");
                 if (!created.ok)
                 {
                     // 保留待支付状态，同一次重试仍可补建渠道订单

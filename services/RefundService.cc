@@ -174,7 +174,7 @@ HttpResult RefundService::Apply(int userId, const std::string &orderNo, const st
     try
     {
         auto orderRows = db->execSqlSync(
-            "select order_no, amount_cents, status::int as status, "
+            "select order_no, amount_cents, status::int as status, product_code, "
             "       (paid_at is not null and paid_at < now() - ($3::int * interval '1 day')) as too_old "
             "from payment_order where order_no = $1 and user_id = $2",
             orderNo, userId, kRefundWindowDays);
@@ -184,6 +184,14 @@ HttpResult RefundService::Apply(int userId, const std::string &orderNo, const st
             return result;
         }
         const auto &order = orderRows[0];
+        const std::string orderProduct =
+            order["product_code"].isNull() ? "" : order["product_code"].as<std::string>();
+        if (!orderProduct.empty())
+        {
+            result.setResult(ApiErrorCode::ApiError_RefundNotAllowed,
+                             "加购订单不支持退款");
+            return result;
+        }
         if (order["status"].as<int>() != 1)
         {
             result.setResult(ApiErrorCode::ApiError_RefundNotAllowed, "订单未支付，不能退款");

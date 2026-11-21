@@ -487,8 +487,8 @@ struct ProductEntitlements
     bool hasRecord = false;
 };
 
-// 每产品取最新一条记录；PDMS 可由有效 UEAICAD 推导（ueaicad ⇒ pdms）。
-// hasRecord 含已到期记录，用于区分“真存量”与“PDMS-only/已到期”。
+// 每产品取最新一条记录；AutoPDMS 只认自己的产品记录，不再由 UEAICAD 推导。
+// hasRecord 含已到期记录，用于区分“真存量”与“AutoPDMS-only/已到期”。
 ProductEntitlements LoadProductEntitlements(const std::shared_ptr<drogon::orm::DbClient> &db,
                                            int teamId)
 {
@@ -570,25 +570,9 @@ ProductEntitlements LoadProductEntitlements(const std::shared_ptr<drogon::orm::D
         ent.products["ueaicad"]["source"] = "legacy";
     }
 
-    if (hasPdms && pdmsActive)
+    if (hasPdms)
     {
-        ent.products["pdms"]["active"] = true;
-        ent.products["pdms"]["source"] = "subscription";
-        ent.products["pdms"]["startDate"] = pdmsStart;
-        ent.products["pdms"]["endDate"] = pdmsEnd;
-        ent.products["pdms"]["remainingDays"] = pdmsRemaining;
-    }
-    else if (ueActive)
-    {
-        ent.products["pdms"]["active"] = true;
-        ent.products["pdms"]["source"] = "implied";
-        ent.products["pdms"]["startDate"] = ueStart;
-        ent.products["pdms"]["endDate"] = ueEnd;
-        ent.products["pdms"]["remainingDays"] = ueRemaining;
-    }
-    else if (hasPdms)
-    {
-        ent.products["pdms"]["active"] = false;
+        ent.products["pdms"]["active"] = pdmsActive;
         ent.products["pdms"]["source"] = "subscription";
         ent.products["pdms"]["startDate"] = pdmsStart;
         ent.products["pdms"]["endDate"] = pdmsEnd;
@@ -865,6 +849,37 @@ HttpResult TeamService::GetBootstrap(int userId)
         }
         result.jsondata["hasSubscriptionRecord"] = ent.hasRecord;
         result.jsondata["products"] = ent.products;
+
+        int addonCredits = 0;
+        int addonStorageGb = 0;
+        if (teamId > 0)
+        {
+            try
+            {
+                auto addonRows = db->execSqlSync(
+                    "select kind, coalesce(sum(amount), 0) as amount from team_addon "
+                    "where team_id = $1 and status = 1 and end_at > now() group by kind",
+                    teamId);
+                for (const auto &ar : addonRows)
+                {
+                    const std::string kind = ar["kind"].as<std::string>();
+                    if (kind == "credits")
+                    {
+                        addonCredits = ar["amount"].as<int>();
+                    }
+                    else if (kind == "storage")
+                    {
+                        addonStorageGb = ar["amount"].as<int>();
+                    }
+                }
+            }
+            catch (const drogon::orm::DrogonDbException &e)
+            {
+                LOG_WARN << "读取团队加购失败: " << e.base().what();
+            }
+        }
+        result.jsondata["addons"]["credits"] = addonCredits;
+        result.jsondata["addons"]["storageGb"] = addonStorageGb;
 
         auto versionRows = db->execSqlSync(
             "select version from installer_version where status = 1 "
@@ -1406,13 +1421,15 @@ bool TeamService::ProvisionPersonalTeam(int userId, const std::string &userName)
         db->execSqlSync("insert into user_balance (user_id) values ($1) on conflict do nothing",
                         userId);
 
-        // 新注册用户赠送试用期。end_date 当天仍可用，所以按“含注册当天共 N 天”倒推。
+        // 新注册用户同时赠送 UEAICAD 与 AutoPDMS 试用，起止日一致。
+        // end_date 当天仍可用，所以按“含注册当天共 N 天”倒推。
         // 已有订阅记录的团队不覆盖（重复开通 / 后台已提前开通）。
         const int trialDays = SubscriptionTrialDays();
         db->execSqlSync(
             "insert into team_subscription (team_id, product, plan, start_date, end_date, status, is_trial) "
-            "select $1, 'ueaicad', 'trial', (now() at time zone 'Asia/Shanghai')::date, "
+            "select $1, p.product, 'trial', (now() at time zone 'Asia/Shanghai')::date, "
             "       (now() at time zone 'Asia/Shanghai')::date + $2, 1, true "
+            "from (values ('ueaicad'), ('pdms')) as p(product) "
             "where not exists (select 1 from team_subscription where team_id = $1)",
             teamId, trialDays - 1);
 
@@ -1444,6 +1461,8 @@ TeamService::SubscriptionAccess TeamService::CheckSubscriptionAccess(int userId)
             "       exists(select 1 from user_system_role usr "
             "               join role sr on sr.id = usr.role_id "
             "               where usr.user_id = u.id and sr.code = 'super_admin') as is_super_admin, "
+            "       exists(select 1 from team_subscription ts_any "
+            "               where ts_any.team_id = t.id and ts_any.status = 1) as has_any_subscription, "
             "       s.plan, coalesce(s.is_trial, false) as is_trial, "
             "       to_char(s.end_date, 'YYYY-MM-DD') as sub_end, "
             "       (s.end_date >= (now() at time zone 'Asia/Shanghai')::date) as sub_active, "
@@ -1467,13 +1486,20 @@ TeamService::SubscriptionAccess TeamService::CheckSubscriptionAccess(int userId)
         // 厂商团队与超管账号不参与试用/订阅限制
         if (r["is_vendor"].as<bool>() || r["is_admin"].as<bool>() || r["is_super_admin"].as<bool>())
         {
+            access.isVendorOrAdmin = true;
             return access;
         }
 
         access.hasSubscription = !r["sub_end"].isNull();
+        access.hasAnySubscription = r["has_any_subscription"].as<bool>();
         if (!access.hasSubscription)
         {
-            // 试用上线前注册的存量用户没有订阅记录：保持原有行为，不追溯
+            // 只有 AutoPDMS 授权的团队不获得平台 AI；零订阅记录的存量用户继续放行。
+            if (access.hasAnySubscription)
+            {
+                access.allowed = false;
+                access.denyMessage = "当前仅开通 AutoPDMS 授权，不含 UEAICAD 平台订阅";
+            }
             return access;
         }
 
@@ -1484,10 +1510,14 @@ TeamService::SubscriptionAccess TeamService::CheckSubscriptionAccess(int userId)
         access.allowed = r["sub_active"].as<bool>();
         if (!access.allowed)
         {
-            access.denyMessage = SubscriptionExpiredMessage(access.isTrial);
-            LOG_INFO << "[Subscription] 拒绝登录 userId=" << userId
-                     << " endDate=" << access.endDate
-                     << " trial=" << (access.isTrial ? 1 : 0);
+            // 平台/试用到期降级为免费版：仍允许 AI，使用 free 月度额度（100 积分）。
+            // AutoPDMS-only 在前面 !hasSubscription 分支已拦截。
+            access.plan = "free";
+            access.isTrial = false;
+            access.remainingDays = 0;
+            access.allowed = true;
+            LOG_INFO << "[Subscription] 进入免费版 AI 额度 userId=" << userId
+                     << " endDate=" << access.endDate;
         }
     }
     catch (const drogon::orm::DrogonDbException &e)
@@ -1551,8 +1581,7 @@ HttpResult TeamService::AdminListTeams(bool paidOnly, bool expiredOnly)
             t["subscription"]["isTrial"] = r["is_trial"].as<bool>();
             t["subscription"]["remainingDays"] =
                 r["remaining_days"].isNull() ? 0 : r["remaining_days"].as<int>();
-            const bool uePaid = !r["paid"].isNull() && r["paid"].as<bool>();
-            t["pdmsActive"] = uePaid || r["pdms_active"].as<bool>();
+            t["pdmsActive"] = r["pdms_active"].as<bool>();
             t["hasSubscriptionRecord"] = r["has_record"].as<bool>();
             t["memberCount"] = r["member_count"].as<int>();
             teams.append(t);
@@ -1573,7 +1602,8 @@ HttpResult TeamService::AdminSetSubscription(int adminUserId,
                                              const std::string &startDate,
                                              const std::string &endDate,
                                              const std::string &plan,
-                                             const std::string &product)
+                                             const std::string &product,
+                                             bool includePdms)
 {
     HttpResult result;
     auto db = drogon::app().getDbClient();
@@ -1617,13 +1647,18 @@ HttpResult TeamService::AdminSetSubscription(int adminUserId,
         }
 
         const std::string planValue = plan.empty() ? "standard" : plan;
+        const bool withPdms = includePdms && productValue == "ueaicad";
         db->execSqlSync(
             "insert into team_subscription (team_id, product, plan, start_date, end_date, status, updated_by, is_trial) "
-            "values ($1, $2, $3, $4::date, $5::date, 1, $6, false)",
-            teamId, productValue, planValue, startDate, endDate, adminUserId);
+            "select $1::int, $2::text, $6::text, $3::date, $4::date, 1, $5::int, false "
+            "union all "
+            "select $1::int, 'pdms', 'network', $3::date, $4::date, 1, $5::int, false "
+            "where $2::text = 'ueaicad' and $7::boolean",
+            teamId, productValue, startDate, endDate, adminUserId, planValue, withPdms);
 
         result.jsondata["teamId"] = teamId;
         result.jsondata["product"] = productValue;
+        result.jsondata["includePdms"] = withPdms;
         result.jsondata["startDate"] = startDate;
         result.jsondata["endDate"] = endDate;
         result.jsondata["isTrial"] = false;

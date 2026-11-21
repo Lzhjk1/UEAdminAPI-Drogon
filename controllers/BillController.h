@@ -10,6 +10,8 @@ class BillController : public drogon::HttpController<BillController>
 public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(BillController::createOrder, "/api/bill/order", Post, "AuthFilter");
+    // 加购 SKU：积分包 / 云工程空间（结算后发放 team_addon，不加余额）
+    ADD_METHOD_TO(BillController::createAddon, "/api/bill/addon", Post, "AuthFilter");
     // 支付组：同时生成微信/支付宝两笔订单
     ADD_METHOD_TO(BillController::createOrderGroup, "/api/bill/order/group", Post, "AuthFilter");
     ADD_METHOD_TO(BillController::getOrderGroup, "/api/bill/order/group/{1}", Get, "AuthFilter");
@@ -25,6 +27,7 @@ public:
     METHOD_LIST_END
 
     Task<HttpResponsePtr> createOrder(HttpRequestPtr req);
+    Task<HttpResponsePtr> createAddon(HttpRequestPtr req);
     Task<HttpResponsePtr> createOrderGroup(HttpRequestPtr req);
     Task<HttpResponsePtr> getOrderGroup(HttpRequestPtr req, std::string groupNo);
     Task<HttpResponsePtr> getOrder(HttpRequestPtr req, std::string orderNo);

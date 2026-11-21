@@ -55,13 +55,21 @@ custom_config:
   # 内置 AI 模型代理（/api/ai/chat）
   # Key 只保存在服务端；客户端登录后凭令牌使用，不再要求用户自备 Key。
   # BaseUrl 填 OpenAI 兼容地址（含版本前缀），例如 https://api.deepseek.com/v1。
+  # 内置 AI 模型代理（/api/ai/chat）
+  # 环境变量可覆盖：UE_AI_ENABLED / UE_AI_BASE_URL / UE_AI_KEY / UE_AI_MODEL /
+  #                 UE_AI_TIMEOUT_SEC / UE_AI_MAX_TOKENS
   AI:
-    Enabled: false
-    BaseUrl: "https://api.deepseek.com/v1"
+    Enabled: true
+    # 腾讯云 Token Plan（订阅套餐）：https://tokenhub.tencentmaas.com/plan/v3 + sk-tp- 开头的 Key
+    # 腾讯云 TokenHub 按量付费：https://tokenhub.tencentmaas.com/v1（Key 不同）
+    # 其他 OpenAI 兼容服务也适用；代理会自动拼接 /chat/completions。
+    BaseUrl: "https://tokenhub.tencentmaas.com/plan/v3"
     ApiKey: ""                        # 服务端模型 Key（不要下发客户端）
-    Model: "deepseek-chat"
+    # TokenHub 模型广场的 model id；内置 Agent 需要 Function Calling，
+    # 例如 hy4-flash / deepseek-v4-flash；以实际套餐支持的模型为准。
+    Model: "hy4-flash"
     TimeoutSec: 180                   # 模型单次调用超时（秒）
-    MaxTokens: 2048                   # 0 表示不限制
+    MaxTokens: 4096                   # 0 表示不限制
 
   # 云工程：客户端凭预签名 URL 直传/直下存储服务，文件本体不经过业务服务器。
   # Driver=cos 用于生产；Driver=local 仅用于开发/私有部署（落盘到 LocalStoreDir）。
@@ -116,6 +124,15 @@ custom_config:
   # 试用或付费到期后拒绝签发新 Token，文案里的联系方式在这里配置。
   Subscription:
     TrialDays: 30
+    # 每月内置 AI 的团队 token 额度（按自然月、团队共享、不结转）。
+    # 1 积分 = 100,000 tokens；下面数值是 token。
+    # 0 表示不可用；plan 代号 plus=标准版 / pro=高级版 / max=旗舰版。
+    TokenQuota:
+      free: 10000000
+      trial: 200000000
+      plus: 400000000
+      pro: 1000000000
+      max: 2000000000
     TrialExpiredMessage: "试用期已结束，请联系销售开通：0731-88808590 / 19918074079（微信同号）"
     ExpiredMessage: "团队订阅已到期，请联系销售续费：0731-88808590 / 19918074079（微信同号）"
 

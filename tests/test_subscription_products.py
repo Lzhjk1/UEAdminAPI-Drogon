@@ -80,7 +80,7 @@ def cleanup_members():
     _cleanup_created_members()
 
 
-def test_ueaicad_implies_pdms(seeded_org, logged_client):
+def test_ueaicad_without_pdms_record(seeded_org, logged_client):
     _set_subs(seeded_org.team_id, [("ueaicad", "pro", 365, False)])
     data = _bootstrap(logged_client(seeded_org.admin_name, seeded_org.admin_password))
 
@@ -89,8 +89,8 @@ def test_ueaicad_implies_pdms(seeded_org, logged_client):
     assert data["hasSubscriptionRecord"] is True
     assert data["products"]["ueaicad"]["active"] is True
     assert data["products"]["ueaicad"]["source"] == "subscription"
-    assert data["products"]["pdms"]["active"] is True
-    assert data["products"]["pdms"]["source"] == "implied"
+    assert data["products"]["pdms"]["active"] is False
+    assert data["products"]["pdms"]["source"] == "none"
 
 
 def test_pdms_only_has_no_ai_subscription(seeded_org, logged_client):
@@ -133,13 +133,24 @@ def test_legacy_without_records(seeded_org, logged_client):
     assert data["products"]["ueaicad"]["source"] == "legacy"
 
 
-def test_trial_includes_pdms(seeded_org, logged_client):
-    _set_subs(seeded_org.team_id, [("ueaicad", "trial", 5, True)])
+def test_trial_with_both_records(seeded_org, logged_client):
+    _set_subs(seeded_org.team_id, [
+        ("ueaicad", "trial", 5, True),
+        ("pdms", "trial", 5, True),
+    ])
     data = _bootstrap(logged_client(seeded_org.admin_name, seeded_org.admin_password))
 
     assert data["subscription"]["isTrial"] is True
     assert data["products"]["pdms"]["active"] is True
-    assert data["products"]["pdms"]["source"] == "implied"
+    assert data["products"]["pdms"]["source"] == "subscription"
+
+
+def test_trial_without_pdms_record(seeded_org, logged_client):
+    _set_subs(seeded_org.team_id, [("ueaicad", "trial", 5, True)])
+    data = _bootstrap(logged_client(seeded_org.admin_name, seeded_org.admin_password))
+
+    assert data["products"]["pdms"]["active"] is False
+    assert data["products"]["pdms"]["source"] == "none"
 
 
 def test_vendor_super_admin_gets_both_products(seeded_org, logged_client):
@@ -189,6 +200,25 @@ def test_admin_subscription_product_param(seeded_org, logged_client):
     detail = _data(vendor._request("GET", f"/api/admin/teams/{seeded_org.team_id}"))
     assert detail["products"]["pdms"]["source"] == "subscription"
     assert detail["products"]["ueaicad"]["active"] is False
+
+
+def test_admin_subscription_include_pdms_writes_both(seeded_org, logged_client):
+    vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)
+    _set_subs(seeded_org.team_id, [])
+    today = datetime.date.today()
+    start = today.isoformat()
+    end = (today + datetime.timedelta(days=365)).isoformat()
+
+    data = _data(vendor._request(
+        "PUT", f"/api/admin/teams/{seeded_org.team_id}/subscription",
+        json_body={"startDate": start, "endDate": end, "plan": "plus", "includePdms": True}))
+    assert data["product"] == "ueaicad"
+    assert data["includePdms"] is True
+
+    detail = _data(vendor._request("GET", f"/api/admin/teams/{seeded_org.team_id}"))
+    assert detail["products"]["ueaicad"]["active"] is True
+    assert detail["products"]["pdms"]["active"] is True
+    assert detail["products"]["pdms"]["source"] == "subscription"
 
 
 def test_pdms_only_seats_unlimited(seeded_org, logged_client, cleanup_members):
