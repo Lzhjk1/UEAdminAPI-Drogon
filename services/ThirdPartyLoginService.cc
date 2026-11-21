@@ -884,11 +884,17 @@ drogon::Task<std::string> ThirdPartyLoginPlatform_WeChat::saveInfoToDB(std::shar
 
 // ThirdPartyLoginService 实现
 ThirdPartyLoginService::ThirdPartyLoginService(const Json::Value& config) {
-    // 添加QQ平台
-    platforms[EnumThirdPartyPlatform::QQ] = std::make_unique<ThirdPartyLoginPlatform_QQ>(config);
+    // ClientId/Secret 缺失的平台不注册, getPlatform 返回空, 接口直接报"不支持的第三方平台",
+    // 避免照常拼出 client_id 为空的授权链接(QQ 侧报 appid: 0).
+    auto qqPlatform = std::make_unique<ThirdPartyLoginPlatform_QQ>(config);
+    if (!qqPlatform->getClientId().empty()) {
+        platforms[EnumThirdPartyPlatform::QQ] = std::move(qqPlatform);
+    }
 
-    // 添加微信平台
-    platforms[EnumThirdPartyPlatform::WeChat] = std::make_unique<ThirdPartyLoginPlatform_WeChat>(config);
+    auto wechatPlatform = std::make_unique<ThirdPartyLoginPlatform_WeChat>(config);
+    if (!wechatPlatform->getClientId().empty()) {
+        platforms[EnumThirdPartyPlatform::WeChat] = std::move(wechatPlatform);
+    }
 
     LOG_INFO << "ThirdPartyLoginService 初始化完成";
 }
