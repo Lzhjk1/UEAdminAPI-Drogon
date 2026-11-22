@@ -15,25 +15,25 @@ public:
     ADD_METHOD_TO(UpdateController::publicDownload, "/api/update/public/download/{1}", Get);
     ADD_METHOD_TO(UpdateController::deltaManifest, "/api/update/delta/{1}/manifest", Get, "AuthFilter");
 
-    ADD_METHOD_TO(UpdateController::upload, "/api/admin/installer/upload", Post, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(UpdateController::upload, "/api/admin/installer/upload", Post, "AuthFilter", "VendorConsoleFilter");
     // 分片上传（断点续传）：init -> chunk* -> complete
-    ADD_METHOD_TO(UpdateController::uploadInit, "/api/admin/installer/upload/init", Post, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::uploadChunk, "/api/admin/installer/upload/{1}/chunk", Post, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::uploadComplete, "/api/admin/installer/upload/{1}/complete", Post, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::publish, "/api/admin/installer/{1}/publish", Post, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::offline, "/api/admin/installer/{1}/offline", Post, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::remove, "/api/admin/installer/{1}", Delete, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::update, "/api/admin/installer/{1}", Patch, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::list, "/api/admin/installer/list", Get, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(UpdateController::uploadInit, "/api/admin/installer/upload/init", Post, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::uploadChunk, "/api/admin/installer/upload/{1}/chunk", Post, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::uploadComplete, "/api/admin/installer/upload/{1}/complete", Post, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::publish, "/api/admin/installer/{1}/publish", Post, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::offline, "/api/admin/installer/{1}/offline", Post, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::remove, "/api/admin/installer/{1}", Delete, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::update, "/api/admin/installer/{1}", Patch, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::list, "/api/admin/installer/list", Get, "AuthFilter", "VendorConsoleFilter");
 
     // 差量包管理（上传复用 /api/admin/installer/upload/*，init 时带 kind=delta）
-    ADD_METHOD_TO(UpdateController::publishDelta, "/api/admin/update/delta/{1}/publish", Post, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::offlineDelta, "/api/admin/update/delta/{1}/offline", Post, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::removeDelta, "/api/admin/update/delta/{1}", Delete, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::listDeltas, "/api/admin/update/delta/list", Get, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::deltaJobs, "/api/admin/update/delta/jobs", Get, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::deltaHealth, "/api/admin/update/delta/health", Get, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(UpdateController::deltaRebuild, "/api/admin/update/delta/rebuild", Post, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(UpdateController::publishDelta, "/api/admin/update/delta/{1}/publish", Post, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::offlineDelta, "/api/admin/update/delta/{1}/offline", Post, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::removeDelta, "/api/admin/update/delta/{1}", Delete, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::listDeltas, "/api/admin/update/delta/list", Get, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::deltaJobs, "/api/admin/update/delta/jobs", Get, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::deltaHealth, "/api/admin/update/delta/health", Get, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(UpdateController::deltaRebuild, "/api/admin/update/delta/rebuild", Post, "AuthFilter", "VendorConsoleFilter");
 
     METHOD_LIST_END
 

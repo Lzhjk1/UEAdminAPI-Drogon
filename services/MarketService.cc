@@ -2,6 +2,7 @@
 
 #include <drogon/drogon.h>
 
+#include "TeamService.h"
 #include "utils/ApiErrorCodes.h"
 #include "utils/EnumUserPrivileges.h"
 
@@ -776,7 +777,8 @@ HttpResult MarketService::DeleteResource(int userId, int64_t resourceId)
             return result;
         }
         const int ownerId = rows[0]["owner_user_id"].as<int>();
-        if (ownerId != userId && !IsAdminUser(db, userId))
+        if (ownerId != userId && !IsAdminUser(db, userId) &&
+            !TeamService::IsVendorTeamAdmin(userId))
         {
             result.setResult(ApiErrorCode::ApiError_InvalidOperation, "无权操作该资源");
             return result;
@@ -870,7 +872,7 @@ HttpResult MarketService::UpdateMeta(int userId,
     auto db = drogon::app().getDbClient();
     try
     {
-        if (!IsAdminUser(db, userId))
+        if (!IsAdminUser(db, userId) && !TeamService::IsVendorTeamAdmin(userId))
         {
             result.setResult(ApiErrorCode::ApiError_InvalidOperation, "仅管理员可设置官方库包");
             return result;

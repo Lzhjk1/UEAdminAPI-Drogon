@@ -727,6 +727,31 @@ Json::Value LoadTeamMembers(const std::shared_ptr<drogon::orm::DbClient> &db,
 
 } // namespace
 
+// 厂商控制台：只有厂商团队里的团队管理员可进入（超级管理员若不在厂商团队同样不放行）
+bool TeamService::IsVendorTeamAdmin(int userId)
+{
+    try
+    {
+        auto db = drogon::app().getDbClient();
+        auto rows = db->execSqlSync(
+            "select tm.team_id from team_member tm "
+            "join team t on t.id = tm.team_id "
+            "where tm.user_id = $1 and tm.status = 1 and coalesce(t.is_vendor, false) "
+            "limit 1",
+            userId);
+        if (rows.empty())
+        {
+            return false;
+        }
+        return IsTeamAdminOf(db, userId, rows[0]["team_id"].as<int>());
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "TeamService::IsVendorTeamAdmin 查询失败: " << e.base().what();
+        return false;
+    }
+}
+
 HttpResult TeamService::GetBootstrap(int userId)
 {
     HttpResult result;
@@ -773,6 +798,7 @@ HttpResult TeamService::GetBootstrap(int userId)
         const bool vendorMax = isVendorTeam && isSuperAdmin;
         result.jsondata["isSuperAdmin"] = isSuperAdmin;
         result.jsondata["isVendor"] = isVendorTeam;
+        result.jsondata["canVendorConsole"] = isSuperAdmin;
         if (vendorMax) result.jsondata["vendorMax"] = true;
         result.jsondata["mustChangePwd"] = row["must_change_pwd"].as<bool>();
         result.jsondata["balanceCents"] =
@@ -789,6 +815,8 @@ HttpResult TeamService::GetBootstrap(int userId)
             result.jsondata["team"]["status"] = teamActive ? 1 : 2;
             result.jsondata["team"]["roleCode"] = row["role_code"].as<std::string>();
             result.jsondata["team"]["isVendor"] = isVendorTeam;
+            result.jsondata["canVendorConsole"] =
+                isSuperAdmin || (isVendorTeam && IsTeamAdminOf(db, userId, teamId));
         }
 
         result.jsondata["subscription"]["startDate"] =

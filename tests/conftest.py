@@ -352,6 +352,8 @@ def seeded_vendor_org(test_domain: str):
     suffix = uuid.uuid4().hex[:8]
     password = f"Pwd@{suffix}"
     vendor_name = f"vt_vendor_{suffix}"
+    vadmin_name = f"vt_vadmin_{suffix}"
+    outsider_name = f"vt_outsider_{suffix}"
     admin_name = f"vt_admin_{suffix}"
     eng_name = f"vt_eng_{suffix}"
     mover_name = f"vt_mover_{suffix}"
@@ -360,6 +362,10 @@ def seeded_vendor_org(test_domain: str):
     personal_team_name = f"VT-PERSONAL-{suffix}"
 
     vendor_id = _seed_user(vendor_name, password, 7)
+    # 厂商团队管理员但无 Admin 位：用于厂商控制台权限用例
+    vadmin_id = _seed_user(vadmin_name, password, 2)
+    # 超级管理员但不在任何厂商团队：厂商控制台同样应拒绝
+    outsider_id = _seed_user(outsider_name, password, 7)
     admin_id = _seed_user(admin_name, password, 3)
     eng_id = _seed_user(eng_name, password, 3)
     mover_id = _seed_user(mover_name, password, 3)
@@ -379,6 +385,7 @@ def seeded_vendor_org(test_domain: str):
 
     for tid, uid, role_code in (
         (vendor_team_id, vendor_id, "team_admin"),
+        (vendor_team_id, vadmin_id, "team_admin"),
         (team_id, admin_id, "team_admin"),
         (team_id, eng_id, "engineer"),
         (personal_team_id, mover_id, "team_admin"),
@@ -401,6 +408,12 @@ def seeded_vendor_org(test_domain: str):
         vendor_name=vendor_name,
         vendor_password=password,
         vendor_id=vendor_id,
+        vadmin_name=vadmin_name,
+        vadmin_password=password,
+        vadmin_id=vadmin_id,
+        outsider_name=outsider_name,
+        outsider_password=password,
+        outsider_id=outsider_id,
         vendor_team_id=vendor_team_id,
         vendor_team_name=vendor_team_name,
         admin_name=admin_name,
@@ -418,7 +431,8 @@ def seeded_vendor_org(test_domain: str):
     )
     yield org
 
-    names = ", ".join(_sql_lit(n) for n in (vendor_name, admin_name, eng_name, mover_name))
+    names = ", ".join(_sql_lit(n) for n in (
+        vendor_name, vadmin_name, outsider_name, admin_name, eng_name, mover_name))
     user_filter = f'user_id in (select id from "user" where name in ({names}))'
     team_filter = ", ".join(str(t) for t in (vendor_team_id, team_id, personal_team_id))
     for sql in (

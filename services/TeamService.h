@@ -15,6 +15,9 @@ public:
     // 账号中心聚合：余额 + 团队 + 付费期 + 角色 + 云端功能授权 + 首改密标记
     static utils::HttpResult GetBootstrap(int userId);
 
+    // 厂商控制台权限（反馈 / 安装包 / 资源市场）：仅厂商团队（team.is_vendor）的团队管理员
+    static bool IsVendorTeamAdmin(int userId);
+
     // 我的团队：团队信息 + 付费期 + 成员列表
     static utils::HttpResult GetTeam(int userId);
 

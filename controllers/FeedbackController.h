@@ -11,10 +11,10 @@ public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(FeedbackController::submit, "/api/feedback", Post, "AuthFilter");
 
-    ADD_METHOD_TO(FeedbackController::list, "/api/admin/feedback/list", Get, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(FeedbackController::image, "/api/admin/feedback/{1}/image", Get, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(FeedbackController::attachment, "/api/admin/feedback/{1}/attachment", Get, "AuthFilter", "AdminFilter");
-    ADD_METHOD_TO(FeedbackController::handle, "/api/admin/feedback/{1}/handle", Post, "AuthFilter", "AdminFilter");
+    ADD_METHOD_TO(FeedbackController::list, "/api/admin/feedback/list", Get, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(FeedbackController::image, "/api/admin/feedback/{1}/image", Get, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(FeedbackController::attachment, "/api/admin/feedback/{1}/attachment", Get, "AuthFilter", "VendorConsoleFilter");
+    ADD_METHOD_TO(FeedbackController::handle, "/api/admin/feedback/{1}/handle", Post, "AuthFilter", "VendorConsoleFilter");
     METHOD_LIST_END
 
     Task<HttpResponsePtr> submit(HttpRequestPtr req);
