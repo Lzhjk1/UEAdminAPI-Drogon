@@ -73,6 +73,82 @@ bool IsAllowedCategory(const std::string &category)
     return category == "component" || category == "standard";
 }
 
+bool IsAllowedKind(const std::string &kind)
+{
+    return kind == "component" || kind == "spec" ||
+           kind == "design" || kind == "standard";
+}
+
+std::vector<std::string> NormalizeKinds(const std::vector<std::string> &raw,
+                                        const std::string &category)
+{
+    std::vector<std::string> out;
+    auto push = [&out](const std::string &kind) {
+        if (!IsAllowedKind(kind))
+        {
+            return;
+        }
+        for (const auto &existing : out)
+        {
+            if (existing == kind)
+            {
+                return;
+            }
+        }
+        out.push_back(kind);
+    };
+    for (const auto &kind : raw)
+    {
+        push(Trim(kind));
+    }
+    if (out.empty() && IsAllowedCategory(Trim(category)))
+    {
+        push(Trim(category));
+    }
+    return out;
+}
+
+std::string PgTextArray(const std::vector<std::string> &values)
+{
+    std::string out = "{";
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        if (i > 0)
+        {
+            out += ",";
+        }
+        out += values[i];
+    }
+    out += "}";
+    return out;
+}
+
+std::vector<std::string> SplitCsv(const std::string &value)
+{
+    std::vector<std::string> out;
+    std::string current;
+    for (char ch : value)
+    {
+        if (ch == ',')
+        {
+            if (!current.empty())
+            {
+                out.push_back(current);
+            }
+            current.clear();
+        }
+        else if (ch != ' ')
+        {
+            current.push_back(ch);
+        }
+    }
+    if (!current.empty())
+    {
+        out.push_back(current);
+    }
+    return out;
+}
+
 bool IsAllowedExtension(const std::string &name)
 {
     const auto dot = name.find_last_of('.');
@@ -212,6 +288,18 @@ void FillItem(Json::Value &out, const drogon::orm::Row &row)
     out["version"] = row["version"].as<std::string>();
     out["description"] = row["description"].as<std::string>();
     out["category"] = row["category"].as<std::string>();
+    Json::Value kinds(Json::arrayValue);
+    for (const auto &kind : SplitCsv(row["kinds_csv"].as<std::string>()))
+    {
+        kinds.append(kind);
+    }
+    if (kinds.empty())
+    {
+        kinds.append(row["category"].as<std::string>());
+    }
+    out["kinds"] = kinds;
+    out["official"] = row["official"].as<bool>();
+    out["standardCode"] = row["standard_code"].as<std::string>();
     out["fileName"] = row["file_name"].as<std::string>();
     out["fileSize"] = static_cast<Json::Int64>(row["file_size"].as<int64_t>());
     out["downloadCount"] = static_cast<Json::Int64>(row["download_count"].as<int64_t>());
@@ -222,6 +310,7 @@ void FillItem(Json::Value &out, const drogon::orm::Row &row)
 
 const char *kItemSelect =
     "select r.id, r.name, r.version, r.description, r.category, r.file_name, r.file_size, "
+    "       r.official, r.standard_code, array_to_string(r.kinds, ',') as kinds_csv, "
     "       r.download_count, coalesce(u.name, '') as owner_name, "
     "       to_char(r.created_at, 'YYYY-MM-DD') as created_date, "
     "       (r.owner_user_id = $1::int) as mine "
@@ -229,7 +318,7 @@ const char *kItemSelect =
 
 const char *kItemFilter =
     "where r.status = 1 "
-    "  and ($2::text = '' or r.category = $2) "
+    "  and ($2::text = '' or $2 = any(r.kinds)) "
     "  and ($3::text = '' or r.name ilike '%' || $3 || '%' "
     "       or r.description ilike '%' || $3 || '%' "
     "       or coalesce(u.name, '') ilike '%' || $3 || '%') ";
@@ -270,7 +359,7 @@ HttpResult MarketService::ListResources(int userId,
     HttpResult result;
     const std::string cat = Trim(category);
     const std::string kw = Trim(keyword);
-    if (!cat.empty() && !IsAllowedCategory(cat))
+    if (!cat.empty() && !IsAllowedKind(cat))
     {
         result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "category 不合法");
         return result;
@@ -308,7 +397,7 @@ HttpResult MarketService::ListResources(int userId,
             "select count(*)::bigint as total from market_resource r "
             "left join \"user\" u on u.id = r.owner_user_id "
             "where r.status = 1 "
-            "  and ($1::text = '' or r.category = $1) "
+            "  and ($1::text = '' or $1 = any(r.kinds)) "
             "  and ($2::text = '' or r.name ilike '%' || $2 || '%' "
             "       or r.description ilike '%' || $2 || '%' "
             "       or coalesce(u.name, '') ilike '%' || $2 || '%')",
@@ -316,13 +405,16 @@ HttpResult MarketService::ListResources(int userId,
 
         Json::Value counts(Json::objectValue);
         counts["component"] = 0;
+        counts["spec"] = 0;
+        counts["design"] = 0;
         counts["standard"] = 0;
         const auto countRows = db->execSqlSync(
-            "select category, count(*)::bigint as n from market_resource "
-            "where status = 1 group by category");
+            "select k as kind, count(*)::bigint as n "
+            "from market_resource r, unnest(r.kinds) k "
+            "where r.status = 1 group by k");
         for (const auto &row : countRows)
         {
-            counts[row["category"].as<std::string>()] =
+            counts[row["kind"].as<std::string>()] =
                 static_cast<Json::Int64>(row["n"].as<int64_t>());
         }
 
@@ -345,6 +437,7 @@ HttpResult MarketService::InitUpload(int userId,
                                      const std::string &version,
                                      const std::string &description,
                                      const std::string &category,
+                                     const std::vector<std::string> &kinds,
                                      const std::string &fileName,
                                      int64_t fileSize)
 {
@@ -353,6 +446,7 @@ HttpResult MarketService::InitUpload(int userId,
     const std::string safeVersion = Trim(version);
     const std::string safeDesc = Trim(description);
     const std::string safeFile = SafeFileName(fileName);
+    const std::vector<std::string> normalizedKinds = NormalizeKinds(kinds, category);
 
     if (safeName.empty() || safeName.size() > kMaxNameLength)
     {
@@ -369,9 +463,9 @@ HttpResult MarketService::InitUpload(int userId,
         result.setResult(ApiErrorCode::ApiError_InvalidOperation, "说明不超过 1000 字");
         return result;
     }
-    if (!IsAllowedCategory(category))
+    if (normalizedKinds.empty())
     {
-        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "请选择元件库或标准库");
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "请至少选择一个资源类型");
         return result;
     }
     if (safeFile.empty() || !IsAllowedExtension(safeFile))
@@ -416,11 +510,11 @@ HttpResult MarketService::InitUpload(int userId,
         {
             db->execSqlSync(
                 "insert into market_upload_session "
-                "(id, user_id, name, version, description, category, file_name, file_size, "
+                "(id, user_id, name, version, description, category, kinds, file_name, file_size, "
                 " temp_name, uploaded_bytes, status) "
-                "values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0)",
-                uploadId, userId, safeName, safeVersion, safeDesc, category, safeFile,
-                fileSize, tempName);
+                "values ($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, 0, 0)",
+                uploadId, userId, safeName, safeVersion, safeDesc, normalizedKinds.front(),
+                PgTextArray(normalizedKinds), safeFile, fileSize, tempName);
         }
         catch (...)
         {
@@ -542,8 +636,8 @@ HttpResult MarketService::CompleteUpload(int userId, const std::string &uploadId
     {
         std::lock_guard<std::mutex> fileLock(g_marketFileMutex);
         auto rows = db->execSqlSync(
-            "select name, version, description, category, file_name, file_size, temp_name, "
-            "       status, resource_id "
+            "select name, version, description, category, array_to_string(kinds, ',') as kinds_csv, "
+            "       file_name, file_size, temp_name, status, resource_id "
             "from market_upload_session where id = $1 and user_id = $2",
             uploadId, userId);
         if (rows.empty())
@@ -576,6 +670,8 @@ HttpResult MarketService::CompleteUpload(int userId, const std::string &uploadId
 
         const std::string safeName = session["name"].as<std::string>();
         const std::string category = session["category"].as<std::string>();
+        const std::vector<std::string> kinds = NormalizeKinds(
+            SplitCsv(session["kinds_csv"].as<std::string>()), category);
         const std::string safeFile = session["file_name"].as<std::string>();
         const int64_t fileSize = session["file_size"].as<int64_t>();
         const std::string tempName = session["temp_name"].as<std::string>();
@@ -600,12 +696,13 @@ HttpResult MarketService::CompleteUpload(int userId, const std::string &uploadId
 
         const auto inserted = db->execSqlSync(
             "insert into market_resource "
-            "(owner_user_id, owner_team_id, name, version, description, category, "
-            " file_name, file_size, sha256, download_count, status) "
+            "(owner_user_id, owner_team_id, name, version, description, category, kinds, "
+            " official, standard_code, file_name, file_size, sha256, download_count, status) "
             "values ($1, (select team_id from team_member where user_id = $1 and status = 1 limit 1), "
-            "        $2, $3, $4, $5, $6, $7, $8, 0, 1) returning id",
+            "        $2, $3, $4, $5, $6::text[], false, '', $7, $8, $9, 0, 1) returning id",
             userId, safeName, session["version"].as<std::string>(),
-            session["description"].as<std::string>(), category, safeFile, fileSize, sha256);
+            session["description"].as<std::string>(), category, PgTextArray(kinds),
+            safeFile, fileSize, sha256);
         const int64_t newId = inserted[0]["id"].as<int64_t>();
 
         const std::filesystem::path destDir =
@@ -696,6 +793,115 @@ HttpResult MarketService::DeleteResource(int userId, int64_t resourceId)
     catch (const drogon::orm::DrogonDbException &e)
     {
         LOG_ERROR << "MarketService::DeleteResource 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult MarketService::UpdateKinds(int userId,
+                                      int64_t resourceId,
+                                      const std::vector<std::string> &kinds)
+{
+    HttpResult result;
+    const std::vector<std::string> normalized = NormalizeKinds(kinds, "");
+    if (resourceId <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InstallerNotFound, "资源不存在或已删除");
+        return result;
+    }
+    if (normalized.empty())
+    {
+        result.setResult(ApiErrorCode::ApiError_MissingRequiredArgs, "请至少选择一个资源类型");
+        return result;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        auto rows = db->execSqlSync(
+            "select status from market_resource where id = $1", resourceId);
+        if (rows.empty() || rows[0]["status"].as<int>() != 1)
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound, "资源不存在或已删除");
+            return result;
+        }
+
+        db->execSqlSync(
+            "update market_resource set kinds = $2::text[], category = $3, updated_at = now() "
+            "where id = $1",
+            resourceId, PgTextArray(normalized), normalized.front());
+
+        auto itemRows = db->execSqlSync(std::string(kItemSelect) + "where r.id = $2",
+                                        userId, resourceId);
+        if (!itemRows.empty())
+        {
+            FillItem(result.jsondata, itemRows[0]);
+        }
+        result.setResult(ApiErrorCode::ApiError_Success, "类型已更新");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "MarketService::UpdateKinds 失败: " << e.base().what();
+        result.setResult(ApiErrorCode::ApiError_DatabaseError);
+    }
+    return result;
+}
+
+HttpResult MarketService::UpdateMeta(int userId,
+                                     int64_t resourceId,
+                                     bool hasOfficial,
+                                     bool official,
+                                     bool hasStandardCode,
+                                     const std::string &standardCode)
+{
+    HttpResult result;
+    const std::string code = Trim(standardCode);
+    if (resourceId <= 0)
+    {
+        result.setResult(ApiErrorCode::ApiError_InstallerNotFound, "资源不存在或已删除");
+        return result;
+    }
+    if (hasStandardCode && code.size() > 48)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidOperation, "关联标准编号不超过 48 字");
+        return result;
+    }
+
+    auto db = drogon::app().getDbClient();
+    try
+    {
+        if (!IsAdminUser(db, userId))
+        {
+            result.setResult(ApiErrorCode::ApiError_InvalidOperation, "仅管理员可设置官方库包");
+            return result;
+        }
+        auto rows = db->execSqlSync(
+            "select status from market_resource where id = $1", resourceId);
+        if (rows.empty() || rows[0]["status"].as<int>() != 1)
+        {
+            result.setResult(ApiErrorCode::ApiError_InstallerNotFound, "资源不存在或已删除");
+            return result;
+        }
+
+        db->execSqlSync(
+            "update market_resource set "
+            "  official = case when $2::boolean then $3 else official end, "
+            "  standard_code = case when $4::boolean then $5 else standard_code end, "
+            "  updated_at = now() "
+            "where id = $1",
+            resourceId, hasOfficial, official, hasStandardCode, code);
+
+        auto itemRows = db->execSqlSync(std::string(kItemSelect) + "where r.id = $2",
+                                        userId, resourceId);
+        if (!itemRows.empty())
+        {
+            FillItem(result.jsondata, itemRows[0]);
+        }
+        result.setResult(ApiErrorCode::ApiError_Success, "已更新");
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "MarketService::UpdateMeta 失败: " << e.base().what();
         result.setResult(ApiErrorCode::ApiError_DatabaseError);
     }
     return result;

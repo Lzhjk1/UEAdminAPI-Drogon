@@ -14,6 +14,8 @@ public:
     ADD_METHOD_TO(MarketController::uploadInit, "/api/market/resources/upload/init", Post, "AuthFilter");
     ADD_METHOD_TO(MarketController::uploadChunk, "/api/market/resources/upload/{1}/chunk", Post, "AuthFilter");
     ADD_METHOD_TO(MarketController::uploadComplete, "/api/market/resources/upload/{1}/complete", Post, "AuthFilter");
+    ADD_METHOD_TO(MarketController::updateKinds, "/api/market/resources/{1}/kinds", Patch, "AuthFilter");
+    ADD_METHOD_TO(MarketController::updateMeta, "/api/market/resources/{1}/meta", Patch, "AuthFilter");
     ADD_METHOD_TO(MarketController::remove, "/api/market/resources/{1}", Delete, "AuthFilter");
     METHOD_LIST_END
 
@@ -22,5 +24,7 @@ public:
     Task<HttpResponsePtr> uploadInit(HttpRequestPtr req);
     Task<HttpResponsePtr> uploadChunk(HttpRequestPtr req, std::string uploadId);
     Task<HttpResponsePtr> uploadComplete(HttpRequestPtr req, std::string uploadId);
+    Task<HttpResponsePtr> updateKinds(HttpRequestPtr req, std::string resourceId);
+    Task<HttpResponsePtr> updateMeta(HttpRequestPtr req, std::string resourceId);
     Task<HttpResponsePtr> remove(HttpRequestPtr req, std::string resourceId);
 };

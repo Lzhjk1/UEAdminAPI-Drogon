@@ -4,6 +4,8 @@
 #include "utils/ApiErrorCodes.h"
 #include "utils/HttpResult.h"
 
+#include <vector>
+
 using namespace drogon;
 using namespace UEAdminAPI;
 using namespace UEAdminAPI::Services;
@@ -50,6 +52,22 @@ std::string JsonString(const Json::Value &json, const char *key)
         return json[key].asString();
     }
     return std::string();
+}
+
+std::vector<std::string> JsonStringArray(const Json::Value &json, const char *key)
+{
+    std::vector<std::string> out;
+    if (json.isMember(key) && json[key].isArray())
+    {
+        for (const auto &node : json[key])
+        {
+            if (node.isString())
+            {
+                out.push_back(node.asString());
+            }
+        }
+    }
+    return out;
 }
 
 int64_t JsonInt64(const Json::Value &json, const char *key, int64_t fallback)
@@ -113,12 +131,23 @@ Task<HttpResponsePtr> MarketController::uploadInit(HttpRequestPtr req)
         co_return JsonResponse(result);
     }
 
+    auto kinds = JsonStringArray(*json, "kinds");
+    if (kinds.empty())
+    {
+        const std::string category = JsonString(*json, "category");
+        if (!category.empty())
+        {
+            kinds.push_back(category);
+        }
+    }
+
     co_return JsonResponse(MarketService::InitUpload(
         CurrentUserId(req),
         JsonString(*json, "name"),
         JsonString(*json, "version"),
         JsonString(*json, "description"),
         JsonString(*json, "category"),
+        kinds,
         JsonString(*json, "fileName"),
         JsonInt64(*json, "fileSize", 0)));
 }
@@ -148,6 +177,43 @@ Task<HttpResponsePtr> MarketController::uploadComplete(HttpRequestPtr req, std::
 {
     (void)req;
     co_return JsonResponse(MarketService::CompleteUpload(CurrentUserId(req), uploadId));
+}
+
+Task<HttpResponsePtr> MarketController::updateKinds(HttpRequestPtr req, std::string resourceId)
+{
+    HttpResult result;
+    auto json = req->getJsonObject();
+    if (!json)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return JsonResponse(result);
+    }
+    co_return JsonResponse(MarketService::UpdateKinds(
+        CurrentUserId(req),
+        ParseInt64(resourceId, 0),
+        JsonStringArray(*json, "kinds")));
+}
+
+Task<HttpResponsePtr> MarketController::updateMeta(HttpRequestPtr req, std::string resourceId)
+{
+    HttpResult result;
+    auto json = req->getJsonObject();
+    if (!json)
+    {
+        result.setResult(ApiErrorCode::ApiError_InvalidJsonFormat);
+        co_return JsonResponse(result);
+    }
+    const bool hasOfficial = json->isMember("official") && (*json)["official"].isBool();
+    const bool official = hasOfficial && (*json)["official"].asBool();
+    const bool hasStandardCode =
+        json->isMember("standardCode") && (*json)["standardCode"].isString();
+    co_return JsonResponse(MarketService::UpdateMeta(
+        CurrentUserId(req),
+        ParseInt64(resourceId, 0),
+        hasOfficial,
+        official,
+        hasStandardCode,
+        JsonString(*json, "standardCode")));
 }
 
 Task<HttpResponsePtr> MarketController::remove(HttpRequestPtr req, std::string resourceId)
