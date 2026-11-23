@@ -361,7 +361,20 @@ bool ExtractElectronPayload(const std::string &sevenZip, const fs::path &root, s
     std::error_code ec;
     fs::path archive;
     const fs::path plugins = root / "$PLUGINSDIR";
-    if (fs::is_directory(plugins, ec))
+    const fs::path direct[] = {
+        plugins / "app-64.7z",
+        plugins / "app-32.7z",
+        plugins / "app.7z"
+    };
+    for (const auto &candidate : direct)
+    {
+        if (fs::is_regular_file(candidate, ec))
+        {
+            archive = candidate;
+            break;
+        }
+    }
+    if (archive.empty() && fs::is_directory(plugins, ec))
     {
         for (const auto &entry : fs::directory_iterator(plugins, ec))
         {
@@ -379,6 +392,8 @@ bool ExtractElectronPayload(const std::string &sevenZip, const fs::path &root, s
             }
         }
     }
+    LOG_INFO << "Delta payload: root=" << root.string()
+             << " archive=" << (archive.empty() ? "(none)" : archive.string());
     if (archive.empty())
     {
         return true; // PDMS 安装器没有内层应用包
@@ -386,6 +401,7 @@ bool ExtractElectronPayload(const std::string &sevenZip, const fs::path &root, s
     std::string output;
     const int rc = RunCommand(NicePrefix() + Quote(sevenZip) + " x -y -o" +
                               Quote(root.string()) + " " + Quote(archive.string()), output);
+    LOG_INFO << "Delta payload extract rc=" << rc << " output=" << output.substr(0, 200);
     if (rc != 0)
     {
         err = "解包 Electron 应用层失败: " + output.substr(0, 500);
