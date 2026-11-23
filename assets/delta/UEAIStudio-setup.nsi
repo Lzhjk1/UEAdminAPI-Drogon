@@ -20,7 +20,7 @@
   !error "DELTA_MODE 需要 -DDELTA_INCLUDE=<delta_files.nsh 路径>"
 !endif
 !ifndef SETUP_DIR
-  !define SETUP_DIR "D:\UEAIStudio安装包"
+  !define SETUP_DIR "D:\ue安装包\UEAIStudio安装包"
 !endif
 !ifndef PRODUCT_MAJOR_VERSION
   !define PRODUCT_MAJOR_VERSION 0

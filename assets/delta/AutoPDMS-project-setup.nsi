@@ -17,7 +17,7 @@
 
 ; 安装程序输出目录（包含版本号+日期+构建号）
 !ifndef SETUP_DIR
-!define SETUP_DIR "d:\AutoPDMS安装包"
+!define SETUP_DIR "D:\ue安装包\AutoPDMS安装包"
 !endif
 ; 安装程序输出文件名（包含产品名+主/次/修订版本+日期时间）
 !define SETUP_EXE "${SETUP_DIR}\UEAP_PRJ_${PRODUCT_MAJOR_VERSION}.${PRODUCT_MINOR_VERSION}.${PRODUCT_PATCH_VERSION}_Setup.Win32.build_${PRODUCT_DATE}.exe"

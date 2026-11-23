@@ -1,8 +1,8 @@
 ﻿"""真实发布包级别的自动差量验证（默认跳过，按需开启）。
 
 用法（把两个真实全量安装器喂给本地服务）：
-  export UEADMINAPI_REAL_BASE_EXE="/mnt/d/AutoPDMS安装包/UEAP_PRJ_11.7.124_Setup...exe"
-  export UEADMINAPI_REAL_TARGET_EXE="/mnt/d/AutoPDMS安装包/UEAP_PRJ_11.7.125_Setup...exe"
+  export UEADMINAPI_REAL_BASE_EXE="/mnt/d/ue安装包/AutoPDMS安装包/UEAP_PRJ_11.7.124_Setup...exe"
+  export UEADMINAPI_REAL_TARGET_EXE="/mnt/d/ue安装包/AutoPDMS安装包/UEAP_PRJ_11.7.125_Setup...exe"
   export UEADMINAPI_BASE_URL=http://127.0.0.1:6666
   export UEADMINAPI_TEST_DB_URL=postgresql://ueadmin:ueadmin@127.0.0.1:5432/UEAdminAPI
   python3 -m pytest test_update_real.py -q -s
