@@ -354,6 +354,46 @@ std::string NowText()
 
 // ---------- 清单 ----------
 
+// electron-builder 的全量安装器外层是 NSIS 壳，应用文件在 $PLUGINSDIR\app-*.7z；
+// 差量比对必须针对应用树，不能把壳文件当成安装内容。
+bool ExtractElectronPayload(const std::string &sevenZip, const fs::path &root, std::string &err)
+{
+    std::error_code ec;
+    fs::path archive;
+    const fs::path plugins = root / "$PLUGINSDIR";
+    if (fs::is_directory(plugins, ec))
+    {
+        for (const auto &entry : fs::directory_iterator(plugins, ec))
+        {
+            if (ec || !entry.is_regular_file(ec))
+            {
+                ec.clear();
+                continue;
+            }
+            const std::string name = Lower(entry.path().filename().string());
+            if (name.rfind("app-", 0) == 0 && name.size() > 4 &&
+                name.compare(name.size() - 4, 4, ".7z") == 0)
+            {
+                archive = entry.path();
+                break;
+            }
+        }
+    }
+    if (archive.empty())
+    {
+        return true; // PDMS 安装器没有内层应用包
+    }
+    std::string output;
+    const int rc = RunCommand(NicePrefix() + Quote(sevenZip) + " x -y -o" +
+                              Quote(root.string()) + " " + Quote(archive.string()), output);
+    if (rc != 0)
+    {
+        err = "解包 Electron 应用层失败: " + output.substr(0, 500);
+        return false;
+    }
+    return true;
+}
+
 bool CollectManifest(const fs::path &root, std::vector<FileEntry> &out, std::string &err)
 {
     std::error_code ec;
@@ -391,7 +431,16 @@ bool CollectManifest(const fs::path &root, std::vector<FileEntry> &out, std::str
         {
             continue;
         }
+        if (rel.rfind("$R0\\", 0) == 0 || rel == "$R0")
+        {
+            continue;
+        }
         const std::string lowerLeaf = Lower(LeafName(rel));
+        if (lowerLeaf.size() > 4 && lowerLeaf.rfind("uninstall", 0) == 0 &&
+            lowerLeaf.compare(lowerLeaf.size() - 4, 4, ".exe") == 0)
+        {
+            continue;
+        }
         if (lowerLeaf.size() >= 4 &&
             (lowerLeaf.compare(lowerLeaf.size() - 4, 4, ".ldb") == 0 ||
              lowerLeaf.compare(lowerLeaf.size() - 4, 4, ".dwl") == 0))
@@ -436,7 +485,8 @@ std::vector<FileEntry> PickBaseFiles(const std::vector<FileEntry> &base)
     static const char *kCandidates[] = {
         "DllLogin10.dll", "APPDMSLogin10.exe", "APAdminUI10.exe", "APAIKernel10.dll",
         "ThirdPartyLoginReturn10.exe", "APHSCommand10.arx", "APMenu10.arx",
-        "APHSCalBridge10.dll", "APDomainFrame10.dll", "APDataBaseDriver10.dll"};
+        "APHSCalBridge10.dll", "APDomainFrame10.dll", "APDataBaseDriver10.dll",
+        "UEAI Studio.exe", "app.asar", "icudtl.dat", "ffmpeg.dll"};
     std::vector<FileEntry> picked;
     for (const auto &entry : base)
     {
@@ -843,6 +893,15 @@ void RunJob(int installerId)
             return;
         }
 
+        UpdateJob(db, jobId, 1, "解包 Electron 应用层");
+        std::string payloadErr;
+        if (!ExtractElectronPayload(sevenZip, baseRoot, payloadErr) ||
+            !ExtractElectronPayload(sevenZip, targetRoot, payloadErr))
+        {
+            FailJob(db, jobId, payloadErr);
+            return;
+        }
+
         UpdateJob(db, jobId, 1, "比对文件树");
         std::vector<FileEntry> baseFiles;
         std::vector<FileEntry> targetFiles;
@@ -1170,7 +1229,7 @@ void DeltaBuilder::PublishAutoDelta(const std::string &toVersion, const std::str
             toVersion, product);
 
         auto existRows = db->execSqlSync(
-            "select 1 from update_delta where product = $2 and to_version = $1 limit 1", toVersion);
+            "select 1 from update_delta where product = $2 and to_version = $1 limit 1", toVersion, product);
         if (existRows.empty() && !hasActive)
         {
             auto idRows = db->execSqlSync(

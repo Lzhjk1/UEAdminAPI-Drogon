@@ -93,5 +93,7 @@ Section "Delta"
   ; 任一校验失败即写 fallback 并以退出码 3 中止。
   !include "${DELTA_INCLUDE}"
   DetailPrint "UEAI Studio 增量更新完成：${DELTA_FROM_VERSION} -> ${PRODUCT_VERSION}"
+  WriteRegStr HKLM "${UEAISTUDIO_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
+  WriteRegStr HKLM "${UEAISTUDIO_UNINST_KEY}" "InstallLocation" "$INSTDIR"
   Delete "$LOCALAPPDATA\UEAI Studio\update\fallback.json"
 SectionEnd
