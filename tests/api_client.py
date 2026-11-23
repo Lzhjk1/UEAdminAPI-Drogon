@@ -267,8 +267,11 @@ class ApiClient:
         return self._request("GET", "/api/update/check", params=params)
 
     def update_download_raw(self, version: str, kind: str | None = None,
-                            from_version: str | None = None):
+                            from_version: str | None = None,
+                            product: str | None = None):
         params = {}
+        if product is not None:
+            params["product"] = product
         if kind is not None:
             params["kind"] = kind
         if from_version is not None:

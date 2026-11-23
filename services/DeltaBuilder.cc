@@ -952,7 +952,7 @@ void RunJob(int installerId)
 
         const std::string assets = AssetsDir();
         const fs::path nsiPath = fs::path(assets) /
-            (target.product == "ueaicad" ? "UEAICAD-setup.nsi"
+            (target.product == "ueaicad" ? "UEAIStudio-setup.nsi"
                                              : "AutoPDMS-project-setup.nsi");
         const fs::path licensePath = fs::path(assets) / "UESoftMYRMAgreement.txt";
         if (!fs::exists(nsiPath) ||
@@ -972,7 +972,7 @@ void RunJob(int installerId)
         }
         const fs::path deltaExe = deltaDir /
             (target.product == "ueaicad"
-                 ? ("UEAICAD_" + target.version + "_Delta_from_" + base.version + ".exe")
+                 ? ("UEAIStudio_" + target.version + "_Delta_from_" + base.version + ".exe")
                  : ("UEAP_PRJ_" + target.version + "_Delta_from_" + base.version + "_Win32.exe"));
         fs::remove(deltaExe, ec);
 
@@ -1274,9 +1274,9 @@ HttpResult DeltaBuilder::AdminHealth()
     {
         missing.append("AutoPDMS-project-setup.nsi");
     }
-    if (!fs::exists(fs::path(assets) / "UEAICAD-setup.nsi"))
+    if (!fs::exists(fs::path(assets) / "UEAIStudio-setup.nsi"))
     {
-        missing.append("UEAICAD-setup.nsi");
+        missing.append("UEAIStudio-setup.nsi");
     }
     if (!fs::exists(licensePath))
     {

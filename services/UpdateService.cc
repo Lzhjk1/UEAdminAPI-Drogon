@@ -520,13 +520,15 @@ HttpResult UpdateService::CheckUpdate(int userId,
             result.setResult(ApiErrorCode::ApiError_Success, "team disabled");
             return result;
         }
-        if (!access.paid)
+        // UEAI Studio 通道：在线更新不绑定付费订阅与 online_update 授权
+        const bool ueaiProduct = (product == "ueaicad");
+        if (!access.paid && !ueaiProduct)
         {
             result.jsondata["reason"] = "not_paid";
             result.setResult(ApiErrorCode::ApiError_Success, "no active subscription");
             return result;
         }
-        if (!access.updateAuth)
+        if (!access.updateAuth && !ueaiProduct)
         {
             result.jsondata["reason"] = "no_auth";
             result.setResult(ApiErrorCode::ApiError_Success, "online_update not authorized");
@@ -1975,7 +1977,7 @@ bool UpdateService::ResolveDownload(int userId, const std::string &version,
             errorResult.setResult(ApiErrorCode::ApiError_UserNotFound);
             return false;
         }
-        if (!access.updateAuth)
+        if (!access.updateAuth && product != "ueaicad")
         {
             errorResult.setResult(ApiErrorCode::ApiError_FeatureNotAuthorized);
             return false;
@@ -2057,7 +2059,7 @@ bool UpdateService::ResolveDeltaManifest(int userId, const std::string &toVersio
             errorResult.setResult(ApiErrorCode::ApiError_UserNotFound);
             return false;
         }
-        if (!access.updateAuth)
+        if (!access.updateAuth && product != "ueaicad")
         {
             errorResult.setResult(ApiErrorCode::ApiError_FeatureNotAuthorized);
             return false;

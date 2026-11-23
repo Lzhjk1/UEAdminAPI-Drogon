@@ -81,6 +81,29 @@ def test_check_requires_paid_and_authorization(seeded_org, logged_client):
     assert data["reason"] == "no_package"
 
 
+def test_ueaicad_free_team_update_allowed(seeded_org, logged_client):
+    """UEAI Studio 通道不要求付费与 online_update 授权，免费团队也可检查/下载。"""
+    admin = logged_client(seeded_org.admin_name, seeded_org.admin_password)
+    vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)
+
+    version = "0.9.5"
+    uploaded = vendor.admin_upload_installer(version, FAKE_EXE + b"U", build_no=905,
+                                             product="ueaicad")["data"]
+    vendor.admin_publish_installer(uploaded["id"])
+
+    data = admin.update_check("0.9.0", product="ueaicad")["data"]
+    assert data["hasUpdate"] is True
+    assert data["version"] == version
+    assert data["reason"] == "ok"
+
+    resp = admin.update_download_raw(version, product="ueaicad")
+    assert resp.status_code == 200
+    assert resp.content == FAKE_EXE + b"U"
+
+    # 同一团队没有付费/授权时，PDMS 通道仍保持原门禁
+    assert admin.update_check("11.7.100")["data"]["reason"] == "not_paid"
+
+
 def test_upload_publish_and_download(seeded_org, logged_client):
     admin = logged_client(seeded_org.admin_name, seeded_org.admin_password)
     vendor = logged_client(seeded_org.vendor_name, seeded_org.vendor_password)
