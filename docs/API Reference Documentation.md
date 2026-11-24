@@ -1488,6 +1488,9 @@ GitLab 相关接口目前使用独立的响应格式：
 | `Model` | 固定模型名，客户端不能覆盖；填 TokenHub 模型广场的 model id，内置 Agent 需支持 Function Calling（如 `hy4-flash` / `deepseek-v4-flash`） |
 | `TimeoutSec` | 单次调用超时（秒），默认 180 |
 | `MaxTokens` | 输出 token 上限，0 表示不限制 |
+| `Secret` | 上游/企业自带 Key 落库加密密钥；至少 16 字符，生产建议 32 字节随机值（Base64 或 64 位十六进制）；也可用 `UE_AI_SECRET` 覆盖 |
+| `ModelMultipliers` | 模型 ID → 积分消耗倍率；经济档 1.0（1 积分 = 10 万 tokens），Pro 默认 2.0（1 积分 = 5 万 tokens） |
+| `DefaultModelMultiplier` | 未配置模型时的默认倍率，默认 1.0 |
 
 服务端会自动在 `BaseUrl` 后拼接 `/chat/completions`，并按 `Authorization: Bearer <Key>` 调用。以上字段均可用环境变量覆盖，生产环境可只注入 Key 而不落配置文件：`UE_AI_ENABLED` / `UE_AI_BASE_URL` / `UE_AI_KEY` / `UE_AI_MODEL` / `UE_AI_TIMEOUT_SEC` / `UE_AI_MAX_TOKENS`。
 
@@ -1506,7 +1509,7 @@ GitLab 相关接口目前使用独立的响应格式：
 
 **响应**：`data` 为模型原生的 OpenAI 响应（含 `choices[0].message.tool_calls`）。
 平台订阅过期或仅开通 AutoPDMS 返回 -808；额度用尽返回 -914（`data.quota` 带 `plan/trial/monthlyTokens/usedTokens/remainingTokens`）；模型服务不可用返回 -908；未配置返回 -907。
-额度按团队自然月汇总 `ai_usage_log.total_tokens`，套餐额度在 `custom_config.Subscription.TokenQuota` 配置（free/trial/plus/pro/max，默认 10,000,000/200,000,000/400,000,000/1,000,000,000/2,000,000,000 tokens；1 积分 = 100,000 tokens）。
+额度按团队自然月汇总 `ai_usage_log.total_tokens`，并按模型倍率加权（`AI.ModelMultipliers`）；套餐额度在 `custom_config.Subscription.TokenQuota` 配置（free/trial/plus/pro/max，默认 10,000,000/200,000,000/400,000,000/1,000,000,000/2,000,000,000 tokens；经济档 1 积分 = 100,000 tokens，Pro 档默认 2 倍）。
 
 **用量记账**（迁移 `0023_ai_usage.sql`）：
 
@@ -1524,6 +1527,18 @@ GitLab 相关接口目前使用独立的响应格式：
 - 返回字段：`month`、`teamId`（无团队为 `null`）、`self`、`team`、`members`；
 - 查询当月时额外返回 `quota`：`plan`、`trial`、`monthlyTokens`、`usedTokens`、`remainingTokens`（团队月度积分池）；
 - `month` 格式不合法返回 -102，数据库异常返回 -104。
+
+### AI 服务管理（迁移 0028，厂商管理员）
+
+厂商管理「AI 服务」页使用的管理接口，均需 `Authorization` + 厂商团队管理员/超级管理员：
+
+- `GET /api/admin/ai/overview`：本月平台用量/成本、并发占用、上游列表、模型与并发设置；
+- `GET|POST /api/admin/ai/settings`：标准/旗舰模型、积分倍率、默认套餐、全局/团队并发、TPM、排队秒数、告警阈值；
+- `GET|POST /api/admin/ai/upstreams`、`POST /api/admin/ai/upstreams/delete`：平台上游 Key（订阅套餐/按量计费）；`apiKey` 只写不读，列表只返回 `keyHint`；
+- `GET /api/admin/ai/teams`：有订阅/用量的团队、套餐、本月积分、AI 来源（平台池/自带 Key）；
+- `POST /api/admin/ai/teams/byok`、`POST /api/admin/ai/teams/byok/remove`：企业自带 Key 绑定/解绑。
+
+上游与企业 Key 由 `AI.Secret` / `UE_AI_SECRET` 派生 AES-256-GCM 密钥加密后落库；未配置密钥时保存返回 -105，聊天回退到 `AI` 配置。对话优先使用企业自带 Key；平台上游按 `priority` 依次尝试，额度/限流/网络失败自动切下一个。并发在进程内计数（全局 + 每团队），超出等待 `queueSeconds` 后返回 -106；TPM 按团队 60 秒滑窗近似统计。
 
 ## 15. 云工程（客户端直连存储）
 

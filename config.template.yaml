@@ -65,11 +65,23 @@ custom_config:
     # 其他 OpenAI 兼容服务也适用；代理会自动拼接 /chat/completions。
     BaseUrl: "https://tokenhub.tencentmaas.com/plan/v3"
     ApiKey: ""                        # 服务端模型 Key（不要下发客户端）
+    # 上游 / 企业自带 Key 的落库加密密钥；也可用环境变量 UE_AI_SECRET 覆盖。
+    # 至少 16 个字符；生产建议 32 字节随机值（Base64 或 64 位十六进制）。
+    Secret: ""
+    # 模型档位、并发、多上游和企业 BYOK 在管理端「AI 服务」里维护（存数据库）。
     # TokenHub 模型广场的 model id；内置 Agent 需要 Function Calling，
     # 例如 hy4-flash / deepseek-v4-flash；以实际套餐支持的模型为准。
     Model: "hy4-flash"
     TimeoutSec: 180                   # 模型单次调用超时（秒）
     MaxTokens: 4096                   # 0 表示不限制
+    # 积分消耗倍率：按模型采购成本配置。经济档 1 积分 = 10 万 tokens；
+    # Pro 档默认 2 倍（1 积分 = 5 万 tokens）。换模型只改倍率，不改套餐积分。
+    ModelMultipliers:
+      hy4-flash: 1.0
+      deepseek-v4-flash: 1.0
+      hy4-pro: 2.0
+      deepseek-v4-pro: 2.0
+    DefaultModelMultiplier: 1.0
 
   # 云工程：客户端凭预签名 URL 直传/直下存储服务，文件本体不经过业务服务器。
   # Driver=cos 用于生产；Driver=local 仅用于开发/私有部署（落盘到 LocalStoreDir）。
