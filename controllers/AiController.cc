@@ -1033,6 +1033,33 @@ Task<HttpResponsePtr> AiController::chat(HttpRequestPtr req)
         co_return JsonResponse(result);
     }
 
+    // OpenCode Go 等上游要求稳定的会话标识；按用户 + 首条用户消息生成，
+    // 同一对话跨轮次保持不变，便于上游路由与提示缓存。
+    std::string providerSession = "ueai-";
+    {
+        auto hashText = [](const std::string &text, std::size_t seed) {
+            for (const unsigned char value : text)
+            {
+                seed ^= value;
+                seed *= 1099511628211ULL;
+            }
+            return seed;
+        };
+        std::size_t seed = hashText(std::to_string(userId), 1469598103934665603ULL);
+        for (const auto &message : messages)
+        {
+            if (!message.isObject() ||
+                message.get("role", "").asString() != "user")
+            {
+                continue;
+            }
+            const auto &content = message["content"];
+            seed = hashText(content.isString() ? content.asString() : std::string(), seed);
+            break;
+        }
+        providerSession += std::to_string(seed);
+    }
+
     const auto settings = LoadAiSettings();
     const int teamId = TeamIdForUser(userId);
     const int gateKey = AiGateKey(teamId, userId);
@@ -1120,6 +1147,8 @@ Task<HttpResponsePtr> AiController::chat(HttpRequestPtr req)
         upstreamReq->setPath(path);
         upstreamReq->addHeader("Authorization", "Bearer " + upstreamConfig.apiKey);
         upstreamReq->addHeader("Accept", "application/json");
+        upstreamReq->addHeader("User-Agent", "UEAI-Studio/0.2.0");
+        upstreamReq->addHeader("x-opencode-session", providerSession);
 
         HttpResponsePtr response;
         try
@@ -1141,6 +1170,9 @@ Task<HttpResponsePtr> AiController::chat(HttpRequestPtr req)
         Json::Value payload;
         if (!ParseJson(response->body(), payload))
         {
+            LOG_WARN << "AI 上游返回非 JSON [" << upstreamConfig.name << "] HTTP "
+                     << response->statusCode() << " body="
+                     << response->body().substr(0, 500);
             lastMessage = "AI 模型返回了非 JSON 数据（HTTP " +
                           std::to_string(response->statusCode()) + "）";
             continue;
